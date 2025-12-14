@@ -82,27 +82,27 @@ If you haven't run these SQL commands yet, please run them in your Supabase SQL 
 
 - [x] UI: "Generate Specs" button in Spec Sidebar.
 - [x] Backend: Server Action `generateSpecSheet(pdfUrl)`.
-- [x] AI: Gemini 1.5 Flash — extract constraints as JSON.
+- [x] AI: Gemma 2 27B (via text extraction).
 - [x] State: Populate checklist with result.
 
 ### Step 2.2: The Prompt Assistant (Ref Hunter)
 
-- [x] UI: Context menu on text highlight → "Find Refs".
+- [x] UI: Unified "Smart Context Bar" menu.
 - [x] Backend: Server Action `generateSearchQueries(text)`.
-- [x] AI: Gemini 1.5 Flash.
-- [x] Result: Render buttons opening Behance/Pinterest.
+- [x] AI: Gemma 2 9B.
+- [x] Result: Render buttons opening Behance/Pinterest + Pro sources (Dribbble, ArtStation).
 
 ### Step 2.3: Manual Flashcards (Gamified)
 
 - [x] UI: "Flashcard Mode" toggle in Notebook.
-- [x] Interaction: Highlight text → "Make Card".
+- [x] Interaction: Highlight text → "Make Card" via Smart Context Bar.
 - [x] Visual: Highlight source text in whatever color the flashcard is(let user be able to pick).
 - [x] DB: Save to `flashcards` table with `source_node_id`.
 
 ### Step 2.4: Tone Tuner
 
-- [x] UI: Floating bubble menu in Tiptap → "Make Academic".
-- [x] AI: Gemini 1.5 Flash rewrites selected text.
+- [x] UI: Unified "Smart Context Bar" menu.
+- [x] AI: Gemma 2 27B rewrites selected text.
 
 ---
 

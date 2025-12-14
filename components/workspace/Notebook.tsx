@@ -5,9 +5,8 @@ import StarterKit from "@tiptap/starter-kit";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Bold, Italic, List, ListOrdered, Heading2, Save, Loader2, SquareStack } from "lucide-react";
-import { RefHunterMenu } from "./RefHunterMenu";
 import { FlashcardMenu } from "./FlashcardMenu";
-import { ToneTunerMenu } from "./ToneTunerMenu";
+import { SmartContextBar } from "./SmartContextBar";
 import Highlight from "@tiptap/extension-highlight";
 import DOMPurify from "isomorphic-dompurify";
 
@@ -165,11 +164,11 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
             {/* Editor Content */}
             <div className="flex-1 overflow-auto">
                 <EditorContent editor={editor} className="h-full" />
-                {/* Ref Hunter Bubble Menu */}
-                {!isFlashcardMode && <RefHunterMenu editor={editor} />}
-                {/* Tone Tuner Bubble Menu */}
-                <ToneTunerMenu editor={editor} isFlashcardMode={isFlashcardMode} />
-                {/* Flashcard Bubble Menu */}
+
+                {/* Unified Context Bar (Replaces RefHunter & ToneTuner) */}
+                <SmartContextBar editor={editor} projectId={projectId} isFlashcardMode={isFlashcardMode} />
+
+                {/* Specific Flashcard Menu (Only active in Flashcard Mode) */}
                 <FlashcardMenu editor={editor} projectId={projectId} isFlashcardMode={isFlashcardMode} />
             </div>
 

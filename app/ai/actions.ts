@@ -3,6 +3,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { rateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/utils/supabase/server";
+import pdf from "pdf-parse";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -53,13 +54,24 @@ export async function generateSpecSheet(pdfUrl: string): Promise<GenerateSpecRes
         }
 
         const pdfBuffer = await response.arrayBuffer();
-        const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+        const buffer = Buffer.from(pdfBuffer);
 
-        // Use Gemini 1.5 Flash for PDF analysis (Multimodal support required)
-        // Gemma models are text-only and cannot process PDF blobs directly.
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // Extract text from PDF using pdf-parse (Gemma is text-only)
+        const pdfData = await pdf(buffer);
+        const pdfText = pdfData.text;
+
+        // Truncate text if needed (Gemma 2 has 8k context, keeping safe margin)
+        const truncatedText = pdfText.slice(0, 20000);
+
+        // Use Large Gemma (27B) for complex extraction
+        const model = genAI.getGenerativeModel({ model: "gemma-2-27b-it" });
 
         const prompt = `You are analyzing a design brief PDF. Extract all technical specifications and constraints mentioned in this document.
+
+Document Text:
+"""
+${truncatedText}
+"""
 
 Return a JSON array of specification items. Each item should have:
 - "label": A concise description of the requirement (e.g., "A3 Format (Portrait)", "CMYK Color Mode", "3mm Bleed Required")
@@ -83,15 +95,7 @@ Return ONLY valid JSON, no markdown or explanations. Example format:
 
 If you cannot extract any specifications, return an empty array: []`;
 
-        const result = await model.generateContent([
-            { text: prompt },
-            {
-                inlineData: {
-                    mimeType: "application/pdf",
-                    data: pdfBase64,
-                },
-            },
-        ]);
+        const result = await model.generateContent([{ text: prompt }]);
 
         const responseText = result.response.text();
 
@@ -245,9 +249,26 @@ export async function generateSearchQueries(text: string): Promise<SearchQueryRe
         const model = genAI.getGenerativeModel({ model: "gemma-2-9b-it" });
         console.log("[Server] Model initialized, making API call...");
 
-        const prompt = `Generate 3 expert search queries to find visual examples of "${text.trim()}" on high-quality design archives like Behance and Pinterest.
+        // Fetch user profile to check tier
+        const { data: profile } = await supabase
+            .from("profiles")
+            .select("tier")
+            .eq("id", user.id)
+            .single();
 
-Return ONLY a JSON array of 3 search query strings. No explanations, no markdown, just the JSON array.
+        const isPro = profile?.tier === "pro";
+        const queryCount = isPro ? 6 : 3;
+        const platforms = isPro
+            ? "Behance, Pinterest, Dribbble, ArtStation, Savee, and Awwwards"
+            : "Behance and Pinterest";
+
+        // Use Small Gemma (9B) for search queries
+        const model = genAI.getGenerativeModel({ model: "gemma-2-9b-it" });
+        console.log("[Server] Model initialized, making API call...");
+
+        const prompt = `Generate ${queryCount} expert search queries to find visual examples of "${text.trim()}" on high-quality design archives like ${platforms}.
+
+Return ONLY a JSON array of ${queryCount} search query strings. No explanations, no markdown, just the JSON array.
 
 Example format:
 ["minimalist brutalist architecture", "concrete building photography", "raw industrial design interiors"]`;
