@@ -331,17 +331,29 @@ const Header = () => {
                             </div>
                         </>
                     ) : (
-                        /* Dashboard Nav - Just Dashboard button */
-                        <Link href="/">
-                            <GummyButton
-                                variant="solid"
-                                size="sm"
-                                className="rounded-full bg-zinc-800 text-white shadow-lg shadow-lime-400/10"
-                            >
-                                <LayoutGrid size={18} className="mr-2 text-lime-400" />
-                                Dashboard
-                            </GummyButton>
-                        </Link>
+                        /* Dashboard Nav - Dashboard + Calendar */
+                        <>
+                            <Link href="/">
+                                <GummyButton
+                                    variant="solid"
+                                    size="sm"
+                                    className="rounded-full bg-zinc-800 text-white shadow-lg shadow-lime-400/10"
+                                >
+                                    <LayoutGrid size={18} className="mr-2 text-lime-400" />
+                                    Dashboard
+                                </GummyButton>
+                            </Link>
+                            <Link href="/calendar">
+                                <GummyButton
+                                    variant="ghost"
+                                    size="sm"
+                                    className="rounded-full text-zinc-400 hover:text-white"
+                                >
+                                    <CalendarDays size={18} className="mr-2 text-amber-400" />
+                                    Calendar
+                                </GummyButton>
+                            </Link>
+                        </>
                     )}
                 </nav>
             </div>

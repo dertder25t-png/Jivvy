@@ -212,6 +212,32 @@ export function InfiniteCanvas({
                     background: rgba(163, 230, 53, 0.2) !important;
                     color: #a3e635 !important;
                 }
+
+                /* Fix TLDraw color swatches - show actual colors */
+                .tlui-color-swatch,
+                [data-testid="style.color"] button,
+                .tlui-style-panel button[title] {
+                    min-width: 20px !important;
+                    min-height: 20px !important;
+                }
+
+                /* TLDraw popover panels styling */
+                .tlui-popover__content,
+                .tlui-style-panel {
+                    background: rgba(42, 42, 45, 0.98) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                    border-radius: 12px !important;
+                }
+
+                /* Sliders */
+                .tlui-slider__track {
+                    background: rgba(255, 255, 255, 0.1) !important;
+                }
+                
+                .tlui-slider__thumb {
+                    background: #a3e635 !important;
+                    border: 2px solid white !important;
+                }
             `}</style>
         </div>
     );
