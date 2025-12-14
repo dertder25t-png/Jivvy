@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Check, Wand2, ChevronRight, Loader2, Sparkles } from "lucide-react";
+import { Check, Wand2, ChevronRight, Loader2, Sparkles, Plus, X, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { GummyButton } from "@/components/ui/GummyButton";
 import { generateSpecSheet, type SpecItem } from "@/app/ai/actions";
@@ -26,9 +26,31 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
     const [extracting, setExtracting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [extracted, setExtracted] = useState(false);
+    const [isAddingSpec, setIsAddingSpec] = useState(false);
+    const [newSpecLabel, setNewSpecLabel] = useState("");
 
     const toggleSpec = (id: string) => {
         const newSpecs = specs.map(s => s.id === id ? { ...s, checked: !s.checked } : s);
+        setSpecs(newSpecs);
+        onSpecsChange?.(newSpecs);
+    };
+
+    const addManualSpec = () => {
+        if (!newSpecLabel.trim()) return;
+        const newSpec: SpecItem = {
+            id: `manual-${Date.now()}`,
+            label: newSpecLabel.trim(),
+            checked: false,
+        };
+        const newSpecs = [...specs, newSpec];
+        setSpecs(newSpecs);
+        onSpecsChange?.(newSpecs);
+        setNewSpecLabel("");
+        setIsAddingSpec(false);
+    };
+
+    const deleteSpec = (id: string) => {
+        const newSpecs = specs.filter(s => s.id !== id);
         setSpecs(newSpecs);
         onSpecsChange?.(newSpecs);
     };
@@ -64,21 +86,23 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
 
     return (
         <div className={cn(
-            "h-full bg-surface border-l border-white/5 transition-all duration-300 flex flex-col relative",
+            "h-full bg-surface border-l border-lime-500/20 transition-all duration-300 flex flex-col",
             collapsed ? "w-12" : "w-80",
             className
         )}>
-            {/* Toggle Handle */}
-            <button
-                onClick={() => setCollapsed(!collapsed)}
-                className="absolute -left-3 top-6 w-6 h-6 bg-zinc-800 border border-zinc-700 rounded-full flex items-center justify-center z-20 hover:bg-zinc-700 transition-colors shadow-lg"
-            >
-                <ChevronRight size={14} className={cn("text-zinc-400 transition-transform", collapsed ? "rotate-180" : "")} />
-            </button>
+            {/* Collapsed State */}
+            {collapsed && (
+                <button
+                    onClick={() => setCollapsed(false)}
+                    className="h-full w-full flex items-center justify-center hover:bg-zinc-900 transition-colors group"
+                >
+                    <ChevronRight size={16} className="text-zinc-500 group-hover:text-lime-400 rotate-180" />
+                </button>
+            )}
 
             {!collapsed && (
                 <>
-                    <div className="p-6 border-b border-white/5">
+                    <div className="p-4 border-b border-white/5">
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
                                 <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Spec Sheet</h2>
@@ -86,9 +110,17 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
                                     <Sparkles size={12} className="text-lime-400" />
                                 )}
                             </div>
-                            <span className="text-xs bg-lime-400/10 text-lime-400 px-2 py-0.5 rounded-full font-bold">
-                                {specs.filter(s => s.checked).length} / {specs.length}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs bg-lime-400/10 text-lime-400 px-2 py-0.5 rounded-full font-bold">
+                                    {specs.filter(s => s.checked).length} / {specs.length}
+                                </span>
+                                <button
+                                    onClick={() => setCollapsed(true)}
+                                    className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors"
+                                >
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
                         </div>
 
                         <GummyButton
@@ -129,7 +161,6 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
                         {specs.map(spec => (
                             <div
                                 key={spec.id}
-                                onClick={() => toggleSpec(spec.id)}
                                 className={cn(
                                     "flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-all group select-none",
                                     spec.checked
@@ -137,15 +168,17 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
                                         : "bg-zinc-900/50 border-white/5 hover:border-white/10"
                                 )}
                             >
-                                <div className={cn(
-                                    "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors shrink-0",
-                                    spec.checked
-                                        ? "bg-lime-400 border-lime-400"
-                                        : "border-zinc-600 group-hover:border-zinc-500"
-                                )}>
+                                <div
+                                    onClick={() => toggleSpec(spec.id)}
+                                    className={cn(
+                                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors shrink-0",
+                                        spec.checked
+                                            ? "bg-lime-400 border-lime-400"
+                                            : "border-zinc-600 group-hover:border-zinc-500"
+                                    )}>
                                     {spec.checked && <Check size={12} className="text-black stroke-[3]" />}
                                 </div>
-                                <div className="flex-1 min-w-0">
+                                <div className="flex-1 min-w-0" onClick={() => toggleSpec(spec.id)}>
                                     <span className={cn(
                                         "text-xs md:text-sm font-medium transition-colors leading-tight block truncate",
                                         spec.checked ? "text-white" : "text-zinc-400 group-hover:text-zinc-300"
@@ -158,19 +191,51 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
                                         </span>
                                     )}
                                 </div>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); deleteSpec(spec.id); }}
+                                    className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-all"
+                                >
+                                    <Trash2 size={12} />
+                                </button>
                             </div>
                         ))}
+
+                        {/* Add Spec Form */}
+                        {isAddingSpec ? (
+                            <div className="flex items-center gap-2 p-2 bg-zinc-800/50 rounded-xl border border-zinc-700">
+                                <input
+                                    type="text"
+                                    value={newSpecLabel}
+                                    onChange={(e) => setNewSpecLabel(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && addManualSpec()}
+                                    placeholder="Add requirement..."
+                                    className="flex-1 bg-transparent text-sm text-white placeholder:text-zinc-500 focus:outline-none"
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={addManualSpec}
+                                    className="p-1.5 rounded-lg bg-lime-400/20 text-lime-400 hover:bg-lime-400/30 transition-colors"
+                                >
+                                    <Check size={12} />
+                                </button>
+                                <button
+                                    onClick={() => { setIsAddingSpec(false); setNewSpecLabel(""); }}
+                                    className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-500 transition-colors"
+                                >
+                                    <X size={12} />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setIsAddingSpec(true)}
+                                className="w-full flex items-center justify-center gap-2 p-3 rounded-2xl border-2 border-dashed border-zinc-700 hover:border-lime-500/50 text-zinc-500 hover:text-lime-400 transition-colors"
+                            >
+                                <Plus size={14} />
+                                <span className="text-xs font-medium">Add Requirement</span>
+                            </button>
+                        )}
                     </div>
                 </>
-            )}
-
-            {collapsed && (
-                <div className="flex-1 flex flex-col items-center py-6 gap-4">
-                    <span className="text-xs font-bold text-zinc-500 writing-vertical-rl rotate-180 tracking-widest uppercase">
-                        Specifications
-                    </span>
-                    <div className="w-1 h-1 rounded-full bg-lime-400" />
-                </div>
             )}
         </div>
     );

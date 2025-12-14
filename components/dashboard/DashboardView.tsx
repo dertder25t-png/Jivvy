@@ -16,6 +16,7 @@ import { TiltCard } from "@/components/ui/TiltCard";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getUserProjects, type Project } from "@/app/project/actions";
+import { TimelineStream } from "@/components/dashboard/TimelineStream";
 
 // Color palette for projects (will cycle through based on index)
 const PROJECT_COLORS = [
@@ -209,33 +210,10 @@ const DashboardView = () => {
                         </TiltCard>
                     )}
 
-                    {/* Quick Stats Card */}
-                    <TiltCard
-                        className="hidden md:flex col-span-1 md:col-span-2 lg:col-span-2 row-span-2 bg-surface border border-zinc-800 p-6 rounded-3xl flex-col justify-between relative overflow-hidden"
-                        delay={100}
-                        noTilt
-                    >
-                        <div className="flex justify-between items-start z-10">
-                            <div className="w-12 h-12 bg-zinc-800 rounded-2xl flex items-center justify-center text-white">
-                                <FolderOpen size={24} />
-                            </div>
-                            <span className="text-xs font-bold text-zinc-500 uppercase">Your Library</span>
-                        </div>
-
-                        <div className="space-y-2 z-10 my-4">
-                            <div className="text-5xl font-bold text-white">{projects.length}</div>
-                            <div className="text-sm text-zinc-400">
-                                {projects.length === 1 ? 'Project' : 'Projects'}
-                            </div>
-                        </div>
-
-                        <Link href="/project/new">
-                            <button className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2">
-                                <Plus size={18} />
-                                New Project
-                            </button>
-                        </Link>
-                    </TiltCard>
+                    {/* The Stream Widget */}
+                    <div className="hidden md:block col-span-1 md:col-span-2 lg:col-span-2 row-span-2">
+                        <TimelineStream className="h-full" compact />
+                    </div>
 
                 </div>
 

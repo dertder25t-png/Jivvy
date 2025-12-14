@@ -83,7 +83,11 @@ export default function ProjectPage() {
             const { project: data, error } = await getProject(projectId);
             if (!error && data) {
                 setProject(data);
-                setLeftPanelCollapsed(false);
+                setOnboardingComplete(true); // Existing project - skip onboarding
+                // Only show left panel if there's a PDF
+                if (data.pdf_url) {
+                    setLeftPanelCollapsed(false);
+                }
             }
 
             // Fetch notes

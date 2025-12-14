@@ -15,7 +15,8 @@ import {
     ChevronDown,
     Library,
     FolderOpen,
-    X
+    X,
+    CalendarDays
 } from "lucide-react";
 import { JivvyAvatar } from "@/components/ui/JivvyAvatar";
 import { GummyButton } from "@/components/ui/GummyButton";
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { useProjectStore } from "@/lib/store";
 import { getCurrentUser, type UserInfo } from "@/app/user/actions";
 import { createClient } from "@/utils/supabase/client";
+import { getProject, updateProjectMetadata } from "@/app/project/actions";
 
 // Mock project files for dropdown - in real app, fetch from database
 const MOCK_PROJECT_FILES = [
@@ -37,8 +39,12 @@ const Header = () => {
     const [user, setUser] = useState<UserInfo | null>(null);
     const [fileDropdownOpen, setFileDropdownOpen] = useState(false);
     const [libraryOpen, setLibraryOpen] = useState(false);
+    const [projectTitle, setProjectTitle] = useState<string>("");
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [titleInputValue, setTitleInputValue] = useState("");
     const dropdownRef = useRef<HTMLDivElement>(null);
     const libraryRef = useRef<HTMLDivElement>(null);
+    const titleInputRef = useRef<HTMLInputElement>(null);
 
     const { activeProjectId, centerMode, setCenterMode } = useProjectStore();
 
@@ -77,6 +83,46 @@ const Header = () => {
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    // Fetch project title when project changes
+    useEffect(() => {
+        async function fetchProjectTitle() {
+            if (activeProjectId && activeProjectId !== 'new') {
+                const { project } = await getProject(activeProjectId);
+                if (project?.title) {
+                    setProjectTitle(project.title);
+                    setTitleInputValue(project.title);
+                }
+            } else {
+                setProjectTitle("");
+            }
+        }
+        fetchProjectTitle();
+    }, [activeProjectId]);
+
+    // Focus input when editing starts
+    useEffect(() => {
+        if (isEditingTitle && titleInputRef.current) {
+            titleInputRef.current.focus();
+            titleInputRef.current.select();
+        }
+    }, [isEditingTitle]);
+
+    // Handle title save
+    const handleTitleSave = async () => {
+        if (!activeProjectId || activeProjectId === 'new') return;
+        if (!titleInputValue.trim()) {
+            setTitleInputValue(projectTitle);
+            setIsEditingTitle(false);
+            return;
+        }
+
+        const { success } = await updateProjectMetadata(activeProjectId, { title: titleInputValue.trim() });
+        if (success) {
+            setProjectTitle(titleInputValue.trim());
+        }
+        setIsEditingTitle(false);
+    };
 
     // Get greeting based on time of day
     const greeting = useMemo(() => {
@@ -142,6 +188,38 @@ const Header = () => {
 
                             {/* Divider */}
                             <div className="w-px h-6 bg-zinc-700 mx-1" />
+
+                            {/* Editable Project Title */}
+                            {projectTitle && (
+                                <>
+                                    {isEditingTitle ? (
+                                        <input
+                                            ref={titleInputRef}
+                                            type="text"
+                                            value={titleInputValue}
+                                            onChange={(e) => setTitleInputValue(e.target.value)}
+                                            onBlur={handleTitleSave}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleTitleSave();
+                                                if (e.key === 'Escape') {
+                                                    setTitleInputValue(projectTitle);
+                                                    setIsEditingTitle(false);
+                                                }
+                                            }}
+                                            className="bg-transparent text-white text-sm font-medium px-2 py-1 rounded border border-lime-500/50 focus:outline-none focus:border-lime-400 min-w-[120px]"
+                                        />
+                                    ) : (
+                                        <button
+                                            onClick={() => setIsEditingTitle(true)}
+                                            className="text-white text-sm font-medium px-2 py-1 rounded hover:bg-zinc-800 transition-colors truncate max-w-[200px]"
+                                            title="Click to rename project"
+                                        >
+                                            {projectTitle}
+                                        </button>
+                                    )}
+                                    <div className="w-px h-6 bg-zinc-700 mx-1" />
+                                </>
+                            )}
 
                             {/* Project File Dropdown */}
                             <div className="relative" ref={dropdownRef}>
@@ -233,6 +311,12 @@ const Header = () => {
                                                 <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition-colors">
                                                     <LayoutGrid size={16} className="text-lime-400" />
                                                     <span className="font-medium text-sm">All Projects</span>
+                                                </div>
+                                            </Link>
+                                            <Link href="/calendar" onClick={() => setLibraryOpen(false)}>
+                                                <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition-colors">
+                                                    <CalendarDays size={16} className="text-amber-400" />
+                                                    <span className="font-medium text-sm">Calendar</span>
                                                 </div>
                                             </Link>
                                             <Link href="/project/new" onClick={() => setLibraryOpen(false)}>
