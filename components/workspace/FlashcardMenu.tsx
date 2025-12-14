@@ -1,8 +1,9 @@
 "use client";
 
-import { BubbleMenu, Editor } from "@tiptap/react";
+import { Editor } from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
 import { useState } from "react";
-import { Zap, SquareStack, X, Check, Loader2 } from "lucide-react";
+import { SquareStack, X, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createFlashcard } from "@/app/flashcards/actions";
 
@@ -55,7 +56,6 @@ export function FlashcardMenu({ editor, projectId, isFlashcardMode }: FlashcardM
     return (
         <BubbleMenu
             editor={editor}
-            tippyOptions={{ duration: 100 }}
             shouldShow={({ editor }) => {
                 return !editor.view.state.selection.empty && isFlashcardMode;
             }}
@@ -81,7 +81,7 @@ export function FlashcardMenu({ editor, projectId, isFlashcardMode }: FlashcardM
                         <div className="space-y-1">
                             <label className="text-xs text-zinc-400">Front</label>
                             <div className="text-xs text-white bg-zinc-800 p-2 rounded border border-zinc-700 line-clamp-2 italic opacity-80">
-                                "{editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ")}"
+                                &quot;{editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ")}&quot;
                             </div>
                         </div>
 

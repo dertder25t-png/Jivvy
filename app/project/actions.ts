@@ -11,6 +11,13 @@ export type Project = {
     created_at: string;
 };
 
+export type Note = {
+    id: string;
+    project_id: string;
+    content: string;
+    order: number;
+};
+
 /**
  * Create a new project with a PDF URL
  */
@@ -124,5 +131,68 @@ export async function deleteProject(id: string): Promise<{ success: boolean; err
     }
 
     revalidatePath('/');
+    return { success: true, error: null };
+}
+
+/**
+ * Get project notes
+ */
+export async function getProjectNotes(projectId: string): Promise<{ notes: Note[]; error: string | null }> {
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('order', { ascending: true });
+
+    if (error) {
+        console.error("Error fetching notes:", error);
+        return { notes: [], error: error.message };
+    }
+
+    return { notes: data || [], error: null };
+}
+
+/**
+ * Save a project note
+ * order 0 = Lecture Notes
+ * order 1 = Paper
+ */
+export async function saveProjectNote(projectId: string, content: string, noteOrder: number): Promise<{ success: boolean; error: string | null }> {
+    const supabase = createClient();
+
+    // Check if note exists
+    const { data: existingNotes, error: fetchError } = await supabase
+        .from('notes')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('order', noteOrder);
+
+    if (fetchError) {
+        return { success: false, error: fetchError.message };
+    }
+
+    if (existingNotes && existingNotes.length > 0) {
+        // Update
+        const { error } = await supabase
+            .from('notes')
+            .update({ content })
+            .eq('id', existingNotes[0].id);
+
+        if (error) return { success: false, error: error.message };
+    } else {
+        // Insert
+        const { error } = await supabase
+            .from('notes')
+            .insert({
+                project_id: projectId,
+                content,
+                order: noteOrder
+            });
+
+        if (error) return { success: false, error: error.message };
+    }
+
     return { success: true, error: null };
 }
