@@ -113,17 +113,17 @@ If you haven't run these SQL commands yet, please run them in your Supabase SQL 
 
 ### Step 3.1: Quick Crop Critique (Mode A)
 
-- [ ] UI: "Ask Doctor" → crop tool overlay.
-- [ ] Input: User selects area + ONE issue.
-- [ ] AI: Gemini 1.5 Pro (PNG + Issue).
-- [ ] Output: Modal critique, no chat history.
+- [x] UI: "Ask Doctor" → crop tool overlay.
+- [x] Input: User selects area + ONE issue.
+- [x] AI: Gemini 1.5 Flash (Vision).
+- [x] Output: Modal critique, no chat history.
 
 ### Step 3.2: Full Canvas Critique (Mode B)
 
-- [ ] UI: "Check Vibes" button.
+- [x] UI: "Check Vibes" button.
 - [ ] Gate: PRO check; Free users see upgrade modal.
-- [ ] Context: Canvas PNG + Spec Sheet JSON.
-- [ ] AI: Gemini 1.5 Pro (Persona-based prompt).
+- [x] Context: Canvas PNG + Spec Sheet JSON.
+- [x] AI: Gemini 1.5 Pro (Persona-based prompt).
 
 ### Step 3.3: Payments
 
