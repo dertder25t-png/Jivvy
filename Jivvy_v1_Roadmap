@@ -101,8 +101,8 @@ If you haven't run these SQL commands yet, please run them in your Supabase SQL 
 
 ### Step 2.4: Tone Tuner
 
-- [ ] UI: Floating bubble menu in Tiptap → "Make Academic".
-- [ ] AI: Gemini 1.5 Flash rewrites selected text.
+- [x] UI: Floating bubble menu in Tiptap → "Make Academic".
+- [x] AI: Gemini 1.5 Flash rewrites selected text.
 
 ---
 

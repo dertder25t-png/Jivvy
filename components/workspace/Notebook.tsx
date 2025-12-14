@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Bold, Italic, List, ListOrdered, Heading2, Save, Loader2, SquareStack } from "lucide-react";
 import { RefHunterMenu } from "./RefHunterMenu";
 import { FlashcardMenu } from "./FlashcardMenu";
+import { ToneTunerMenu } from "./ToneTunerMenu";
 import Highlight from "@tiptap/extension-highlight";
 import DOMPurify from "isomorphic-dompurify";
 
@@ -166,6 +167,8 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
                 <EditorContent editor={editor} className="h-full" />
                 {/* Ref Hunter Bubble Menu */}
                 {!isFlashcardMode && <RefHunterMenu editor={editor} />}
+                {/* Tone Tuner Bubble Menu */}
+                <ToneTunerMenu editor={editor} isFlashcardMode={isFlashcardMode} />
                 {/* Flashcard Bubble Menu */}
                 <FlashcardMenu editor={editor} projectId={projectId} isFlashcardMode={isFlashcardMode} />
             </div>

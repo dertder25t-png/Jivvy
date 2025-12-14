@@ -126,6 +126,64 @@ If you cannot extract any specifications, return an empty array: []`;
     }
 }
 
+export interface RewriteTextResult {
+    rewrittenText: string | null;
+    error?: string;
+}
+
+/**
+ * Rewrite text with a specific tone using Gemini AI
+ */
+export async function rewriteText(text: string, tone: string): Promise<RewriteTextResult> {
+    try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { rewrittenText: null, error: "Unauthorized" };
+        }
+
+        try {
+            await limiter.check(15, user.id);
+        } catch {
+            return { rewrittenText: null, error: "Rate limit exceeded. Please try again later." };
+        }
+
+        if (!process.env.GEMINI_API_KEY) {
+            return { rewrittenText: null, error: "Gemini API key not configured" };
+        }
+
+        if (!text || text.trim().length === 0) {
+            return { rewrittenText: null, error: "No text provided" };
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemma-3-12b-it" });
+
+        const prompt = `Rewrite the following text to have a "${tone}" tone.
+
+        Rules:
+        - Maintain the original meaning.
+        - Fix grammar and spelling errors.
+        - Improve flow and clarity.
+        - Return ONLY the rewritten text, no explanations or quotes.
+
+        Text to rewrite:
+        "${text}"`;
+
+        const result = await model.generateContent([{ text: prompt }]);
+        const responseText = result.response.text();
+
+        return { rewrittenText: responseText.trim() };
+
+    } catch (error) {
+        console.error("Error rewriting text:", error);
+        return {
+            rewrittenText: null,
+            error: error instanceof Error ? error.message : "Unknown error"
+        };
+    }
+}
+
 export interface SearchQueryResult {
     queries: string[];
     error?: string;
