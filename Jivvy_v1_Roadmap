@@ -66,8 +66,8 @@
 
 - [ ] UI: "Flashcard Mode" toggle in Notebook.
 - [ ] Interaction: Highlight text → "Make Card".
-- [ ] Visual: Highlight source text in Neon Green.
-- [ ] DB: Save to `flashcards` table with `source_node_id`.
+- [ ] Visual: Highlight source text in whatever color the flashcard is(let user be able to pick).
+- [ ] DB: Save to `flashcards` table with `source_node_id`. 
 
 ### Step 2.4: Tone Tuner
 
