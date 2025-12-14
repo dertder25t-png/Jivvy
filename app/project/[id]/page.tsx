@@ -13,6 +13,7 @@ import { uploadPDF } from "@/utils/supabase/storage";
 import { createClient } from "@/utils/supabase/client";
 import { cn } from "@/lib/utils";
 import { SpecSidebar } from "@/components/workspace/SpecSidebar";
+import { DesignDoctorTool } from "@/components/workspace/DesignDoctorTool";
 
 const PDFViewer = dynamic(() => import("@/components/workspace/PDFViewer").then(mod => mod.PDFViewer), {
     ssr: false,
@@ -197,86 +198,64 @@ export default function ProjectPage() {
             )}
 
             {/* CENTER PANEL - Canvas or Notebook */}
-            <div className="flex-1 h-full flex flex-col overflow-hidden">
-                {/* Top Toolbar - Frosted Glass */}
-                <div className="flex items-center justify-between px-4 py-2 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800/50">
-                    <div className="flex items-center gap-3">
-                        {/* Layout Modes */}
-                        <div className="flex items-center bg-zinc-800/60 rounded-lg p-0.5">
-                            <button
-                                onClick={() => setLeftPanelCollapsed(true)}
-                                className={cn(
-                                    "p-2 rounded-md transition-all",
-                                    leftPanelCollapsed ? "bg-lime-400/20 text-lime-400" : "text-zinc-500 hover:text-white"
-                                )}
-                                title="Focus Canvas"
-                            >
-                                <Maximize2 size={14} />
-                            </button>
-                            <button
-                                onClick={() => setLeftPanelCollapsed(false)}
-                                className={cn(
-                                    "p-2 rounded-md transition-all",
-                                    !leftPanelCollapsed ? "bg-lime-400/20 text-lime-400" : "text-zinc-500 hover:text-white"
-                                )}
-                                title="Split View"
-                            >
-                                <SplitSquareHorizontal size={14} />
-                            </button>
-                        </div>
+            <div className="flex-1 h-full flex flex-col overflow-hidden relative">
 
-                        <div className="w-px h-5 bg-zinc-700" />
+                {/* Floating Tabs (More distinct, spread apart) */}
+                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 bg-zinc-900/90 backdrop-blur-xl p-1.5 rounded-full border border-zinc-700/50 shadow-2xl">
+                    <button
+                        onClick={() => setCenterMode("canvas")}
+                        className={cn(
+                            "flex items-center gap-2 px-6 py-2 rounded-full text-sm font-bold transition-all duration-300",
+                            centerMode === 'canvas'
+                                ? "bg-lime-400 text-black shadow-[0_0_20px_rgba(163,230,53,0.3)] scale-105"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5"
+                        )}
+                    >
+                        <PenTool size={16} />
+                        Canvas
+                    </button>
+                    <button
+                        onClick={() => setCenterMode("notebook")}
+                        className={cn(
+                            "flex items-center gap-2 px-6 py-2 rounded-full text-sm font-bold transition-all duration-300",
+                            centerMode === 'notebook'
+                                ? "bg-violet-500 text-white shadow-[0_0_20px_rgba(139,92,246,0.3)] scale-105"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5"
+                        )}
+                    >
+                        <StickyNote size={16} />
+                        Notebook
+                    </button>
+                </div>
 
-                        {/* Canvas/Notes Toggle */}
-                        <div className="flex items-center bg-zinc-800/60 rounded-lg p-0.5">
-                            <button
-                                onClick={() => setCenterMode("canvas")}
-                                className={cn(
-                                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
-                                    centerMode === 'canvas' ? "bg-lime-400/20 text-lime-400" : "text-zinc-500 hover:text-white"
-                                )}
-                            >
-                                <PenTool size={12} />
-                                Canvas
-                            </button>
-                            <button
-                                onClick={() => setCenterMode("notebook")}
-                                className={cn(
-                                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
-                                    centerMode === 'notebook' ? "bg-lime-400/20 text-lime-400" : "text-zinc-500 hover:text-white"
-                                )}
-                            >
-                                <StickyNote size={12} />
-                                Notes
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Squint Slider */}
-                    {centerMode === 'canvas' && (
-                        <div className="flex items-center gap-2 bg-zinc-800/60 rounded-lg px-3 py-1.5">
-                            <Eye size={14} className="text-zinc-500" />
+                {/* Squint Slider (Floating) */}
+                {centerMode === 'canvas' && (
+                    <div className="absolute bottom-6 left-6 z-20 flex items-center gap-3 bg-zinc-900/90 backdrop-blur-xl p-3 rounded-2xl border border-zinc-800 shadow-xl">
+                        <Eye size={16} className="text-zinc-400" />
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Squint Test</span>
                             <input
                                 type="range"
                                 min="0"
                                 max="100"
                                 value={squintAmount}
                                 onChange={(e) => setSquintAmount(Number(e.target.value))}
-                                className="w-20 h-1 bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-lime-400"
+                                className="w-32 h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-lime-400"
                             />
-                            <span className="text-[10px] font-mono text-zinc-500 w-6">{squintAmount}%</span>
                         </div>
-                    )}
-                </div>
+                        <span className="text-xs font-mono text-lime-400 w-8 text-right">{squintAmount}%</span>
+                    </div>
+                )}
 
-                {/* CANVAS AREA - Mid-Grey Background */}
+                {/* CANVAS AREA - Mid-Grey Background with Breathing Room */}
                 <div
-                    className="flex-1 overflow-hidden p-4"
-                    style={{ backgroundColor: '#2a2a2d' }}
+                    className="flex-1 overflow-hidden p-6 bg-[#1a1a1d] relative"
                     onDrop={handleDrop}
                     onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                     onDragLeave={() => setDragOver(false)}
                 >
+                    {/* Design Doctor Floating Tool (Only visible in Canvas mode or always accessible) */}
+                    <DesignDoctorTool />
                     {/* Full-Screen Onboarding Overlay */}
                     {!project?.pdf_url && leftPanelCollapsed && !onboardingComplete && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#121212]/95 backdrop-blur-sm">

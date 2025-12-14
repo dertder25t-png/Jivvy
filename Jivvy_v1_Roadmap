@@ -6,6 +6,32 @@
 
 ---
 
+## 🛠️ Manual Database Actions (Required)
+
+If you haven't run these SQL commands yet, please run them in your Supabase SQL Editor:
+
+- [ ] **Apply Storage Security Policies:**
+  Copy and run the content of `storage_buckets.sql` to enforce MIME type checks.
+
+- [ ] **Create Flashcards Table (if missing):**
+  ```sql
+  create table if not exists public.flashcards (
+    id uuid default gen_random_uuid() primary key,
+    project_id uuid references public.projects(id) on delete cascade not null,
+    front text not null,
+    back text not null,
+    source_node_id text,
+    created_at timestamptz default now()
+  );
+  alter table public.flashcards enable row level security;
+  create policy "Users can CRUD own flashcards" on flashcards
+    for all using (
+      exists (select 1 from projects where id = flashcards.project_id and user_id = auth.uid())
+    );
+  ```
+
+---
+
 ## 🏃 Sprint 1: The Digital Desk (Foundation & MVP)
 
 **Goal:** A fully functional design workspace (PDF + Canvas + Notes) that works without any AI.  
@@ -24,6 +50,7 @@
 - [x] Auth: Enable Google & Email auth.
 - [x] Storage: Public buckets — `briefs` (PDFs), `user-images`, `canvas-snapshots`.
 - [x] Schema: Run SQL migrations for `projects`, `notes`, `canvas_snapshots` (see Reference A).
+- [x] Security: Verify RLS policies are active and Storage Buckets have strict MIME type/size limits.
 
 ### Step 1.3: The "Split View" (PDF & Specs)
 
@@ -34,11 +61,13 @@
 
 - [x] Integration: Install `tldraw`, mount in center pane.
 - [x] Image Upload: Intercept drops. **Critical:** Resize images >2000px client-side before upload.
+- [x] Security: Implement server-side validation for image uploads (MIME type & Magic Bytes).
 - [x] Persistence: "5-Minute Snapshot" rule. Save opaque JSON blobs to Storage (not DB).
 
 ### Step 1.5: The Notebook & Squint Test
 
 - [x] Editor: Install `tiptap` (headless). Persist to `notes` table (HTML/JSON).
+- [x] Security: Sanitize HTML content on render to prevent XSS.
 - [x] Squint Slider: Range slider (0–100) applying `backdrop-filter: blur(Xpx)` to Canvas.
 
 ---
@@ -47,32 +76,33 @@
 
 **Goal:** Automate boring tasks using explicit buttons (no background jobs).  
 **Estimated Time:** 1 Week
+**Security:** [x] Implement Rate Limiting on all AI Server Actions.
 
 ### Step 2.1: Spec Sheet Extractor
 
 - [x] UI: "Generate Specs" button in Spec Sidebar.
 - [x] Backend: Server Action `generateSpecSheet(pdfUrl)`.
-- [x] AI: Gemini 1.5 Flash — extract constraints as JSON.
+- [x] AI: Gemma 2 27B (via text extraction).
 - [x] State: Populate checklist with result.
 
 ### Step 2.2: The Prompt Assistant (Ref Hunter)
 
-- [x] UI: Context menu on text highlight → "Find Refs".
+- [x] UI: Unified "Smart Context Bar" menu.
 - [x] Backend: Server Action `generateSearchQueries(text)`.
-- [x] AI: Gemini 1.5 Flash.
-- [x] Result: Render buttons opening Behance/Pinterest.
+- [x] AI: Gemma 2 9B.
+- [x] Result: Render buttons opening Behance/Pinterest + Pro sources (Dribbble, ArtStation).
 
 ### Step 2.3: Manual Flashcards (Gamified)
 
-- [ ] UI: "Flashcard Mode" toggle in Notebook.
-- [ ] Interaction: Highlight text → "Make Card".
-- [ ] Visual: Highlight source text in whatever color the flashcard is(let user be able to pick).
-- [ ] DB: Save to `flashcards` table with `source_node_id`. 
+- [x] UI: "Flashcard Mode" toggle in Notebook.
+- [x] Interaction: Highlight text → "Make Card" via Smart Context Bar.
+- [x] Visual: Highlight source text in whatever color the flashcard is(let user be able to pick).
+- [x] DB: Save to `flashcards` table with `source_node_id`.
 
 ### Step 2.4: Tone Tuner
 
-- [ ] UI: Floating bubble menu in Tiptap → "Make Academic".
-- [ ] AI: Gemini 1.5 Flash rewrites selected text.
+- [x] UI: Unified "Smart Context Bar" menu.
+- [x] AI: Gemma 2 27B rewrites selected text.
 
 ---
 
@@ -83,22 +113,22 @@
 
 ### Step 3.1: Quick Crop Critique (Mode A)
 
-- [ ] UI: "Ask Doctor" → crop tool overlay.
-- [ ] Input: User selects area + ONE issue.
-- [ ] AI: Gemini 1.5 Pro (PNG + Issue).
-- [ ] Output: Modal critique, no chat history.
+- [x] UI: "Ask Doctor" → crop tool overlay.
+- [x] Input: User selects area + ONE issue.
+- [x] AI: Gemini 1.5 Flash (Vision).
+- [x] Output: Modal critique, no chat history.
 
 ### Step 3.2: Full Canvas Critique (Mode B)
 
-- [ ] UI: "Check Vibes" button.
+- [x] UI: "Check Vibes" button.
 - [ ] Gate: PRO check; Free users see upgrade modal.
-- [ ] Context: Canvas PNG + Spec Sheet JSON.
-- [ ] AI: Gemini 1.5 Pro (Persona-based prompt).
+- [x] Context: Canvas PNG + Spec Sheet JSON.
+- [x] AI: Gemini 1.5 Pro (Persona-based prompt).
 
 ### Step 3.3: Payments
 
 - [ ] Integration: Lemon Squeezy (MoR).
-- [ ] Webhooks: `subscription_created` → update `profiles.tier`.
+- [ ] Webhooks: `subscription_created` → update `profiles.tier` (Verify Signature).
 - [ ] Limits: Enforce "3 Projects Max" for Free users.
 
 ---
@@ -128,6 +158,7 @@
 - `id` (uuid, PK)
 - `project_id` (FK)
 - `storage_path` (text)
+- `preview_path` (text)
 - `created_at` (timestamp)
 
 **Rule:** Query by `project_id` ordered by `created_at DESC`
@@ -172,3 +203,21 @@
 
 ### 4. Design Doctor – Vibes (Pro)
 "You are an Art Director. Ignore constraints. Judge emotion, color, and vibe."
+
+---
+
+## 🛡️ Reference D: Security Protocol
+
+### 1. Data Protection
+- **RLS:** All tables must have Row Level Security enabled.
+- **Inputs:** Sanitize all user inputs (especially HTML/JSON from Tiptap) to prevent XSS.
+- **Validation:** Validate file types (MIME & Magic Bytes) and sizes server-side.
+
+### 2. Infrastructure
+- **Headers:** Implement Content Security Policy (CSP), X-Content-Type-Options, X-Frame-Options.
+- **Rate Limiting:** Enforce limits on all AI Server Actions to prevent cost abuse.
+- **Secrets:** Never expose API keys or service role keys in client-side code.
+
+### 3. Authentication
+- **Server Actions:** Always verify `auth()` session in every Server Action.
+- **Webhooks:** Verify signatures for all external webhooks (e.g., Lemon Squeezy).
