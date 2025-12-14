@@ -175,7 +175,7 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
                 )}
 
                 {lastSaved && (
-                    <span className="text-[10px] text-zinc-600 px-2">
+                    <span className="text-xs text-zinc-600 px-2">
                         Saved {lastSaved.toLocaleTimeString()}
                     </span>
                 )}

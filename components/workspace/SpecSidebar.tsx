@@ -64,7 +64,7 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
 
     return (
         <div className={cn(
-            "h-full bg-[#18181b] border-l border-white/5 transition-all duration-300 flex flex-col relative",
+            "h-full bg-surface border-l border-white/5 transition-all duration-300 flex flex-col relative",
             collapsed ? "w-12" : "w-80",
             className
         )}>
@@ -81,26 +81,26 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
                     <div className="p-6 border-b border-white/5">
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
-                                <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-400">Spec Sheet</h2>
+                                <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Spec Sheet</h2>
                                 {extracted && (
                                     <Sparkles size={12} className="text-lime-400" />
                                 )}
                             </div>
-                            <span className="text-[10px] bg-lime-400/10 text-lime-400 px-2 py-0.5 rounded-full font-bold">
+                            <span className="text-xs bg-lime-400/10 text-lime-400 px-2 py-0.5 rounded-full font-bold">
                                 {specs.filter(s => s.checked).length} / {specs.length}
                             </span>
                         </div>
 
                         <GummyButton
-                            variant="outline"
+                            variant="solid"
                             className={cn(
-                                "w-full justify-between group border-dashed border-zinc-700 hover:border-lime-400/50 hover:bg-lime-400/5 text-zinc-400 hover:text-lime-400",
+                                "w-full justify-center group bg-lime-400 hover:bg-lime-300 text-black shadow-lg shadow-lime-400/10 border-none",
                                 extracting && "pointer-events-none opacity-70"
                             )}
                             onClick={handleExtractSpecs}
                             disabled={extracting}
                         >
-                            <span className="text-xs flex items-center gap-2">
+                            <span className="text-xs font-bold flex items-center gap-2">
                                 {extracting ? (
                                     <>
                                         <Loader2 size={12} className="animate-spin" />
@@ -131,7 +131,7 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
                                 key={spec.id}
                                 onClick={() => toggleSpec(spec.id)}
                                 className={cn(
-                                    "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all group select-none",
+                                    "flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-all group select-none",
                                     spec.checked
                                         ? "bg-lime-900/10 border-lime-500/30"
                                         : "bg-zinc-900/50 border-white/5 hover:border-white/10"
@@ -147,13 +147,13 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <span className={cn(
-                                        "text-sm font-medium transition-colors leading-tight block truncate",
+                                        "text-xs md:text-sm font-medium transition-colors leading-tight block truncate",
                                         spec.checked ? "text-white" : "text-zinc-400 group-hover:text-zinc-300"
                                     )}>
                                         {spec.label}
                                     </span>
                                     {spec.category && (
-                                        <span className="text-[10px] text-zinc-600 uppercase tracking-wider">
+                                        <span className="text-xs text-zinc-600 uppercase tracking-wider block mt-0.5">
                                             {spec.category}
                                         </span>
                                     )}
@@ -166,7 +166,7 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
 
             {collapsed && (
                 <div className="flex-1 flex flex-col items-center py-6 gap-4">
-                    <span className="text-[10px] font-bold text-zinc-500 writing-vertical-rl rotate-180 tracking-widest uppercase">
+                    <span className="text-xs font-bold text-zinc-500 writing-vertical-rl rotate-180 tracking-widest uppercase">
                         Specifications
                     </span>
                     <div className="w-1 h-1 rounded-full bg-lime-400" />

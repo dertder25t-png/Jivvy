@@ -166,7 +166,7 @@ function RefHunterView({ editor, onBack }: { editor: Editor, onBack: () => void 
                 <button onClick={onBack} className="text-zinc-500 hover:text-white flex items-center gap-1 text-xs">
                     <ChevronRight size={12} className="rotate-180" /> Back
                 </button>
-                <span className="text-[10px] uppercase font-bold text-blue-400">Ref Hunter</span>
+                <span className="text-xs uppercase font-bold text-blue-400">Ref Hunter</span>
             </div>
 
             {loading && <div className="text-zinc-400 text-xs flex items-center gap-2"><Loader2 size={12} className="animate-spin" /> Generating ideas...</div>}
@@ -263,7 +263,7 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
                 <button onClick={onBack} className="text-zinc-500 hover:text-white flex items-center gap-1 text-xs">
                     <ChevronRight size={12} className="rotate-180" /> Back
                 </button>
-                <span className="text-[10px] uppercase font-bold text-violet-400">Tone</span>
+                <span className="text-xs uppercase font-bold text-violet-400">Tone</span>
             </div>
 
             {loading ? (
@@ -272,7 +272,7 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
                 </div>
             ) : showCustomInput ? (
                 <div className="flex flex-col gap-2 p-1">
-                    <p className="text-[10px] text-zinc-400">Paste style sample (min 50 chars):</p>
+                    <p className="text-xs text-zinc-400">Paste style sample (min 50 chars):</p>
                     <textarea
                         value={customSample}
                         onChange={(e) => setCustomSample(e.target.value)}
@@ -280,15 +280,15 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
                         className="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-xs text-white focus:outline-none focus:border-violet-400 resize-none h-20"
                         autoFocus
                     />
-                    {error && <p className="text-[10px] text-red-400">{error}</p>}
+                    {error && <p className="text-xs text-red-400">{error}</p>}
                     <div className="flex justify-between items-center mt-1">
-                         <span className={cn("text-[10px]", customSample.length < 50 ? "text-red-400" : "text-zinc-500")}>
+                         <span className={cn("text-xs", customSample.length < 50 ? "text-red-400" : "text-zinc-500")}>
                             {customSample.length}/50
                         </span>
                         <button
                             onClick={handleCustomRewrite}
                             disabled={customSample.length < 50}
-                            className="bg-violet-500 text-white text-[10px] font-bold px-2 py-1 rounded hover:bg-violet-600 disabled:opacity-50"
+                            className="bg-violet-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-violet-600 disabled:opacity-50"
                         >
                             Match Tone
                         </button>
@@ -309,7 +309,7 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
             )}
 
             {error && !showCustomInput && !loading && (
-                 <div className="px-2 py-1 text-[10px] text-red-400 border-t border-zinc-800 mt-1">{error}</div>
+                 <div className="px-2 py-1 text-xs text-red-400 border-t border-zinc-800 mt-1">{error}</div>
             )}
         </div>
     )
@@ -339,7 +339,7 @@ function FlashcardView({ editor, projectId, onBack }: { editor: Editor, projectI
                 <button onClick={onBack} className="text-zinc-500 hover:text-white flex items-center gap-1 text-xs">
                     <ChevronRight size={12} className="rotate-180" /> Back
                 </button>
-                <span className="text-[10px] uppercase font-bold text-lime-400">New Card</span>
+                <span className="text-xs uppercase font-bold text-lime-400">New Card</span>
             </div>
             <div className="space-y-2">
                 <div className="text-xs text-zinc-500 italic line-clamp-2 border-l-2 border-lime-400/20 pl-2">
