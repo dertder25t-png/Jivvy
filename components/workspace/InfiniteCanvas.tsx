@@ -1,6 +1,6 @@
 "use client";
 
-import { Tldraw, Editor, TLAsset, TLAssetId, createShapeId } from "tldraw";
+import { Tldraw, Editor, TLAssetId } from "tldraw";
 import "tldraw/tldraw.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";

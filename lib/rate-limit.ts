@@ -1,10 +1,5 @@
 import { LRUCache } from 'lru-cache';
 
-type RateLimitContext = {
-    ip?: string;
-    userId?: string;
-};
-
 interface RateLimitConfig {
     uniqueTokenPerInterval: number;
     interval: number; // in milliseconds

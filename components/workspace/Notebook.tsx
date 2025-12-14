@@ -4,7 +4,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Bold, Italic, List, ListOrdered, Heading2, Save, Loader2, SquareStack } from "lucide-react";
+import { Bold, Italic, List, ListOrdered, Heading2, Save, Loader2, SquareStack, FileText, PenLine } from "lucide-react";
 import { FlashcardMenu } from "./FlashcardMenu";
 import { SmartContextBar } from "./SmartContextBar";
 import Highlight from "@tiptap/extension-highlight";
@@ -15,9 +15,10 @@ interface NotebookProps {
     projectId?: string;
     initialContent?: string;
     onSave?: (content: string) => Promise<void>;
+    mode?: "paper" | "notes";
 }
 
-export function Notebook({ className, projectId, initialContent = "", onSave }: NotebookProps) {
+export function Notebook({ className, projectId, initialContent = "", onSave, mode = "notes" }: NotebookProps) {
     // Sanitize initial content to prevent XSS
     const sanitizedInitialContent = useMemo(() => {
         return DOMPurify.sanitize(initialContent);
@@ -26,6 +27,8 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [isFlashcardMode, setIsFlashcardMode] = useState(false);
 
+    const placeholderText = mode === "paper" ? "Start writing your paper..." : "Start taking lecture notes...";
+
     const editor = useEditor({
         extensions: [
             StarterKit,
@@ -33,11 +36,14 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
                 multicolor: true,
             }),
         ],
-        content: sanitizedInitialContent || "<p>Start taking notes...</p>",
+        content: sanitizedInitialContent || `<p></p>`,
         immediatelyRender: false, // Fix for SSR hydration mismatch
         editorProps: {
             attributes: {
-                class: "prose prose-invert prose-sm max-w-none focus:outline-none min-h-[200px] p-4",
+                class: cn(
+                    "prose prose-invert prose-sm max-w-none focus:outline-none min-h-[200px] p-6",
+                    mode === "paper" ? "prose-headings:font-serif prose-p:font-serif prose-lg max-w-3xl mx-auto" : "prose-zinc"
+                ),
             },
         },
     });
@@ -76,9 +82,21 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
     }
 
     return (
-        <div className={cn("flex flex-col h-full bg-zinc-900/50 rounded-2xl border border-white/5 overflow-hidden", className)}>
+        <div className={cn(
+            "flex flex-col h-full bg-zinc-900/50 rounded-2xl border overflow-hidden",
+            mode === "paper" ? "border-violet-500/20" : "border-white/5",
+            className
+        )}>
             {/* Toolbar */}
             <div className="flex items-center gap-1 p-2 border-b border-white/5 bg-zinc-900/80">
+                {/* Mode Indicator */}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800/50 text-xs font-medium text-zinc-400 mr-2">
+                    {mode === "paper" ? <FileText size={14} className="text-violet-400" /> : <PenLine size={14} className="text-lime-400" />}
+                    {mode === "paper" ? "Paper" : "Notes"}
+                </div>
+
+                <div className="w-px h-4 bg-zinc-700 mx-1" />
+
                 <button
                     onClick={() => editor.chain().focus().toggleBold().run()}
                     className={cn(
@@ -128,19 +146,21 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
 
                 <div className="flex-1" />
 
-                {/* Flashcard Mode Toggle */}
-                <button
-                    onClick={() => setIsFlashcardMode(!isFlashcardMode)}
-                    className={cn(
-                        "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors mr-2",
-                        isFlashcardMode
-                            ? "bg-amber-500/20 text-amber-500 hover:bg-amber-500/30"
-                            : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-                    )}
-                >
-                    <SquareStack size={14} />
-                    {isFlashcardMode ? "Flashcard Mode" : "Cards"}
-                </button>
+                {/* Flashcard Mode Toggle - Only in Notes mode */}
+                {mode === 'notes' && (
+                    <button
+                        onClick={() => setIsFlashcardMode(!isFlashcardMode)}
+                        className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors mr-2",
+                            isFlashcardMode
+                                ? "bg-amber-500/20 text-amber-500 hover:bg-amber-500/30"
+                                : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                        )}
+                    >
+                        <SquareStack size={14} />
+                        {isFlashcardMode ? "Flashcard Mode" : "Cards"}
+                    </button>
+                )}
 
                 {/* Save button */}
                 {onSave && (
@@ -162,8 +182,8 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
             </div>
 
             {/* Editor Content */}
-            <div className="flex-1 overflow-auto">
-                <EditorContent editor={editor} className="h-full" />
+            <div className={cn("flex-1 overflow-auto", mode === "paper" && "flex justify-center bg-[#1a1a1d]")}>
+                <EditorContent editor={editor} className={cn("h-full", mode === "paper" && "w-full max-w-4xl bg-[#1e1e20] shadow-2xl min-h-screen my-4 rounded-xl")} />
 
                 {/* Unified Context Bar (Replaces RefHunter & ToneTuner) */}
                 <SmartContextBar editor={editor} projectId={projectId} isFlashcardMode={isFlashcardMode} />
@@ -176,7 +196,7 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
             <style jsx global>{`
                 .ProseMirror {
                     min-height: 100%;
-                    padding: 1rem;
+                    padding: ${mode === "paper" ? "3rem" : "1rem"};
                     color: #e4e4e7;
                 }
                 
@@ -226,7 +246,7 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
                 
                 .ProseMirror p.is-editor-empty:first-child::before {
                     color: #52525b;
-                    content: attr(data-placeholder);
+                    content: "${placeholderText}";
                     float: left;
                     height: 0;
                     pointer-events: none;

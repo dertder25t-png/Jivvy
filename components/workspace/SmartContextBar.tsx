@@ -1,16 +1,14 @@
 "use client";
 
-import { BubbleMenu, Editor } from "@tiptap/react";
+import { Editor } from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
 import { useState } from "react";
 import {
-    Sparkles,
     SquareStack,
     PenTool,
     ChevronRight,
-    X,
     Search,
     Wand2,
-    Layers,
     Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,7 +25,6 @@ type ActiveMode = "main" | "ref" | "tone" | "flash" | null;
 
 export function SmartContextBar({ editor, projectId, isFlashcardMode }: SmartContextBarProps) {
     const [activeMode, setActiveMode] = useState<ActiveMode>("main");
-    const [isOpen, setIsOpen] = useState(false);
 
     // If flashcard mode is explicitly toggled on via the main UI button, we defer to the specific Flashcard UI behavior
     // logic in Notebook.tsx might need adjustment, but for now we hide this generic bar if global Flashcard Mode is ON
@@ -42,7 +39,6 @@ export function SmartContextBar({ editor, projectId, isFlashcardMode }: SmartCon
     return (
         <BubbleMenu
             editor={editor}
-            tippyOptions={{ duration: 150, placement: "bottom-start", onHide: reset }}
             shouldShow={({ editor }) => {
                 return !editor.view.state.selection.empty && !isFlashcardMode;
             }}
@@ -347,7 +343,7 @@ function FlashcardView({ editor, projectId, onBack }: { editor: Editor, projectI
             </div>
             <div className="space-y-2">
                 <div className="text-xs text-zinc-500 italic line-clamp-2 border-l-2 border-lime-400/20 pl-2">
-                    "{editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ")}"
+                    &quot;{editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ")}&quot;
                 </div>
                 <textarea
                     value={back}

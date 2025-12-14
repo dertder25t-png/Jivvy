@@ -5,10 +5,9 @@ import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
     Upload, FileText, Loader2, Eye, PenTool, StickyNote,
-    ChevronLeft, ChevronRight, Sparkles,
-    Maximize2, SplitSquareHorizontal
+    ChevronLeft, ChevronRight, Sparkles
 } from "lucide-react";
-import { getProject, createProject, type Project } from "../actions";
+import { getProject, createProject, getProjectNotes, saveProjectNote, type Project } from "../actions";
 import { uploadPDF } from "@/utils/supabase/storage";
 import { createClient } from "@/utils/supabase/client";
 import { cn } from "@/lib/utils";
@@ -30,7 +29,7 @@ const Notebook = dynamic(() => import("@/components/workspace/Notebook").then(mo
     loading: () => <div className="h-full w-full flex items-center justify-center text-zinc-500">Loading Notebook...</div>
 });
 
-type CenterPanelMode = "canvas" | "notebook";
+type CenterPanelMode = "canvas" | "paper" | "notes";
 
 // Mock spec items for the properties panel
 export default function ProjectPage() {
@@ -46,6 +45,11 @@ export default function ProjectPage() {
     const [squintAmount, setSquintAmount] = useState(0);
     const [onboardingComplete, setOnboardingComplete] = useState(false);
 
+    // Notes state
+    const [notesLoaded, setNotesLoaded] = useState(false);
+    const [paperContent, setPaperContent] = useState("");
+    const [notesContent, setNotesContent] = useState("");
+
     // Collapse left panel if no PDF
     useEffect(() => {
         if (!project?.pdf_url) {
@@ -53,21 +57,36 @@ export default function ProjectPage() {
         }
     }, [project]);
 
-    // Fetch project data
+    // Fetch project data and notes
     useEffect(() => {
-        async function fetchProject() {
+        async function fetchProjectData() {
             if (projectId === 'new') {
                 setLoading(false);
                 return;
             }
+
+            // Fetch project details
             const { project: data, error } = await getProject(projectId);
             if (!error && data) {
                 setProject(data);
                 setLeftPanelCollapsed(false);
             }
+
+            // Fetch notes
+            const { notes, error: notesError } = await getProjectNotes(projectId);
+            if (!notesError && notes) {
+                // Order 0 = Lecture Notes, Order 1 = Paper
+                const lectureNotes = notes.find(n => n.order === 0);
+                const paper = notes.find(n => n.order === 1);
+
+                if (lectureNotes) setNotesContent(lectureNotes.content);
+                if (paper) setPaperContent(paper.content);
+            }
+            setNotesLoaded(true);
+
             setLoading(false);
         }
-        fetchProject();
+        fetchProjectData();
     }, [projectId]);
 
     const handleFileUpload = useCallback(async (file: File) => {
@@ -115,7 +134,15 @@ export default function ProjectPage() {
         if (file) handleFileUpload(file);
     }, [handleFileUpload]);
 
-    const toggleSpec = (id: string) => { };
+    const handleSavePaper = useCallback(async (content: string) => {
+        setPaperContent(content);
+        await saveProjectNote(projectId, content, 1);
+    }, [projectId]);
+
+    const handleSaveNotes = useCallback(async (content: string) => {
+        setNotesContent(content);
+        await saveProjectNote(projectId, content, 0);
+    }, [projectId]);
 
     if (loading) {
         return (
@@ -200,12 +227,12 @@ export default function ProjectPage() {
             {/* CENTER PANEL - Canvas or Notebook */}
             <div className="flex-1 h-full flex flex-col overflow-hidden relative">
 
-                {/* Floating Tabs (More distinct, spread apart) */}
-                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 bg-zinc-900/90 backdrop-blur-xl p-1.5 rounded-full border border-zinc-700/50 shadow-2xl">
+                {/* Floating Tabs (Distinct, 3 options) */}
+                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-zinc-900/90 backdrop-blur-xl p-1.5 rounded-full border border-zinc-700/50 shadow-2xl">
                     <button
                         onClick={() => setCenterMode("canvas")}
                         className={cn(
-                            "flex items-center gap-2 px-6 py-2 rounded-full text-sm font-bold transition-all duration-300",
+                            "flex items-center gap-2 px-5 py-2 rounded-full text-sm font-bold transition-all duration-300",
                             centerMode === 'canvas'
                                 ? "bg-lime-400 text-black shadow-[0_0_20px_rgba(163,230,53,0.3)] scale-105"
                                 : "text-zinc-400 hover:text-white hover:bg-white/5"
@@ -215,20 +242,32 @@ export default function ProjectPage() {
                         Canvas
                     </button>
                     <button
-                        onClick={() => setCenterMode("notebook")}
+                        onClick={() => setCenterMode("paper")}
                         className={cn(
-                            "flex items-center gap-2 px-6 py-2 rounded-full text-sm font-bold transition-all duration-300",
-                            centerMode === 'notebook'
+                            "flex items-center gap-2 px-5 py-2 rounded-full text-sm font-bold transition-all duration-300",
+                            centerMode === 'paper'
                                 ? "bg-violet-500 text-white shadow-[0_0_20px_rgba(139,92,246,0.3)] scale-105"
                                 : "text-zinc-400 hover:text-white hover:bg-white/5"
                         )}
                     >
+                        <FileText size={16} />
+                        Paper
+                    </button>
+                    <button
+                        onClick={() => setCenterMode("notes")}
+                        className={cn(
+                            "flex items-center gap-2 px-5 py-2 rounded-full text-sm font-bold transition-all duration-300",
+                            centerMode === 'notes'
+                                ? "bg-amber-500 text-white shadow-[0_0_20px_rgba(245,158,11,0.3)] scale-105"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5"
+                        )}
+                    >
                         <StickyNote size={16} />
-                        Notebook
+                        Notes
                     </button>
                 </div>
 
-                {/* Squint Slider (Floating) */}
+                {/* Squint Slider (Floating - only on Canvas) */}
                 {centerMode === 'canvas' && (
                     <div className="absolute bottom-6 left-6 z-20 flex items-center gap-3 bg-zinc-900/90 backdrop-blur-xl p-3 rounded-2xl border border-zinc-800 shadow-xl">
                         <Eye size={16} className="text-zinc-400" />
@@ -274,30 +313,39 @@ export default function ProjectPage() {
                                 <h2 className="text-xl font-bold text-white mb-2">What are you creating?</h2>
                                 <p className="text-zinc-400 text-sm mb-6">Choose your workspace to get started</p>
 
-                                {/* Project Type Cards */}
-                                <div className="grid grid-cols-2 gap-3 mb-6">
+                                {/* Project Type Cards (Updated to 3 options) */}
+                                <div className="grid grid-cols-3 gap-3 mb-6">
                                     <button
                                         onClick={() => { setCenterMode('canvas'); setLeftPanelCollapsed(false); setOnboardingComplete(true); }}
-                                        className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-zinc-700 hover:border-lime-400 hover:bg-lime-400/5 transition-all group"
+                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-lime-400 hover:bg-lime-400/5 transition-all group"
                                     >
-                                        <div className="w-12 h-12 rounded-xl bg-zinc-800 group-hover:bg-lime-400/20 flex items-center justify-center transition-colors">
-                                            <PenTool size={20} className="text-zinc-400 group-hover:text-lime-400" />
+                                        <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-lime-400/20 flex items-center justify-center transition-colors">
+                                            <PenTool size={18} className="text-zinc-400 group-hover:text-lime-400" />
                                         </div>
                                         <div>
-                                            <p className="font-bold text-white text-sm">Canvas</p>
-                                            <p className="text-[10px] text-zinc-500">Moodboards & Design</p>
+                                            <p className="font-bold text-white text-xs">Canvas</p>
                                         </div>
                                     </button>
                                     <button
-                                        onClick={() => { setCenterMode('notebook'); setLeftPanelCollapsed(false); setOnboardingComplete(true); }}
-                                        className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-zinc-700 hover:border-violet-400 hover:bg-violet-400/5 transition-all group"
+                                        onClick={() => { setCenterMode('paper'); setLeftPanelCollapsed(false); setOnboardingComplete(true); }}
+                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-violet-400 hover:bg-violet-400/5 transition-all group"
                                     >
-                                        <div className="w-12 h-12 rounded-xl bg-zinc-800 group-hover:bg-violet-400/20 flex items-center justify-center transition-colors">
-                                            <StickyNote size={20} className="text-zinc-400 group-hover:text-violet-400" />
+                                        <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-violet-400/20 flex items-center justify-center transition-colors">
+                                            <FileText size={18} className="text-zinc-400 group-hover:text-violet-400" />
                                         </div>
                                         <div>
-                                            <p className="font-bold text-white text-sm">Notes</p>
-                                            <p className="text-[10px] text-zinc-500">Research & Writing</p>
+                                            <p className="font-bold text-white text-xs">Paper</p>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => { setCenterMode('notes'); setLeftPanelCollapsed(false); setOnboardingComplete(true); }}
+                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-amber-400 hover:bg-amber-400/5 transition-all group"
+                                    >
+                                        <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-amber-400/20 flex items-center justify-center transition-colors">
+                                            <StickyNote size={18} className="text-zinc-400 group-hover:text-amber-400" />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-white text-xs">Notes</p>
                                         </div>
                                     </button>
                                 </div>
@@ -324,13 +372,31 @@ export default function ProjectPage() {
                         </div>
                     )}
 
-                    {/* Canvas or Notebook Content - only show when not in onboarding */}
+                    {/* Canvas, Paper, or Notes Content */}
                     {(onboardingComplete || !leftPanelCollapsed || project?.pdf_url) && (
                         <div className="h-full w-full rounded-xl overflow-hidden shadow-2xl bg-white/5">
-                            {centerMode === 'canvas' ? (
+                            {centerMode === 'canvas' && (
                                 <InfiniteCanvas blurAmount={squintAmount} className="h-full" projectId={projectId} />
-                            ) : (
-                                <Notebook className="h-full" projectId={projectId} />
+                            )}
+
+                            {centerMode === 'paper' && notesLoaded && (
+                                <Notebook
+                                    className="h-full"
+                                    projectId={projectId}
+                                    initialContent={paperContent}
+                                    onSave={handleSavePaper}
+                                    mode="paper"
+                                />
+                            )}
+
+                            {centerMode === 'notes' && notesLoaded && (
+                                <Notebook
+                                    className="h-full"
+                                    projectId={projectId}
+                                    initialContent={notesContent}
+                                    onSave={handleSaveNotes}
+                                    mode="notes"
+                                />
                             )}
                         </div>
                     )}

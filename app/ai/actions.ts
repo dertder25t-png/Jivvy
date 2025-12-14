@@ -3,7 +3,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { rateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/utils/supabase/server";
-import pdf from "pdf-parse";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdf = require("pdf-parse");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -244,10 +245,6 @@ export async function generateSearchQueries(text: string): Promise<SearchQueryRe
         if (!text || text.trim().length === 0) {
             return { queries: [], error: "No text provided" };
         }
-
-        // Use Small Gemma (9B) for simple search queries (faster/cheaper)
-        const model = genAI.getGenerativeModel({ model: "gemma-2-9b-it" });
-        console.log("[Server] Model initialized, making API call...");
 
         // Fetch user profile to check tier
         const { data: profile } = await supabase
