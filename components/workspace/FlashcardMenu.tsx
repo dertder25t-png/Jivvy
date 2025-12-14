@@ -72,7 +72,7 @@ export function FlashcardMenu({ editor, projectId, isFlashcardMode }: FlashcardM
                 ) : (
                     <div className="p-2 space-y-3">
                         <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-bold uppercase text-zinc-500 tracking-wider">New Card</span>
+                            <span className="text-xs font-bold uppercase text-zinc-500 tracking-wider">New Card</span>
                             <button onClick={() => setIsOpen(false)} className="text-zinc-500 hover:text-white">
                                 <X size={14} />
                             </button>

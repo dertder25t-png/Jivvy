@@ -6,8 +6,30 @@
   - Local:        http://localhost:3000
 
  ✓ Starting...
- ✓ Ready in 2.6s
+ ✓ Ready in 2.9s
+ ○ Compiling / ...
+ ✓ Compiled / in 7.2s (616 modules)
+ GET / 200 in 8169ms
+ ✓ Compiled in 983ms (296 modules)
  ○ Compiling /project/[id] ...
- ✓ Compiled /project/[id] in 17s (2968 modules)
- ✓ Compiled in 992ms (1380 modules)
- GET /project/new 200 in 18098ms
+ ✓ Compiled /project/[id] in 15.5s (2977 modules)
+ GET / 200 in 270ms
+ GET /project/1 200 in 177ms
+ ⨯ Error: Your project's URL and Key are required to create a Supabase client!
+
+Check your Supabase project's API settings to find these values
+
+https://supabase.com/dashboard/project/_/settings/api
+    at createClient (./utils/supabase/server.ts:11:77)
+    at getProject (./app/project/actions.ts:54:90)
+digest: "3115196048"
+ POST /project/1 500 in 106ms
+ ⨯ Error: Your project's URL and Key are required to create a Supabase client!
+
+Check your Supabase project's API settings to find these values
+
+https://supabase.com/dashboard/project/_/settings/api
+    at createClient (./utils/supabase/server.ts:11:77)
+    at getProject (./app/project/actions.ts:54:90)
+digest: "3115196048"
+ POST /project/1 500 in 52ms

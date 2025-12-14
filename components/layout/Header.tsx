@@ -11,51 +11,21 @@ import {
     Search,
     Bell,
     Plus,
+    PenTool,
+    FileText,
+    StickyNote
 } from "lucide-react";
 import { JivvyAvatar } from "@/components/ui/JivvyAvatar";
+import { GummyButton } from "@/components/ui/GummyButton";
 import { cn } from "@/lib/utils";
-
-// Helper Component for Top Nav Button
-interface TopNavButtonProps {
-    icon: React.ElementType;
-    active: boolean;
-    label: string;
-    href: string;
-}
-
-const TopNavButton = ({ icon: Icon, active, label, href }: TopNavButtonProps) => (
-    <Link
-        href={href}
-        className={cn(
-            "relative flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300",
-            active
-                ? "bg-zinc-800 text-white shadow-lg shadow-lime-400/10"
-                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900"
-        )}
-    >
-        <Icon
-            size={18}
-            strokeWidth={2.5}
-            className={active ? "text-lime-400" : ""}
-        />
-        <span
-            className={cn(
-                "text-sm font-bold",
-                active ? "opacity-100" : "hidden md:block"
-            )}
-        >
-            {label}
-        </span>
-        {active && (
-            <div className="absolute inset-0 rounded-full ring-1 ring-lime-400/20" />
-        )}
-    </Link>
-);
+import { useProjectStore } from "@/lib/store";
 
 const Header = () => {
     const pathname = usePathname();
     const [searchFocused, setSearchFocused] = useState(false);
     const heroName = "Alex"; // Placeholder
+
+    const { activeProjectId, centerMode, setCenterMode } = useProjectStore();
 
     // Determine active tab based on current route
     const activeTab = useMemo(() => {
@@ -64,6 +34,8 @@ const Header = () => {
         if (pathname.startsWith("/capture")) return "capture";
         return "dashboard";
     }, [pathname]);
+
+    const isProjectView = pathname.startsWith("/project") && activeProjectId;
 
     return (
         <header className="h-20 flex items-center justify-between px-6 md:px-12 border-b border-white/5 bg-[#121212]/80 backdrop-blur-xl z-50 fixed top-0 w-full transition-transform duration-500">
@@ -83,32 +55,82 @@ const Header = () => {
                     </div>
                 </Link>
 
-                {/* Desktop Nav */}
+                {/* Desktop Nav - Show Global Nav or Project Nav */}
                 <nav className="hidden lg:flex items-center gap-2 bg-zinc-900/50 p-1.5 rounded-full border border-white/5">
-                    <TopNavButton
-                        icon={LayoutGrid}
-                        active={activeTab === "dashboard"}
-                        label="Dashboard"
-                        href="/"
-                    />
-                    <TopNavButton
-                        icon={Brain}
-                        active={activeTab === "decks"}
-                        label="Decks"
-                        href="/decks"
-                    />
-                    <TopNavButton
-                        icon={Mic}
-                        active={activeTab === "capture"}
-                        label="Capture"
-                        href="/capture"
-                    />
-                    <TopNavButton
-                        icon={Palette}
-                        active={activeTab === "studio"}
-                        label="Studio"
-                        href="/project/new"
-                    />
+                    {isProjectView ? (
+                        <>
+                            <GummyButton
+                                variant={centerMode === "canvas" ? "solid" : "ghost"}
+                                size="sm"
+                                onClick={() => setCenterMode("canvas")}
+                                className={cn("rounded-full", centerMode === "canvas" ? "bg-lime-400 text-black shadow-[0_0_20px_rgba(163,230,53,0.3)]" : "text-zinc-500 hover:text-white")}
+                            >
+                                <PenTool size={16} className="mr-2" />
+                                Canvas
+                            </GummyButton>
+                            <GummyButton
+                                variant={centerMode === "paper" ? "solid" : "ghost"}
+                                size="sm"
+                                onClick={() => setCenterMode("paper")}
+                                className={cn("rounded-full", centerMode === "paper" ? "bg-violet-500 text-white shadow-[0_0_20px_rgba(139,92,246,0.3)]" : "text-zinc-500 hover:text-white")}
+                            >
+                                <FileText size={16} className="mr-2" />
+                                Paper
+                            </GummyButton>
+                            <GummyButton
+                                variant={centerMode === "notes" ? "solid" : "ghost"}
+                                size="sm"
+                                onClick={() => setCenterMode("notes")}
+                                className={cn("rounded-full", centerMode === "notes" ? "bg-amber-500 text-white shadow-[0_0_20px_rgba(245,158,11,0.3)]" : "text-zinc-500 hover:text-white")}
+                            >
+                                <StickyNote size={16} className="mr-2" />
+                                Notes
+                            </GummyButton>
+                        </>
+                    ) : (
+                        <>
+                            <Link href="/">
+                                <GummyButton
+                                    variant={activeTab === "dashboard" ? "solid" : "ghost"}
+                                    size="sm"
+                                    className={cn("rounded-full", activeTab === "dashboard" ? "bg-zinc-800 text-white shadow-lg shadow-lime-400/10" : "text-zinc-500 hover:text-white")}
+                                >
+                                    <LayoutGrid size={18} className={cn("mr-2", activeTab === "dashboard" ? "text-lime-400" : "")} />
+                                    Dashboard
+                                </GummyButton>
+                            </Link>
+                            <Link href="/decks">
+                                <GummyButton
+                                    variant={activeTab === "decks" ? "solid" : "ghost"}
+                                    size="sm"
+                                    className={cn("rounded-full", activeTab === "decks" ? "bg-zinc-800 text-white shadow-lg shadow-lime-400/10" : "text-zinc-500 hover:text-white")}
+                                >
+                                    <Brain size={18} className={cn("mr-2", activeTab === "decks" ? "text-lime-400" : "")} />
+                                    Decks
+                                </GummyButton>
+                            </Link>
+                            <Link href="/capture">
+                                <GummyButton
+                                    variant={activeTab === "capture" ? "solid" : "ghost"}
+                                    size="sm"
+                                    className={cn("rounded-full", activeTab === "capture" ? "bg-zinc-800 text-white shadow-lg shadow-lime-400/10" : "text-zinc-500 hover:text-white")}
+                                >
+                                    <Mic size={18} className={cn("mr-2", activeTab === "capture" ? "text-lime-400" : "")} />
+                                    Capture
+                                </GummyButton>
+                            </Link>
+                            <Link href="/project/new">
+                                <GummyButton
+                                    variant={activeTab === "studio" ? "solid" : "ghost"}
+                                    size="sm"
+                                    className={cn("rounded-full", activeTab === "studio" ? "bg-zinc-800 text-white shadow-lg shadow-lime-400/10" : "text-zinc-500 hover:text-white")}
+                                >
+                                    <Palette size={18} className={cn("mr-2", activeTab === "studio" ? "text-lime-400" : "")} />
+                                    Studio
+                                </GummyButton>
+                            </Link>
+                        </>
+                    )}
                 </nav>
             </div>
 
@@ -122,7 +144,7 @@ const Header = () => {
                     <Search size={18} className="text-zinc-500" />
                     <input
                         type="text"
-                        placeholder="Search notes..."
+                        placeholder="Search..."
                         className="bg-transparent border-none outline-none text-white placeholder-zinc-500 w-full text-sm"
                         onFocus={() => setSearchFocused(true)}
                         onBlur={() => setSearchFocused(false)}
@@ -132,12 +154,12 @@ const Header = () => {
                     <Bell size={18} className="text-zinc-400" />
                     <div className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
                 </button>
-                <button
+                <GummyButton
                     onClick={() => console.log("New Upload")} // Placeholder
-                    className="bg-lime-400 hover:bg-lime-300 text-black px-4 md:px-5 py-2 rounded-full font-bold text-sm flex items-center gap-2 transition-transform active:scale-95 shadow-[0_0_20px_rgba(163,230,53,0.3)]"
+                    className="bg-lime-400 hover:bg-lime-300 text-black rounded-full font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(163,230,53,0.3)]"
                 >
                     <Plus size={18} /> <span className="hidden md:inline">New</span>
-                </button>
+                </GummyButton>
             </div>
         </header>
     );

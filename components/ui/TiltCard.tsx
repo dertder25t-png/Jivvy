@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 interface TiltCardProps extends React.HTMLAttributes<HTMLDivElement> {
     children: React.ReactNode;
     delay?: number;
+    noTilt?: boolean;
 }
 
 const TiltCard = ({
@@ -14,6 +15,7 @@ const TiltCard = ({
     style = {},
     onClick,
     delay = 0,
+    noTilt = false,
     ...props
 }: TiltCardProps) => {
     const ref = useRef<HTMLDivElement>(null);
@@ -27,7 +29,7 @@ const TiltCard = ({
     }, [delay]);
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!ref.current) return;
+        if (!ref.current || noTilt) return;
         const rect = ref.current.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -36,8 +38,8 @@ const TiltCard = ({
         const xPct = x / rect.width - 0.5;
         const yPct = y / rect.height - 0.5;
 
-        // More subtle tilt
-        setRotation({ x: -yPct * 8, y: xPct * 8 });
+        // More subtle tilt (reduced from 8 to 2)
+        setRotation({ x: -yPct * 2, y: xPct * 2 });
     };
 
     const handleMouseLeave = () => {
@@ -55,8 +57,7 @@ const TiltCard = ({
             style={{
                 ...style,
                 transform: isVisible
-                    ? `perspective(1000px) rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale(${isHovered ? 1.01 : 1
-                    })`
+                    ? (noTilt ? "none" : `perspective(1000px) rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale(${isHovered ? 1.01 : 1})`)
                     : "translateY(50px) scale(0.95)",
                 opacity: isVisible ? 1 : 0,
                 transition: "opacity 0.5s ease-out, transform 0.15s ease-out",
@@ -68,14 +69,16 @@ const TiltCard = ({
             {...props}
         >
             {/* Refined Glow/Sheen - Softer and more subtle */}
-            <div
-                className="absolute inset-0 pointer-events-none transition-opacity duration-500"
-                style={{
-                    opacity: isHovered ? 0.15 : 0, // Lower opacity for better "Glo"
-                    background: `linear-gradient(${120 + rotation.y * 5
-                        }deg, rgba(255,255,255,0) 30%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 70%)`,
-                }}
-            />
+            {!noTilt && (
+                <div
+                    className="absolute inset-0 pointer-events-none transition-opacity duration-500"
+                    style={{
+                        opacity: isHovered ? 0.15 : 0, // Lower opacity for better "Glo"
+                        background: `linear-gradient(${120 + rotation.y * 5
+                            }deg, rgba(255,255,255,0) 30%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 70%)`,
+                    }}
+                />
+            )}
             {children}
         </div>
     );

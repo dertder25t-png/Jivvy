@@ -70,7 +70,7 @@ export function DesignDoctorTool() {
                         {/* Header */}
                         <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
                             <h3 className="font-bold text-white flex items-center gap-2">
-                                <span className="bg-lime-400 text-black text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-extrabold">PRO</span>
+                                <span className="bg-lime-400 text-black text-xs px-1.5 py-0.5 rounded uppercase tracking-wider font-extrabold">PRO</span>
                                 Design Doctor
                             </h3>
                             <button onClick={() => setIsOpen(false)} className="text-zinc-500 hover:text-white">
