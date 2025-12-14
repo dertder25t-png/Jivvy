@@ -24,6 +24,7 @@
 - [x] Auth: Enable Google & Email auth.
 - [x] Storage: Public buckets — `briefs` (PDFs), `user-images`, `canvas-snapshots`.
 - [x] Schema: Run SQL migrations for `projects`, `notes`, `canvas_snapshots` (see Reference A).
+- [ ] Security: Verify RLS policies are active and Storage Buckets have strict MIME type/size limits.
 
 ### Step 1.3: The "Split View" (PDF & Specs)
 
@@ -34,11 +35,13 @@
 
 - [x] Integration: Install `tldraw`, mount in center pane.
 - [x] Image Upload: Intercept drops. **Critical:** Resize images >2000px client-side before upload.
+- [ ] Security: Implement server-side validation for image uploads (MIME type & Magic Bytes).
 - [x] Persistence: "5-Minute Snapshot" rule. Save opaque JSON blobs to Storage (not DB).
 
 ### Step 1.5: The Notebook & Squint Test
 
 - [x] Editor: Install `tiptap` (headless). Persist to `notes` table (HTML/JSON).
+- [ ] Security: Sanitize HTML content on render to prevent XSS.
 - [x] Squint Slider: Range slider (0–100) applying `backdrop-filter: blur(Xpx)` to Canvas.
 
 ---
@@ -47,6 +50,7 @@
 
 **Goal:** Automate boring tasks using explicit buttons (no background jobs).  
 **Estimated Time:** 1 Week
+**Security:** Implement Rate Limiting on all AI Server Actions.
 
 ### Step 2.1: Spec Sheet Extractor
 
@@ -98,7 +102,7 @@
 ### Step 3.3: Payments
 
 - [ ] Integration: Lemon Squeezy (MoR).
-- [ ] Webhooks: `subscription_created` → update `profiles.tier`.
+- [ ] Webhooks: `subscription_created` → update `profiles.tier` (Verify Signature).
 - [ ] Limits: Enforce "3 Projects Max" for Free users.
 
 ---
@@ -128,6 +132,7 @@
 - `id` (uuid, PK)
 - `project_id` (FK)
 - `storage_path` (text)
+- `preview_path` (text)
 - `created_at` (timestamp)
 
 **Rule:** Query by `project_id` ordered by `created_at DESC`
@@ -172,3 +177,21 @@
 
 ### 4. Design Doctor – Vibes (Pro)
 "You are an Art Director. Ignore constraints. Judge emotion, color, and vibe."
+
+---
+
+## 🛡️ Reference D: Security Protocol
+
+### 1. Data Protection
+- **RLS:** All tables must have Row Level Security enabled.
+- **Inputs:** Sanitize all user inputs (especially HTML/JSON from Tiptap) to prevent XSS.
+- **Validation:** Validate file types (MIME & Magic Bytes) and sizes server-side.
+
+### 2. Infrastructure
+- **Headers:** Implement Content Security Policy (CSP), X-Content-Type-Options, X-Frame-Options.
+- **Rate Limiting:** Enforce limits on all AI Server Actions to prevent cost abuse.
+- **Secrets:** Never expose API keys or service role keys in client-side code.
+
+### 3. Authentication
+- **Server Actions:** Always verify `auth()` session in every Server Action.
+- **Webhooks:** Verify signatures for all external webhooks (e.g., Lemon Squeezy).
