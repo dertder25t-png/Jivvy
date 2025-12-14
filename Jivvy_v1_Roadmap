@@ -13,33 +13,33 @@
 
 ### Step 1.1: Environment & "Soft Pop" Shell
 
-- [ ] Init: Next.js 14 (App Router) + Tailwind CSS + Lucide React + Zustand.
-- [ ] Theme Config: Set colors (`#121212` bg, `#a3e635` accent).
-- [ ] Component Library: Build `BentoCard`, `NavButton`, and `GummyButton` (Scale `0.95` on click).
-- [ ] Layout: Responsive shell (Sidebar on Desktop, Floating Island on Mobile).
+- [x] Init: Next.js 14 (App Router) + Tailwind CSS + Lucide React + Zustand.
+- [x] Theme Config: Set colors (`#121212` bg, `#a3e635` accent).
+- [x] Component Library: Build `BentoCard`, `NavButton`, and `GummyButton` (Scale `0.95` on click).
+- [x] Layout: Responsive shell (Sidebar on Desktop, Floating Island on Mobile).
 
 ### Step 1.2: Database & Auth (Supabase)
 
-- [ ] Init: Create Supabase project.
-- [ ] Auth: Enable Google & Email auth.
-- [ ] Storage: Public buckets — `briefs` (PDFs), `user-images`, `canvas-snapshots`.
-- [ ] Schema: Run SQL migrations for `projects`, `notes`, `canvas_snapshots` (see Reference A).
+- [x] Init: Create Supabase project.
+- [x] Auth: Enable Google & Email auth.
+- [x] Storage: Public buckets — `briefs` (PDFs), `user-images`, `canvas-snapshots`.
+- [x] Schema: Run SQL migrations for `projects`, `notes`, `canvas_snapshots` (see Reference A).
 
 ### Step 1.3: The "Split View" (PDF & Specs)
 
-- [ ] PDF Viewer: Install `react-pdf`. Left-pane viewer rendering `projects.pdf_url`.
-- [ ] Spec Sidebar: Static right-hand sidebar with editable checklist UI.
+- [x] PDF Viewer: Install `react-pdf`. Left-pane viewer rendering `projects.pdf_url`.
+- [x] Spec Sidebar: Static right-hand sidebar with editable checklist UI.
 
 ### Step 1.4: The "Infinite Canvas" (TLDraw)
 
-- [ ] Integration: Install `tldraw`, mount in center pane.
-- [ ] Image Upload: Intercept drops. **Critical:** Resize images >2000px client-side before upload.
-- [ ] Persistence: "5-Minute Snapshot" rule. Save opaque JSON blobs to Storage (not DB).
+- [x] Integration: Install `tldraw`, mount in center pane.
+- [x] Image Upload: Intercept drops. **Critical:** Resize images >2000px client-side before upload.
+- [x] Persistence: "5-Minute Snapshot" rule. Save opaque JSON blobs to Storage (not DB).
 
 ### Step 1.5: The Notebook & Squint Test
 
-- [ ] Editor: Install `tiptap` (headless). Persist to `notes` table (HTML/JSON).
-- [ ] Squint Slider: Range slider (0–100) applying `backdrop-filter: blur(Xpx)` to Canvas.
+- [x] Editor: Install `tiptap` (headless). Persist to `notes` table (HTML/JSON).
+- [x] Squint Slider: Range slider (0–100) applying `backdrop-filter: blur(Xpx)` to Canvas.
 
 ---
 
@@ -50,17 +50,17 @@
 
 ### Step 2.1: Spec Sheet Extractor
 
-- [ ] UI: "Generate Specs" button in Spec Sidebar.
-- [ ] Backend: Server Action `generateSpecSheet(pdfUrl)`.
-- [ ] AI: Gemini 1.5 Flash — extract constraints as JSON.
-- [ ] State: Populate checklist with result.
+- [x] UI: "Generate Specs" button in Spec Sidebar.
+- [x] Backend: Server Action `generateSpecSheet(pdfUrl)`.
+- [x] AI: Gemini 1.5 Flash — extract constraints as JSON.
+- [x] State: Populate checklist with result.
 
 ### Step 2.2: The Prompt Assistant (Ref Hunter)
 
-- [ ] UI: Context menu on text highlight → "Find Refs".
-- [ ] Backend: Server Action `generateSearchQueries(text)`.
-- [ ] AI: Gemini 1.5 Flash.
-- [ ] Result: Render buttons opening Behance/Pinterest.
+- [x] UI: Context menu on text highlight → "Find Refs".
+- [x] Backend: Server Action `generateSearchQueries(text)`.
+- [x] AI: Gemini 1.5 Flash.
+- [x] Result: Render buttons opening Behance/Pinterest.
 
 ### Step 2.3: Manual Flashcards (Gamified)
 
