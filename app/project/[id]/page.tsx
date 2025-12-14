@@ -154,18 +154,18 @@ export default function ProjectPage() {
 
     if (loading) {
         return (
-            <div className="flex h-screen w-full items-center justify-center bg-[#1a1a1d]">
+            <div className="flex h-screen w-full items-center justify-center bg-surface">
                 <Loader2 className="animate-spin text-lime-400" size={32} />
             </div>
         );
     }
 
     return (
-        <div className="flex h-screen w-full overflow-hidden bg-[#121212] fixed inset-0 top-20">
+        <div className="flex h-screen w-full overflow-hidden bg-background fixed inset-0 top-20">
 
             {/* LEFT PANEL - PDF Viewer (Collapsible) */}
             <div className={cn(
-                "h-full flex flex-col border-r border-zinc-800 bg-[#121212] transition-all duration-300",
+                "h-full flex flex-col border-r border-zinc-800 bg-background transition-all duration-300",
                 leftPanelCollapsed ? "w-0" : "w-[320px] min-w-[320px]"
             )}>
                 {!leftPanelCollapsed && (
@@ -226,7 +226,7 @@ export default function ProjectPage() {
             {leftPanelCollapsed && (
                 <button
                     onClick={() => setLeftPanelCollapsed(false)}
-                    className="h-full w-10 flex items-center justify-center bg-[#121212] border-r border-zinc-800 hover:bg-zinc-900 transition-colors group"
+                    className="h-full w-10 flex items-center justify-center bg-background border-r border-zinc-800 hover:bg-zinc-900 transition-colors group"
                 >
                     <ChevronRight size={16} className="text-zinc-500 group-hover:text-lime-400" />
                 </button>
@@ -256,7 +256,7 @@ export default function ProjectPage() {
 
                 {/* CANVAS AREA - Mid-Grey Background with Breathing Room */}
                 <div
-                    className="flex-1 overflow-hidden p-6 bg-[#1a1a1d] relative"
+                    className="flex-1 overflow-hidden p-6 bg-surface relative"
                     onDrop={handleDrop}
                     onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                     onDragLeave={() => setDragOver(false)}
@@ -265,7 +265,7 @@ export default function ProjectPage() {
                     <DesignDoctorTool />
                     {/* Full-Screen Onboarding Overlay */}
                     {!project?.pdf_url && leftPanelCollapsed && !onboardingComplete && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#121212]/95 backdrop-blur-sm">
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
                             <div
                                 className={cn(
                                     "bg-zinc-900 rounded-3xl border border-zinc-800 p-8 text-center max-w-md shadow-2xl",
@@ -372,7 +372,7 @@ export default function ProjectPage() {
             </div>
 
             {/* RIGHT PANEL - Spec Sidebar with AI Extraction */}
-            <SpecSidebar pdfUrl={project?.pdf_url} className="bg-[#18181b] border-l border-white/5" />
+            <SpecSidebar pdfUrl={project?.pdf_url} className="bg-surface border-l border-white/5" />
         </div>
     );
 }

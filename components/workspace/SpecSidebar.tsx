@@ -64,7 +64,7 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
 
     return (
         <div className={cn(
-            "h-full bg-[#18181b] border-l border-white/5 transition-all duration-300 flex flex-col relative",
+            "h-full bg-surface border-l border-white/5 transition-all duration-300 flex flex-col relative",
             collapsed ? "w-12" : "w-80",
             className
         )}>

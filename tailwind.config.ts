@@ -10,6 +10,8 @@ const config: Config = {
     extend: {
       colors: {
         background: "#121212",
+        surface: "#18181b",
+        surfaceHighlight: "#27272a",
         foreground: "#ffffff",
         accent: {
           DEFAULT: "#a3e635", // lime-400

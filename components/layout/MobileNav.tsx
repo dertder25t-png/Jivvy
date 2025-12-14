@@ -9,7 +9,7 @@ const MobileNav = () => {
 
     return (
         <nav className="lg:hidden fixed bottom-6 left-6 right-6 z-50 pointer-events-none">
-            <div className="bg-[#121212]/90 backdrop-blur-xl border border-zinc-800 rounded-full p-2 flex justify-between items-center shadow-2xl relative pointer-events-auto">
+            <div className="bg-background/90 backdrop-blur-xl border border-zinc-800 rounded-full p-2 flex justify-between items-center shadow-2xl relative pointer-events-auto">
                 <button
                     onClick={() => setActiveTab("dashboard")}
                     className={cn(
@@ -34,7 +34,7 @@ const MobileNav = () => {
                 <div className="relative -top-8 mx-2">
                     <button
                         onClick={() => console.log("New Upload")} // Placeholder
-                        className="w-16 h-16 bg-gradient-to-tr from-lime-400 to-lime-300 rounded-2xl flex items-center justify-center shadow-[0_10px_20px_-5px_rgba(163,230,53,0.5)] transform transition-transform active:scale-90 border-[6px] border-[#121212] animate-float hover:scale-105"
+                        className="w-16 h-16 bg-gradient-to-tr from-lime-400 to-lime-300 rounded-2xl flex items-center justify-center shadow-[0_10px_20px_-5px_rgba(163,230,53,0.5)] transform transition-transform active:scale-90 border-[6px] border-background animate-float hover:scale-105"
                     >
                         <Plus size={32} className="text-black" />
                     </button>
