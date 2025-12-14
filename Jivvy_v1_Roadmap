@@ -6,6 +6,32 @@
 
 ---
 
+## 🛠️ Manual Database Actions (Required)
+
+If you haven't run these SQL commands yet, please run them in your Supabase SQL Editor:
+
+- [ ] **Apply Storage Security Policies:**
+  Copy and run the content of `storage_buckets.sql` to enforce MIME type checks.
+
+- [ ] **Create Flashcards Table (if missing):**
+  ```sql
+  create table if not exists public.flashcards (
+    id uuid default gen_random_uuid() primary key,
+    project_id uuid references public.projects(id) on delete cascade not null,
+    front text not null,
+    back text not null,
+    source_node_id text,
+    created_at timestamptz default now()
+  );
+  alter table public.flashcards enable row level security;
+  create policy "Users can CRUD own flashcards" on flashcards
+    for all using (
+      exists (select 1 from projects where id = flashcards.project_id and user_id = auth.uid())
+    );
+  ```
+
+---
+
 ## 🏃 Sprint 1: The Digital Desk (Foundation & MVP)
 
 **Goal:** A fully functional design workspace (PDF + Canvas + Notes) that works without any AI.  
@@ -24,7 +50,7 @@
 - [x] Auth: Enable Google & Email auth.
 - [x] Storage: Public buckets — `briefs` (PDFs), `user-images`, `canvas-snapshots`.
 - [x] Schema: Run SQL migrations for `projects`, `notes`, `canvas_snapshots` (see Reference A).
-- [ ] Security: Verify RLS policies are active and Storage Buckets have strict MIME type/size limits.
+- [x] Security: Verify RLS policies are active and Storage Buckets have strict MIME type/size limits.
 
 ### Step 1.3: The "Split View" (PDF & Specs)
 
@@ -35,13 +61,13 @@
 
 - [x] Integration: Install `tldraw`, mount in center pane.
 - [x] Image Upload: Intercept drops. **Critical:** Resize images >2000px client-side before upload.
-- [ ] Security: Implement server-side validation for image uploads (MIME type & Magic Bytes).
+- [x] Security: Implement server-side validation for image uploads (MIME type & Magic Bytes).
 - [x] Persistence: "5-Minute Snapshot" rule. Save opaque JSON blobs to Storage (not DB).
 
 ### Step 1.5: The Notebook & Squint Test
 
 - [x] Editor: Install `tiptap` (headless). Persist to `notes` table (HTML/JSON).
-- [ ] Security: Sanitize HTML content on render to prevent XSS.
+- [x] Security: Sanitize HTML content on render to prevent XSS.
 - [x] Squint Slider: Range slider (0–100) applying `backdrop-filter: blur(Xpx)` to Canvas.
 
 ---
@@ -50,7 +76,7 @@
 
 **Goal:** Automate boring tasks using explicit buttons (no background jobs).  
 **Estimated Time:** 1 Week
-**Security:** Implement Rate Limiting on all AI Server Actions.
+**Security:** [x] Implement Rate Limiting on all AI Server Actions.
 
 ### Step 2.1: Spec Sheet Extractor
 
@@ -68,10 +94,10 @@
 
 ### Step 2.3: Manual Flashcards (Gamified)
 
-- [ ] UI: "Flashcard Mode" toggle in Notebook.
-- [ ] Interaction: Highlight text → "Make Card".
-- [ ] Visual: Highlight source text in whatever color the flashcard is(let user be able to pick).
-- [ ] DB: Save to `flashcards` table with `source_node_id`. 
+- [x] UI: "Flashcard Mode" toggle in Notebook.
+- [x] Interaction: Highlight text → "Make Card".
+- [x] Visual: Highlight source text in whatever color the flashcard is(let user be able to pick).
+- [x] DB: Save to `flashcards` table with `source_node_id`.
 
 ### Step 2.4: Tone Tuner
 

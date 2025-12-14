@@ -4,8 +4,11 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Bold, Italic, List, ListOrdered, Heading2, Save, Loader2 } from "lucide-react";
+import { Bold, Italic, List, ListOrdered, Heading2, Save, Loader2, SquareStack } from "lucide-react";
 import { RefHunterMenu } from "./RefHunterMenu";
+import { FlashcardMenu } from "./FlashcardMenu";
+import Highlight from "@tiptap/extension-highlight";
+import DOMPurify from "isomorphic-dompurify";
 
 interface NotebookProps {
     className?: string;
@@ -21,9 +24,15 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
     }, [initialContent]);
     const [saving, setSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
+    const [isFlashcardMode, setIsFlashcardMode] = useState(false);
 
     const editor = useEditor({
-        extensions: [StarterKit],
+        extensions: [
+            StarterKit,
+            Highlight.configure({
+                multicolor: true,
+            }),
+        ],
         content: sanitizedInitialContent || "<p>Start taking notes...</p>",
         immediatelyRender: false, // Fix for SSR hydration mismatch
         editorProps: {
@@ -119,6 +128,20 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
 
                 <div className="flex-1" />
 
+                {/* Flashcard Mode Toggle */}
+                <button
+                    onClick={() => setIsFlashcardMode(!isFlashcardMode)}
+                    className={cn(
+                        "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors mr-2",
+                        isFlashcardMode
+                            ? "bg-amber-500/20 text-amber-500 hover:bg-amber-500/30"
+                            : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                    )}
+                >
+                    <SquareStack size={14} />
+                    {isFlashcardMode ? "Flashcard Mode" : "Cards"}
+                </button>
+
                 {/* Save button */}
                 {onSave && (
                     <button
@@ -142,7 +165,9 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
             <div className="flex-1 overflow-auto">
                 <EditorContent editor={editor} className="h-full" />
                 {/* Ref Hunter Bubble Menu */}
-                <RefHunterMenu editor={editor} />
+                {!isFlashcardMode && <RefHunterMenu editor={editor} />}
+                {/* Flashcard Bubble Menu */}
+                <FlashcardMenu editor={editor} projectId={projectId} isFlashcardMode={isFlashcardMode} />
             </div>
 
             {/* Tiptap prose styles */}
@@ -186,6 +211,13 @@ export function Notebook({ className, projectId, initialContent = "", onSave }: 
                     color: #8b5cf6;
                 }
                 
+                .ProseMirror mark {
+                    background-color: transparent;
+                    color: inherit;
+                    border-radius: 0.125rem;
+                    padding: 0 0.125rem;
+                }
+
                 .ProseMirror:focus {
                     outline: none;
                 }
