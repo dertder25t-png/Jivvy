@@ -6,9 +6,12 @@ import { revalidatePath } from "next/cache";
 export type Project = {
     id: string;
     user_id: string;
-    pdf_url: string;
+    title: string;
+    category: string;
+    pdf_url: string | null;
     extracted_constraints: Record<string, unknown>;
     created_at: string;
+    updated_at: string;
 };
 
 export type Note = {
@@ -19,9 +22,13 @@ export type Note = {
 };
 
 /**
- * Create a new project with a PDF URL
+ * Create a new project (optionally with a PDF URL)
  */
-export async function createProject(pdfUrl: string): Promise<{ project: Project | null; error: string | null }> {
+export async function createProject(
+    pdfUrl?: string,
+    title?: string,
+    category?: string
+): Promise<{ project: Project | null; error: string | null }> {
     const supabase = createClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -34,7 +41,9 @@ export async function createProject(pdfUrl: string): Promise<{ project: Project 
         .from('projects')
         .insert({
             user_id: user.id,
-            pdf_url: pdfUrl,
+            title: title || 'Untitled Project',
+            category: category || 'General',
+            pdf_url: pdfUrl || null,
             extracted_constraints: {}
         })
         .select()
@@ -84,13 +93,36 @@ export async function getUserProjects(): Promise<{ projects: Project[]; error: s
         .from('projects')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('updated_at', { ascending: false });
 
     if (error) {
         return { projects: [], error: error.message };
     }
 
     return { projects: data || [], error: null };
+}
+
+/**
+ * Update project metadata (title, category)
+ */
+export async function updateProjectMetadata(
+    projectId: string,
+    updates: { title?: string; category?: string }
+): Promise<{ success: boolean; error: string | null }> {
+    const supabase = createClient();
+
+    const { error } = await supabase
+        .from('projects')
+        .update(updates)
+        .eq('id', projectId);
+
+    if (error) {
+        return { success: false, error: error.message };
+    }
+
+    revalidatePath('/');
+    revalidatePath(`/project/${projectId}`);
+    return { success: true, error: null };
 }
 
 /**

@@ -104,6 +104,27 @@ If you haven't run these SQL commands yet, please run them in your Supabase SQL 
 - [x] UI: Unified "Smart Context Bar" menu.
 - [x] AI: Gemma 2 27B rewrites selected text.
 
+### Step 2.5: Mode-Specific Layouts
+
+- [x] Canvas Mode: PDF Viewer (left) + SpecSidebar (right) + DesignDoctor + Squint Test
+- [x] Paper Mode: Full-width editor + SourceDrawer sidebar (right)
+- [x] Notes Mode: FlashcardSidebar (left) + SyllabusTracker (right)
+
+### Step 2.6: The Source Drawer (Paper Mode)
+
+- [x] UI: Right-panel "Source Drawer" with two tabs
+- [x] Tab A (Sources): Draggable citation list
+- [x] Tab B (Mini-Browser): PDF viewer for reference while writing
+- [x] Add Citation modal
+
+### Step 2.7: The Syllabus Tracker (Notes Mode)
+
+- [x] UI: Right-panel timeline showing course progress
+- [x] Past/Present/Future lectures displayed
+- [x] Exam/Assignment urgency highlighting (Neon Rose for exams)
+- [x] Quick stats: "Due This Week" and "Days to Exam"
+- [x] Add Event modal
+
 ---
 
 ## 👩‍⚕️ Sprint 3: The Design Doctor (Pro Features)

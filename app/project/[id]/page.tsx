@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
     Upload, FileText, Loader2, Eye, PenTool, StickyNote,
@@ -13,6 +13,9 @@ import { createClient } from "@/utils/supabase/client";
 import { cn } from "@/lib/utils";
 import { SpecSidebar } from "@/components/workspace/SpecSidebar";
 import { DesignDoctorTool } from "@/components/workspace/DesignDoctorTool";
+import { SourceDrawer } from "@/components/workspace/SourceDrawer";
+import { SyllabusTracker } from "@/components/workspace/SyllabusTracker";
+import { FlashcardSidebar } from "@/components/workspace/FlashcardSidebar";
 import { useProjectStore } from "@/lib/store";
 
 const PDFViewer = dynamic(() => import("@/components/workspace/PDFViewer").then(mod => mod.PDFViewer), {
@@ -33,6 +36,7 @@ const Notebook = dynamic(() => import("@/components/workspace/Notebook").then(mo
 // Mock spec items for the properties panel
 export default function ProjectPage() {
     const params = useParams();
+    const router = useRouter();
     const projectId = params.id as string;
 
     // Global Store
@@ -46,6 +50,7 @@ export default function ProjectPage() {
     // Removed local centerMode state in favor of store
     const [squintAmount, setSquintAmount] = useState(0);
     const [onboardingComplete, setOnboardingComplete] = useState(false);
+    const [isCreatingProject, setIsCreatingProject] = useState(false);
 
     // Notes state
     const [notesLoaded, setNotesLoaded] = useState(false);
@@ -70,6 +75,7 @@ export default function ProjectPage() {
         async function fetchProjectData() {
             if (projectId === 'new') {
                 setLoading(false);
+                setNotesLoaded(true); // Enable notes/paper for new projects
                 return;
             }
 
@@ -152,6 +158,56 @@ export default function ProjectPage() {
         await saveProjectNote(projectId, content, 0);
     }, [projectId]);
 
+    // Create a new project and redirect to it
+    const handleStartProject = useCallback(async (mode: 'canvas' | 'paper' | 'notes') => {
+        // If already on a real project, just set the mode
+        if (projectId !== 'new') {
+            setCenterMode(mode);
+            setLeftPanelCollapsed(false);
+            setOnboardingComplete(true);
+            return;
+        }
+
+        // Create a new project in the database
+        setIsCreatingProject(true);
+        console.log('[handleStartProject] Creating new project with mode:', mode);
+
+        const titleMap = {
+            canvas: 'New Design Project',
+            paper: 'New Paper',
+            notes: 'Lecture Notes'
+        };
+
+        try {
+            const { project: newProject, error } = await createProject(
+                undefined, // no PDF
+                titleMap[mode],
+                mode === 'canvas' ? 'Design' : mode === 'paper' ? 'Writing' : 'Education'
+            );
+
+            console.log('[handleStartProject] Result:', { newProject, error });
+
+            if (error || !newProject) {
+                console.error('[handleStartProject] Failed to create project:', error);
+                alert(`Failed to create project: ${error || 'Unknown error'}`);
+                setIsCreatingProject(false);
+                return;
+            }
+
+            // Set the mode before redirecting
+            setCenterMode(mode);
+            setActiveProjectId(newProject.id);
+
+            // Redirect to the new project
+            console.log('[handleStartProject] Redirecting to:', `/project/${newProject.id}`);
+            router.replace(`/project/${newProject.id}`);
+        } catch (err) {
+            console.error('[handleStartProject] Exception:', err);
+            alert(`Error creating project: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            setIsCreatingProject(false);
+        }
+    }, [projectId, setCenterMode, setActiveProjectId, router]);
+
     if (loading) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-surface">
@@ -163,74 +219,85 @@ export default function ProjectPage() {
     return (
         <div className="flex h-screen w-full overflow-hidden bg-background fixed inset-0 top-20">
 
-            {/* LEFT PANEL - PDF Viewer (Collapsible) */}
-            <div className={cn(
-                "h-full flex flex-col border-r border-zinc-800 bg-background transition-all duration-300",
-                leftPanelCollapsed ? "w-0" : "w-[320px] min-w-[320px]"
-            )}>
-                {!leftPanelCollapsed && (
-                    <>
-                        {/* Panel Header */}
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-                            <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Design Brief</span>
-                            <button
-                                onClick={() => setLeftPanelCollapsed(true)}
-                                className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors"
-                            >
-                                <ChevronLeft size={16} />
-                            </button>
-                        </div>
+            {/* LEFT PANEL - Mode-specific */}
+            {centerMode === 'canvas' && (
+                <>
+                    <div className={cn(
+                        "h-full flex flex-col border-r border-zinc-800 bg-background transition-all duration-300",
+                        leftPanelCollapsed ? "w-0" : "w-[320px] min-w-[320px]"
+                    )}>
+                        {!leftPanelCollapsed && (
+                            <>
+                                {/* Panel Header */}
+                                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+                                    <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Design Brief</span>
+                                    <button
+                                        onClick={() => setLeftPanelCollapsed(true)}
+                                        className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors"
+                                    >
+                                        <ChevronLeft size={16} />
+                                    </button>
+                                </div>
 
-                        {/* PDF Content or Empty State */}
-                        <div className="flex-1 overflow-hidden p-3">
-                            {project?.pdf_url ? (
-                                <PDFViewer url={project.pdf_url} className="h-full w-full rounded-xl" />
-                            ) : (
-                                <div
-                                    className={cn(
-                                        "h-full w-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all",
-                                        dragOver ? 'border-lime-400 bg-lime-400/10' : 'border-zinc-700 hover:border-zinc-600'
-                                    )}
-                                    onDrop={handleDrop}
-                                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                                    onDragLeave={() => setDragOver(false)}
-                                >
-                                    {uploading ? (
-                                        <>
-                                            <Loader2 className="animate-spin text-lime-400 mb-3" size={32} />
-                                            <p className="text-zinc-400 text-sm">Uploading...</p>
-                                        </>
+                                {/* PDF Content or Empty State */}
+                                <div className="flex-1 overflow-hidden p-3">
+                                    {project?.pdf_url ? (
+                                        <PDFViewer url={project.pdf_url} className="h-full w-full rounded-xl" />
                                     ) : (
-                                        <>
-                                            <div className="w-16 h-16 rounded-2xl bg-zinc-800/80 flex items-center justify-center mb-4">
-                                                <FileText className="text-lime-400" size={24} />
-                                            </div>
-                                            <p className="text-zinc-400 text-sm mb-3">Drop PDF here</p>
-                                            <label className="cursor-pointer">
-                                                <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
-                                                    const file = e.target.files?.[0];
-                                                    if (file) handleFileUpload(file);
-                                                }} />
-                                                <span className="text-xs text-lime-400 hover:underline">or browse</span>
-                                            </label>
-                                        </>
+                                        <div
+                                            className={cn(
+                                                "h-full w-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all",
+                                                dragOver ? 'border-lime-400 bg-lime-400/10' : 'border-zinc-700 hover:border-zinc-600'
+                                            )}
+                                            onDrop={handleDrop}
+                                            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                            onDragLeave={() => setDragOver(false)}
+                                        >
+                                            {uploading ? (
+                                                <>
+                                                    <Loader2 className="animate-spin text-lime-400 mb-3" size={32} />
+                                                    <p className="text-zinc-400 text-sm">Uploading...</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="w-16 h-16 rounded-2xl bg-zinc-800/80 flex items-center justify-center mb-4">
+                                                        <FileText className="text-lime-400" size={24} />
+                                                    </div>
+                                                    <p className="text-zinc-400 text-sm mb-3">Drop PDF here</p>
+                                                    <label className="cursor-pointer">
+                                                        <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) handleFileUpload(file);
+                                                        }} />
+                                                        <span className="text-xs text-lime-400 hover:underline">or browse</span>
+                                                    </label>
+                                                </>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
-                            )}
-                        </div>
-                    </>
-                )}
-            </div>
+                            </>
+                        )}
+                    </div>
 
-            {/* Collapsed Left Toggle */}
-            {leftPanelCollapsed && (
-                <button
-                    onClick={() => setLeftPanelCollapsed(false)}
-                    className="h-full w-10 flex items-center justify-center bg-background border-r border-zinc-800 hover:bg-zinc-900 transition-colors group"
-                >
-                    <ChevronRight size={16} className="text-zinc-500 group-hover:text-lime-400" />
-                </button>
+                    {/* Collapsed Left Toggle - Canvas Only */}
+                    {leftPanelCollapsed && (
+                        <button
+                            onClick={() => setLeftPanelCollapsed(false)}
+                            className="h-full w-10 flex items-center justify-center bg-background border-r border-zinc-800 hover:bg-zinc-900 transition-colors group"
+                        >
+                            <ChevronRight size={16} className="text-zinc-500 group-hover:text-lime-400" />
+                        </button>
+                    )}
+                </>
             )}
+
+            {/* LEFT PANEL - Notes Mode: Flashcard Sidebar */}
+            {centerMode === 'notes' && (
+                <FlashcardSidebar projectId={projectId} />
+            )}
+
+            {/* Paper mode has no left panel - full width editor */}
 
             {/* CENTER PANEL - Canvas or Notebook */}
             <div className="flex-1 h-full flex flex-col overflow-hidden relative">
@@ -261,10 +328,10 @@ export default function ProjectPage() {
                     onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                     onDragLeave={() => setDragOver(false)}
                 >
-                    {/* Design Doctor Floating Tool (Only visible in Canvas mode or always accessible) */}
-                    <DesignDoctorTool />
-                    {/* Full-Screen Onboarding Overlay */}
-                    {!project?.pdf_url && leftPanelCollapsed && !onboardingComplete && (
+                    {/* Design Doctor Floating Tool (Canvas mode only) */}
+                    {centerMode === 'canvas' && <DesignDoctorTool />}
+                    {/* Full-Screen Onboarding Overlay - Only for new projects */}
+                    {projectId === 'new' && !project?.pdf_url && leftPanelCollapsed && !onboardingComplete && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
                             <div
                                 className={cn(
@@ -284,33 +351,48 @@ export default function ProjectPage() {
                                 {/* Project Type Cards (Updated to 3 options) */}
                                 <div className="grid grid-cols-3 gap-3 mb-6">
                                     <button
-                                        onClick={() => { setCenterMode('canvas'); setLeftPanelCollapsed(false); setOnboardingComplete(true); }}
-                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-lime-400 hover:bg-lime-400/5 transition-all group"
+                                        onClick={() => handleStartProject('canvas')}
+                                        disabled={isCreatingProject}
+                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-lime-400 hover:bg-lime-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-lime-400/20 flex items-center justify-center transition-colors">
-                                            <PenTool size={18} className="text-zinc-400 group-hover:text-lime-400" />
+                                            {isCreatingProject ? (
+                                                <Loader2 size={18} className="text-zinc-400 animate-spin" />
+                                            ) : (
+                                                <PenTool size={18} className="text-zinc-400 group-hover:text-lime-400" />
+                                            )}
                                         </div>
                                         <div>
                                             <p className="font-bold text-white text-xs">Canvas</p>
                                         </div>
                                     </button>
                                     <button
-                                        onClick={() => { setCenterMode('paper'); setLeftPanelCollapsed(false); setOnboardingComplete(true); }}
-                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-violet-400 hover:bg-violet-400/5 transition-all group"
+                                        onClick={() => handleStartProject('paper')}
+                                        disabled={isCreatingProject}
+                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-violet-400 hover:bg-violet-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-violet-400/20 flex items-center justify-center transition-colors">
-                                            <FileText size={18} className="text-zinc-400 group-hover:text-violet-400" />
+                                            {isCreatingProject ? (
+                                                <Loader2 size={18} className="text-zinc-400 animate-spin" />
+                                            ) : (
+                                                <FileText size={18} className="text-zinc-400 group-hover:text-violet-400" />
+                                            )}
                                         </div>
                                         <div>
                                             <p className="font-bold text-white text-xs">Paper</p>
                                         </div>
                                     </button>
                                     <button
-                                        onClick={() => { setCenterMode('notes'); setLeftPanelCollapsed(false); setOnboardingComplete(true); }}
-                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-amber-400 hover:bg-amber-400/5 transition-all group"
+                                        onClick={() => handleStartProject('notes')}
+                                        disabled={isCreatingProject}
+                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-amber-400 hover:bg-amber-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-amber-400/20 flex items-center justify-center transition-colors">
-                                            <StickyNote size={18} className="text-zinc-400 group-hover:text-amber-400" />
+                                            {isCreatingProject ? (
+                                                <Loader2 size={18} className="text-zinc-400 animate-spin" />
+                                            ) : (
+                                                <StickyNote size={18} className="text-zinc-400 group-hover:text-amber-400" />
+                                            )}
                                         </div>
                                         <div>
                                             <p className="font-bold text-white text-xs">Notes</p>
@@ -371,8 +453,16 @@ export default function ProjectPage() {
                 </div>
             </div>
 
-            {/* RIGHT PANEL - Spec Sidebar with AI Extraction */}
-            <SpecSidebar pdfUrl={project?.pdf_url} className="bg-surface border-l border-white/5" />
+            {/* RIGHT PANEL - Mode-specific sidebar */}
+            {centerMode === 'canvas' && (
+                <SpecSidebar pdfUrl={project?.pdf_url ?? undefined} className="bg-surface border-l border-white/5" />
+            )}
+            {centerMode === 'paper' && (
+                <SourceDrawer pdfUrl={project?.pdf_url ?? undefined} projectId={projectId} className="bg-surface" />
+            )}
+            {centerMode === 'notes' && (
+                <SyllabusTracker projectId={projectId} className="bg-surface" />
+            )}
         </div>
     );
 }
