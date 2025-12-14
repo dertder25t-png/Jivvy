@@ -54,8 +54,8 @@ export async function critiqueCrop(formData: FormData): Promise<CritiqueResult> 
         const arrayBuffer = await imageFile.arrayBuffer();
         const base64Image = Buffer.from(arrayBuffer).toString("base64");
 
-        // Use Gemini 1.5 Flash for Vision tasks (Gemma is text-only)
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // Use Gemma 3 (12B) which is Multimodal and supports Vision
+        const model = genAI.getGenerativeModel({ model: "gemma-3-12b-it" });
 
         const prompt = `You are a strict, expert Design Doctor. Critique this design crop based specifically on the user's concern: "${issue}".
 
@@ -109,9 +109,8 @@ export async function critiqueFullCanvas(formData: FormData): Promise<CritiqueRe
             return { critique: null, error: "Missing canvas snapshot" };
         }
 
-        // Use Gemini 1.5 Pro for deep "Vibe" analysis if available, else Flash
-        // Roadmap says "Gemini 1.5 Pro"
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+        // Use Gemma 3 (27B) for deep "Vibe" analysis (Multimodal)
+        const model = genAI.getGenerativeModel({ model: "gemma-3-27b-it" });
 
         const prompt = `You are an elite Art Director. Ignore technical constraints for a moment. Judge the EMOTION, COLOR PALETTE, and VIBE of this entire canvas.
 

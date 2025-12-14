@@ -63,8 +63,8 @@ export async function generateSpecSheet(pdfUrl: string): Promise<GenerateSpecRes
         // Truncate text if needed (Gemma 2 has 8k context, keeping safe margin)
         const truncatedText = pdfText.slice(0, 20000);
 
-        // Use Large Gemma (27B) for complex extraction
-        const model = genAI.getGenerativeModel({ model: "gemma-2-27b-it" });
+        // Use Gemma 3 (27B) for complex extraction (High capability)
+        const model = genAI.getGenerativeModel({ model: "gemma-3-27b-it" });
 
         const prompt = `You are analyzing a design brief PDF. Extract all technical specifications and constraints mentioned in this document.
 
@@ -163,8 +163,8 @@ export async function rewriteText(text: string, tone: string, sampleText?: strin
             return { rewrittenText: null, error: "No text provided" };
         }
 
-        // Use Large Gemma (27B) for nuanced tone matching
-        const model = genAI.getGenerativeModel({ model: "gemma-2-27b-it" });
+        // Use Gemma 3 (27B) for nuanced tone matching
+        const model = genAI.getGenerativeModel({ model: "gemma-3-27b-it" });
 
         let prompt = "";
 
@@ -262,8 +262,8 @@ export async function generateSearchQueries(text: string): Promise<SearchQueryRe
             ? "Behance, Pinterest, Dribbble, ArtStation, Savee, and Awwwards"
             : "Behance and Pinterest";
 
-        // Use Small Gemma (9B) for search queries
-        const model = genAI.getGenerativeModel({ model: "gemma-2-9b-it" });
+        // Use Gemma 3 (12B) for search queries (Efficient but capable)
+        const model = genAI.getGenerativeModel({ model: "gemma-3-12b-it" });
         console.log("[Server] Model initialized, making API call...");
 
         const prompt = `Generate ${queryCount} expert search queries to find visual examples of "${text.trim()}" on high-quality design archives like ${platforms}.
