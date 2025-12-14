@@ -55,8 +55,9 @@ export async function generateSpecSheet(pdfUrl: string): Promise<GenerateSpecRes
         const pdfBuffer = await response.arrayBuffer();
         const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
 
-        // Use Gemma 3 12B
-        const model = genAI.getGenerativeModel({ model: "gemma-3-12b-it" });
+        // Use Gemini 1.5 Flash for PDF analysis (Multimodal support required)
+        // Gemma models are text-only and cannot process PDF blobs directly.
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
         const prompt = `You are analyzing a design brief PDF. Extract all technical specifications and constraints mentioned in this document.
 
@@ -133,8 +134,9 @@ export interface RewriteTextResult {
 
 /**
  * Rewrite text with a specific tone using Gemini AI
+ * Accepts optional sampleText for custom tone matching.
  */
-export async function rewriteText(text: string, tone: string): Promise<RewriteTextResult> {
+export async function rewriteText(text: string, tone: string, sampleText?: string): Promise<RewriteTextResult> {
     try {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
@@ -157,18 +159,37 @@ export async function rewriteText(text: string, tone: string): Promise<RewriteTe
             return { rewrittenText: null, error: "No text provided" };
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemma-3-12b-it" });
+        // Use Large Gemma (27B) for nuanced tone matching
+        const model = genAI.getGenerativeModel({ model: "gemma-2-27b-it" });
 
-        const prompt = `Rewrite the following text to have a "${tone}" tone.
+        let prompt = "";
 
-        Rules:
-        - Maintain the original meaning.
-        - Fix grammar and spelling errors.
-        - Improve flow and clarity.
-        - Return ONLY the rewritten text, no explanations or quotes.
+        if (tone === "custom" && sampleText) {
+             prompt = `Rewrite the target text to match the tone, sentence structure, and style of the sample text provided.
 
-        Text to rewrite:
-        "${text}"`;
+             Sample Text (Style Reference):
+             "${sampleText}"
+
+             Target Text (To Rewrite):
+             "${text}"
+
+             Rules:
+             - Analyze the sample text's vocabulary, sentence length, and rhythm.
+             - Apply those characteristics to the target text.
+             - Maintain the original meaning of the target text.
+             - Return ONLY the rewritten text, no explanations.`;
+        } else {
+            prompt = `Rewrite the following text to have a "${tone}" tone.
+
+            Rules:
+            - Maintain the original meaning.
+            - Fix grammar and spelling errors.
+            - Improve flow and clarity.
+            - Return ONLY the rewritten text, no explanations or quotes.
+
+            Text to rewrite:
+            "${text}"`;
+        }
 
         const result = await model.generateContent([{ text: prompt }]);
         const responseText = result.response.text();
@@ -220,8 +241,8 @@ export async function generateSearchQueries(text: string): Promise<SearchQueryRe
             return { queries: [], error: "No text provided" };
         }
 
-        // Use Gemma 3 12B
-        const model = genAI.getGenerativeModel({ model: "gemma-3-12b-it" });
+        // Use Small Gemma (9B) for simple search queries (faster/cheaper)
+        const model = genAI.getGenerativeModel({ model: "gemma-2-9b-it" });
         console.log("[Server] Model initialized, making API call...");
 
         const prompt = `Generate 3 expert search queries to find visual examples of "${text.trim()}" on high-quality design archives like Behance and Pinterest.

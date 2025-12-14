@@ -2,7 +2,7 @@
 
 import { BubbleMenu, Editor } from "@tiptap/react";
 import { useState } from "react";
-import { Zap, SquareStack, X, Check } from "lucide-react";
+import { Zap, SquareStack, X, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createFlashcard } from "@/app/flashcards/actions";
 
@@ -124,5 +124,3 @@ export function FlashcardMenu({ editor, projectId, isFlashcardMode }: FlashcardM
         </BubbleMenu>
     );
 }
-
-import { Loader2 } from "lucide-react";
