@@ -5,7 +5,8 @@ import "tldraw/tldraw.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { resizeImage, isImageFile } from "@/utils/imageUtils";
-import { uploadImage, uploadCanvasSnapshot } from "@/utils/supabase/storage";
+import { uploadCanvasSnapshot } from "@/utils/supabase/storage";
+import { uploadImageAction } from "@/app/project/upload-actions";
 import { createClient } from "@/utils/supabase/client";
 
 interface InfiniteCanvasProps {
@@ -106,15 +107,20 @@ export function InfiniteCanvas({
                 processedFile = await resizeImage(file, MAX_IMAGE_SIZE);
             }
 
-            // Upload to Supabase storage
+            // Upload to Supabase storage via Server Action (Security)
             const uploadFile = processedFile instanceof Blob && !(processedFile instanceof File)
                 ? new File([processedFile], file.name, { type: file.type })
-                : processedFile;
+                : processedFile as File;
 
-            const publicUrl = await uploadImage(uploadFile as File, currentUserId);
+            const formData = new FormData();
+            formData.append('file', uploadFile);
+            formData.append('userId', currentUserId);
 
-            if (!publicUrl) {
-                throw new Error('Failed to upload image');
+            const { url: publicUrl, error } = await uploadImageAction(formData);
+
+            if (error || !publicUrl) {
+                console.error("Upload failed:", error);
+                throw new Error(error || 'Failed to upload image');
             }
 
             // Return the asset info for TLDraw

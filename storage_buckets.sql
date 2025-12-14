@@ -14,12 +14,14 @@
 -- =============================================
 
 -- Allow authenticated users to upload PDFs to their own folder
+-- Added mimetype validation
 CREATE POLICY "Users can upload briefs"
 ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (
     bucket_id = 'briefs' AND
-    (storage.foldername(name))[1] = auth.uid()::text
+    (storage.foldername(name))[1] = auth.uid()::text AND
+    (LOWER(metadata->>'mimetype') = 'application/pdf')
 );
 
 -- Allow users to read their own briefs
@@ -44,12 +46,14 @@ USING (
 -- BUCKET: user-images (Image uploads)
 -- =============================================
 
+-- Added mimetype validation for images
 CREATE POLICY "Users can upload images"
 ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (
     bucket_id = 'user-images' AND
-    (storage.foldername(name))[1] = auth.uid()::text
+    (storage.foldername(name))[1] = auth.uid()::text AND
+    (LOWER(metadata->>'mimetype') IN ('image/png', 'image/jpeg', 'image/webp', 'image/gif'))
 );
 
 CREATE POLICY "Users can view own images"
@@ -72,12 +76,14 @@ USING (
 -- BUCKET: canvas-snapshots (Canvas JSON blobs)
 -- =============================================
 
+-- Added mimetype validation for JSON
 CREATE POLICY "Users can upload snapshots"
 ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (
     bucket_id = 'canvas-snapshots' AND
-    (storage.foldername(name))[1] = auth.uid()::text
+    (storage.foldername(name))[1] = auth.uid()::text AND
+    (LOWER(metadata->>'mimetype') = 'application/json')
 );
 
 CREATE POLICY "Users can view own snapshots"

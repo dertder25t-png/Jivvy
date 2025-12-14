@@ -2,7 +2,7 @@
 
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Bold, Italic, List, ListOrdered, Heading2, Save, Loader2 } from "lucide-react";
 import { RefHunterMenu } from "./RefHunterMenu";
@@ -15,12 +15,16 @@ interface NotebookProps {
 }
 
 export function Notebook({ className, projectId, initialContent = "", onSave }: NotebookProps) {
+    // Sanitize initial content to prevent XSS
+    const sanitizedInitialContent = useMemo(() => {
+        return DOMPurify.sanitize(initialContent);
+    }, [initialContent]);
     const [saving, setSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
     const editor = useEditor({
         extensions: [StarterKit],
-        content: initialContent || "<p>Start taking notes...</p>",
+        content: sanitizedInitialContent || "<p>Start taking notes...</p>",
         immediatelyRender: false, // Fix for SSR hydration mismatch
         editorProps: {
             attributes: {

@@ -1,8 +1,16 @@
 "use server";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { rateLimit } from "@/lib/rate-limit";
+import { createClient } from "@/utils/supabase/server";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
+// Rate limit: 10 requests per minute per user
+const limiter = rateLimit({
+    interval: 60 * 1000,
+    uniqueTokenPerInterval: 500,
+});
 
 export interface SpecItem {
     id: string;
@@ -21,6 +29,19 @@ export interface GenerateSpecResult {
  */
 export async function generateSpecSheet(pdfUrl: string): Promise<GenerateSpecResult> {
     try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { specs: [], error: "Unauthorized" };
+        }
+
+        try {
+            await limiter.check(10, user.id);
+        } catch {
+            return { specs: [], error: "Rate limit exceeded. Please try again later." };
+        }
+
         if (!process.env.GEMINI_API_KEY) {
             return { specs: [], error: "Gemini API key not configured" };
         }
@@ -117,6 +138,19 @@ export async function generateSearchQueries(text: string): Promise<SearchQueryRe
     console.log("[Server] generateSearchQueries called with:", text);
 
     try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { queries: [], error: "Unauthorized" };
+        }
+
+        try {
+            await limiter.check(20, user.id); // Higher limit for search queries
+        } catch {
+            return { queries: [], error: "Rate limit exceeded. Please try again later." };
+        }
+
         if (!process.env.GEMINI_API_KEY) {
             console.log("[Server] No GEMINI_API_KEY found");
             return { queries: [], error: "Gemini API key not configured" };
