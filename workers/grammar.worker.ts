@@ -34,16 +34,14 @@ self.addEventListener('message', async (event) => {
       // Calculate diffs
       const diffs = [];
       if (corrected && corrected !== text) {
-          // fast-myers-diff returns iterator of [sx, ex, sy, ey]
-          // We want to find the changed ranges in original text (sx, ex)
-          // and what they should become (slice of corrected from sy to ey)
+          // fast-myers-diff returns iterator of [sx, ex, correction, ey]
           const patches = [...calcPatch(text, corrected)];
 
-          for (const [sx, ex, sy, ey] of patches) {
+          for (const [sx, ex, correction, ey] of patches) {
               diffs.push({
                   from: sx,
                   to: ex,
-                  correction: corrected.slice(sy, ey)
+                  correction: correction
               });
           }
       }
