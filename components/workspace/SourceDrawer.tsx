@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ResearchTools } from './ResearchTools';
+import { useProjectStore } from "@/lib/store";
 
 interface Citation {
     id: string;
@@ -61,6 +62,7 @@ export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
     const [isAddingCitation, setIsAddingCitation] = useState(false);
     const [collapsed, setCollapsed] = useState(false);
     const [pdfBuffer, setPdfBuffer] = useState<ArrayBuffer | null>(null);
+    const { setPdfPage } = useProjectStore();
 
     useEffect(() => {
         if (pdfUrl) {
@@ -160,9 +162,7 @@ export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
                     <ResearchTools
                         pdfBuffer={pdfBuffer}
                         onJumpToPage={(page) => {
-                            console.log("Jump to page:", page);
-                            // Implementation dependent on PDF viewer exposure
-                            // For now just logging
+                            setPdfPage(page);
                         }}
                     />
                 ) : activeTab === "sources" ? (
