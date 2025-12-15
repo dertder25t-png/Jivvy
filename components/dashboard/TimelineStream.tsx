@@ -2,11 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import {
-    Circle,
     CheckCircle2,
     Plus,
     Clock,
-    Calendar,
     X,
     Loader2
 } from "lucide-react";
@@ -73,7 +71,7 @@ function formatDueDate(dateString: string): string {
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-export function TimelineStream({ className, compact = false }: TimelineStreamProps) {
+export function TimelineStream({ className }: TimelineStreamProps) {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAddingTask, setIsAddingTask] = useState(false);

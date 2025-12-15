@@ -9,7 +9,8 @@ import { generateSpecSheet, type SpecItem } from "@/app/ai/actions";
 interface SpecSidebarProps {
     className?: string;
     pdfUrl?: string;
-    onSpecsChange?: (specs: SpecItem[]) => void;
+    onUpdate?: (specs: SpecItem[]) => void;
+    specs?: SpecItem[];
 }
 
 const DEFAULT_SPECS: SpecItem[] = [
@@ -20,7 +21,7 @@ const DEFAULT_SPECS: SpecItem[] = [
     { id: '5', label: "Min 300dpi for Images", checked: false },
 ];
 
-export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarProps) {
+export function SpecSidebar({ className, pdfUrl, onUpdate }: SpecSidebarProps) {
     const [specs, setSpecs] = useState<SpecItem[]>(DEFAULT_SPECS);
     const [collapsed, setCollapsed] = useState(false);
     const [extracting, setExtracting] = useState(false);
@@ -32,7 +33,7 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
     const toggleSpec = (id: string) => {
         const newSpecs = specs.map(s => s.id === id ? { ...s, checked: !s.checked } : s);
         setSpecs(newSpecs);
-        onSpecsChange?.(newSpecs);
+        onUpdate?.(newSpecs);
     };
 
     const addManualSpec = () => {
@@ -44,7 +45,7 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
         };
         const newSpecs = [...specs, newSpec];
         setSpecs(newSpecs);
-        onSpecsChange?.(newSpecs);
+        onUpdate?.(newSpecs);
         setNewSpecLabel("");
         setIsAddingSpec(false);
     };
@@ -52,7 +53,7 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
     const deleteSpec = (id: string) => {
         const newSpecs = specs.filter(s => s.id !== id);
         setSpecs(newSpecs);
-        onSpecsChange?.(newSpecs);
+        onUpdate?.(newSpecs);
     };
 
     const handleExtractSpecs = async () => {
@@ -72,7 +73,7 @@ export function SpecSidebar({ className, pdfUrl, onSpecsChange }: SpecSidebarPro
             } else if (result.specs.length > 0) {
                 setSpecs(result.specs);
                 setExtracted(true);
-                onSpecsChange?.(result.specs);
+                onUpdate?.(result.specs);
             } else {
                 setError("No specs found in PDF");
             }

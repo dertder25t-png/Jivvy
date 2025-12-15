@@ -54,9 +54,9 @@ const MOCK_CITATIONS: Citation[] = [
     },
 ];
 
-export function SourceDrawer({ className, pdfUrl, projectId }: SourceDrawerProps) {
+export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
     const [activeTab, setActiveTab] = useState<"sources" | "pdf">("sources");
-    const [citations, setCitations] = useState<Citation[]>(MOCK_CITATIONS);
+    const [citations] = useState<Citation[]>(MOCK_CITATIONS);
     const [isAddingCitation, setIsAddingCitation] = useState(false);
     const [collapsed, setCollapsed] = useState(false);
 

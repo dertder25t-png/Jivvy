@@ -65,25 +65,25 @@ export function CustomStylePanel() {
 
     // Track current styles
     const currentColor = useValue("currentColor", () => {
-        const val = editor.getSharedStyle(DefaultColorStyle);
+        const val = editor.getSharedStyles().get(DefaultColorStyle);
         if (val && val.type === 'shared') return val.value;
         return 'black';
     }, [editor]);
 
     const currentFill = useValue("currentFill", () => {
-        const val = editor.getSharedStyle(DefaultFillStyle);
+        const val = editor.getSharedStyles().get(DefaultFillStyle);
         if (val && val.type === 'shared') return val.value;
         return 'none';
     }, [editor]);
 
     const currentDash = useValue("currentDash", () => {
-        const val = editor.getSharedStyle(DefaultDashStyle);
+        const val = editor.getSharedStyles().get(DefaultDashStyle);
         if (val && val.type === 'shared') return val.value;
         return 'draw';
     }, [editor]);
 
     const currentSize = useValue("currentSize", () => {
-        const val = editor.getSharedStyle(DefaultSizeStyle);
+        const val = editor.getSharedStyles().get(DefaultSizeStyle);
         if (val && val.type === 'shared') return val.value;
         return 'm';
     }, [editor]);
@@ -119,7 +119,11 @@ export function CustomStylePanel() {
         // Try to set directly if possible (unlikely with standard shapes),
         // fallback to nearest Tldraw color
         const nearest = getNearestColor(hex);
-        editor.setStyle(DefaultColorStyle, nearest);
+        const colorValue = nearest as import("tldraw").StylePropValue<typeof DefaultColorStyle>;
+        editor.run(() => {
+            editor.setStyleForSelectedShapes(DefaultColorStyle, colorValue);
+            editor.setStyleForNextShapes(DefaultColorStyle, colorValue);
+        });
     };
 
     // Determine current hex for display
@@ -178,7 +182,13 @@ export function CustomStylePanel() {
                 ].map((item) => (
                     <button
                         key={item.value}
-                        onClick={() => editor.setStyle(DefaultFillStyle, item.value as import("tldraw").StylePropValue<typeof DefaultFillStyle>)}
+                        onClick={() => {
+                            const val = item.value as import("tldraw").StylePropValue<typeof DefaultFillStyle>;
+                            editor.run(() => {
+                                editor.setStyleForSelectedShapes(DefaultFillStyle, val);
+                                editor.setStyleForNextShapes(DefaultFillStyle, val);
+                            });
+                        }}
                         className={cn(
                             "p-2 rounded-xl flex items-center justify-center transition-colors hover:bg-white/10",
                             currentFill === item.value ? "bg-white/20 text-lime-400" : "text-zinc-400"
@@ -200,7 +210,13 @@ export function CustomStylePanel() {
                 ].map((item) => (
                     <button
                         key={item.value}
-                        onClick={() => editor.setStyle(DefaultDashStyle, item.value as import("tldraw").StylePropValue<typeof DefaultDashStyle>)}
+                        onClick={() => {
+                            const val = item.value as import("tldraw").StylePropValue<typeof DefaultDashStyle>;
+                            editor.run(() => {
+                                editor.setStyleForSelectedShapes(DefaultDashStyle, val);
+                                editor.setStyleForNextShapes(DefaultDashStyle, val);
+                            });
+                        }}
                         className={cn(
                             "p-2 rounded-xl flex items-center justify-center transition-colors hover:bg-white/10",
                             currentDash === item.value ? "bg-white/20 text-lime-400" : "text-zinc-400"
@@ -217,7 +233,13 @@ export function CustomStylePanel() {
                 {['s', 'm', 'l', 'xl'].map((size) => (
                     <button
                         key={size}
-                        onClick={() => editor.setStyle(DefaultSizeStyle, size as import("tldraw").StylePropValue<typeof DefaultSizeStyle>)}
+                        onClick={() => {
+                            const val = size as import("tldraw").StylePropValue<typeof DefaultSizeStyle>;
+                            editor.run(() => {
+                                editor.setStyleForSelectedShapes(DefaultSizeStyle, val);
+                                editor.setStyleForNextShapes(DefaultSizeStyle, val);
+                            });
+                        }}
                         className={cn(
                             "p-2 rounded-xl flex items-center justify-center transition-colors hover:bg-white/10 text-xs font-bold uppercase",
                             currentSize === size ? "bg-white/20 text-lime-400" : "text-zinc-400"

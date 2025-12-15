@@ -13,7 +13,7 @@ interface AdvancedColorPickerProps {
     onClose?: () => void;
 }
 
-export function AdvancedColorPicker({ color, onChange, onClose }: AdvancedColorPickerProps) {
+export function AdvancedColorPicker({ color, onChange }: AdvancedColorPickerProps) {
     const [hsv, setHsv] = useState<HSV>({ h: 0, s: 0, v: 0 });
     const [rgb, setRgb] = useState<RGB>({ r: 0, g: 0, b: 0 });
     const [cmyk, setCmyk] = useState<CMYK>({ c: 0, m: 0, y: 0, k: 0 });
