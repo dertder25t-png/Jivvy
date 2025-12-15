@@ -16,6 +16,7 @@ import { DesignDoctorTool } from "@/components/workspace/DesignDoctorTool";
 import { SourceDrawer } from "@/components/workspace/SourceDrawer";
 import { SyllabusTracker } from "@/components/workspace/SyllabusTracker";
 import { FlashcardSidebar } from "@/components/workspace/FlashcardSidebar";
+import { ExtractionWorkspace } from "@/components/workspace/ExtractionWorkspace";
 import { useProjectStore } from "@/lib/store";
 
 const PDFViewer = dynamic(() => import("@/components/workspace/PDFViewer").then(mod => mod.PDFViewer), {
@@ -302,9 +303,16 @@ export default function ProjectPage() {
             )}
 
             {/* Paper mode has no left panel - full width editor */}
+            {/* Extraction mode handles its own layout, so we hide standard layout or handle it differently.
+                Actually, the ExtractionWorkspace is a full screen component (below nav).
+                So if mode is extraction, we render it directly.
+             */}
 
-            {/* CENTER PANEL - Canvas or Notebook */}
-            <div className="flex-1 h-full flex flex-col overflow-hidden relative">
+            {centerMode === 'extraction' ? (
+                <ExtractionWorkspace pdfUrl={project?.pdf_url ?? null} />
+            ) : (
+                /* CENTER PANEL - Canvas or Notebook */
+                <div className="flex-1 h-full flex flex-col overflow-hidden relative">
 
                 {/* Squint Slider (Floating - only on Canvas) */}
                 {centerMode === 'canvas' && (
@@ -456,8 +464,10 @@ export default function ProjectPage() {
                     )}
                 </div>
             </div>
+            )}
 
             {/* RIGHT PANEL - Mode-specific sidebar */}
+            {/* We hide right panel for extraction mode as it uses full width split */}
             {centerMode === 'canvas' && (
                 <SpecSidebar pdfUrl={project?.pdf_url ?? undefined} className="bg-surface border-l border-white/5" />
             )}

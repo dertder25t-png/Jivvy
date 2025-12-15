@@ -66,7 +66,7 @@ export function CalendarView({ className }: CalendarViewProps) {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [, setLoading] = useState(true);
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -174,7 +174,7 @@ export function CalendarView({ className }: CalendarViewProps) {
                                 {/* Task Dots */}
                                 {hasTasks && (
                                     <div className="flex gap-0.5 mt-1 flex-wrap justify-center max-w-full">
-                                        {dayTasks.slice(0, 3).map((task, i) => (
+                                        {dayTasks.slice(0, 3).map((task) => (
                                             <div
                                                 key={task.id}
                                                 className={cn(

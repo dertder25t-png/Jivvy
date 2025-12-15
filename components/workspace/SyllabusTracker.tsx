@@ -9,11 +9,8 @@ import {
     CheckCircle2,
     Circle,
     Plus,
-    Edit3,
-    Trash2,
     X,
     Upload,
-    FileText,
     Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -94,7 +91,7 @@ const MOCK_MILESTONES: MilestoneItem[] = [
     },
 ];
 
-export function SyllabusTracker({ className, projectId }: ProjectTimelineProps) {
+export function SyllabusTracker({ className }: ProjectTimelineProps) {
     const [items, setItems] = useState<MilestoneItem[]>(MOCK_MILESTONES);
     const [collapsed, setCollapsed] = useState(false);
     const [isAdding, setIsAdding] = useState(false);

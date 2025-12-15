@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Loader2, Crop, Sparkles, Upload, X, ScanEye } from "lucide-react";
 import { critiqueCrop, critiqueFullCanvas } from "@/app/critique/actions";
 import { cn } from "@/lib/utils";
@@ -110,7 +111,7 @@ export function DesignDoctorTool() {
                                 </label>
                             ) : (
                                 <div className="relative rounded-xl overflow-hidden border border-zinc-700 group">
-                                    <img src={preview} alt="Preview" className="w-full h-auto object-cover max-h-48" />
+                                    <Image src={preview} alt="Preview" width={400} height={300} className="w-full h-auto object-cover max-h-48" />
                                     <button
                                         onClick={reset}
                                         className="absolute top-2 right-2 bg-black/50 p-1 rounded-full text-white hover:bg-red-500 transition-colors opacity-0 group-hover:opacity-100"

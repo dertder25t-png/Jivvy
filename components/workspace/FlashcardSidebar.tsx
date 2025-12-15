@@ -1,13 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
     SquareStack,
     ChevronLeft,
     ChevronRight,
-    Plus,
     Shuffle,
-    RotateCcw,
     CheckCircle2,
     XCircle,
     Sparkles
@@ -48,7 +46,7 @@ const MOCK_FLASHCARDS: Flashcard[] = [
     },
 ];
 
-export function FlashcardSidebar({ className, projectId }: FlashcardSidebarProps) {
+export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
     const [cards, setCards] = useState<Flashcard[]>(MOCK_FLASHCARDS);
     const [collapsed, setCollapsed] = useState(false);
     const [isReviewing, setIsReviewing] = useState(false);
@@ -235,7 +233,7 @@ export function FlashcardSidebar({ className, projectId }: FlashcardSidebarProps
                                 </p>
                             </div>
                         ) : (
-                            cards.map((card, index) => (
+                            cards.map((card) => (
                                 <div
                                     key={card.id}
                                     className={cn(

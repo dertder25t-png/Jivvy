@@ -2,12 +2,13 @@
 
 import { Tldraw, Editor, TLAssetId } from "tldraw";
 import "tldraw/tldraw.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { resizeImage, isImageFile } from "@/utils/imageUtils";
 import { uploadCanvasSnapshot } from "@/utils/supabase/storage";
 import { uploadImageAction } from "@/app/project/upload-actions";
 import { createClient } from "@/utils/supabase/client";
+import { CustomStylePanel } from "./CustomStylePanel";
 
 interface InfiniteCanvasProps {
     className?: string;
@@ -145,6 +146,10 @@ export function InfiniteCanvas({
         });
     }, [currentUserId]);
 
+    const components = useMemo(() => ({
+        StylePanel: CustomStylePanel,
+    }), []);
+
     return (
         <div
             className={cn("w-full h-full relative rounded-2xl overflow-hidden", className)}
@@ -157,6 +162,7 @@ export function InfiniteCanvas({
                 persistenceKey={`jivvy-canvas-${projectId}`}
                 className="tldraw-editor"
                 onMount={handleMount}
+                components={components}
             />
 
             {/* Save indicator */}

@@ -1,0 +1,105 @@
+Part 1: "Glossary Mode" (The Smart Hopper)
+Concept: Instead of reading 1,000 pages, the code finds the map (Index/Glossary), reads the map, and then teleports to the exact destination. This uses standard Regex (fast) instead of AI (slow).
+
+Logic Check:
+
+Scan the last 10% of the PDF pages (where indexes live).
+
+Identify the "Index" page by header detection.
+
+User searches "Alternator".
+
+Code finds "Alternator ....... 245, 248" in the index.
+
+App extracts text only from pages 245 and 248.
+
+Checklist:
+
+[ ] Implement "Index Scanner":
+
+Create a function findIndexPage() that loads pages starting from pdf.numPages backwards.
+
+Search for the string "Index" or "Glossary" in the page header (top 10% of page height).
+
+[ ] Implement "Index Parser" (Regex):
+
+Once the index page is found, extract the text.
+
+Use a Regex to capture the term and page number.
+
+Pattern: /(.+?)(?:\.{2,}|…+)\s*(\d+(?:,\s*\d+)*)/
+
+Explanation: Captures "Term" + "dots" + "Page Number(s)".
+
+[ ] Build the Search Logic:
+
+When user types a query in "Glossary Mode", run it against your parsed index object first.
+
+If a match is found, retrieve the list of page numbers (e.g., [245, 248]).
+
+[ ] Targeted Extraction:
+
+Pass this specific array of page numbers to your pdf.js extractor from Phase 1.
+
+Result: You get the exact answer in milliseconds without processing the other 998 pages.
+
+Part 2: Unstructured Core Metrics (The "Miner")
+Concept: Extracting "Total Revenue" or "Blood Pressure" from documents that look different every time. The Trick: Use Keyword-First Filtering combined with Local AI. Don't make the AI read the whole document; filter relevant chunks first.
+
+Checklist:
+
+[ ] Define "Metric Schemas":
+
+Allow users to define what they want to find.
+
+Example Config: { label: "Net Profit", keywords: ["profit", "net income", "bottom line"] }
+
+[ ] Implement Keyword Filtering:
+
+As you chunk the PDF (from Phase 1), check if a chunk contains any of the keywords.
+
+Discard chunks that don't match. (This reduces the workload by ~90%).
+
+[ ] Local AI Extraction (Transformers.js):
+
+Feed the surviving chunks into Xenova/LaMini-Flan-T5-783M.
+
+Prompt: "Extract the exact value for 'Net Profit' from this text. Return only the number. Text: [Chunk]"
+
+[ ] Data Normalization:
+
+The AI might return "$1.2M" or "1,200,000".
+
+Write a simple utility function parseCurrency(string) to convert these into a raw Number/Float for the database.
+
+Part 3: Pro Visualization (The Dashboard)
+Concept: Turn those extracted JSON numbers into a dashboard.
+
+Recommended Libraries:
+
+Charts: Chart.js (Best balance of looks vs. ease of use).
+
+Data Grid: Ag-Grid Community (Handles millions of rows, filtering, sorting—looks like Excel).
+
+Checklist:
+
+[ ] Install Charting Library:
+
+Bash
+
+npm install chart.js react-chartjs-2
+[ ] Create "Metric Cards":
+
+Display single values (e.g., "Net Profit: $1.2M") in big, bold cards at the top of the view.
+
+[ ] Create "Trend View":
+
+If the user uploads multiple PDFs (e.g., "Jan Statement", "Feb Statement"), loop through them using the "Miner" (Part 2).
+
+Plot the results on a Line Chart: x-axis = Date, y-axis = Extracted Metric.
+
+[ ] Create "Source Table" (Ag-Grid):
+
+Show the raw data in a grid.
+
+Crucial Feature: Add a "Verify" column. When the user clicks a row, use the pdf.js renderer to show the original PDF page side-by-side so they can verify the number matches the document.

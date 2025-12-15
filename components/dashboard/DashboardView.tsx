@@ -9,7 +9,6 @@ import {
     ChevronDown,
     Plus,
     Loader2,
-    FolderOpen,
     Sparkles
 } from "lucide-react";
 import { TiltCard } from "@/components/ui/TiltCard";

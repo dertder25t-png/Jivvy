@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Loader2, ZoomIn, ZoomOut, RotateCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GummyButton } from "@/components/ui/GummyButton";
+import { useProjectStore } from "@/lib/store";
 
 // Configure worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -16,10 +17,24 @@ interface PDFViewerProps {
 
 export function PDFViewer({ url, className }: PDFViewerProps) {
     const [numPages, setNumPages] = useState<number>(0);
+    // Use local state for immediate feedback but sync with global store
+    const { pdfPage, setPdfPage } = useProjectStore();
     const [pageNumber, setPageNumber] = useState<number>(1);
+
     const [scale, setScale] = useState<number>(1.0);
     const [rotation, setRotation] = useState<number>(0);
     const [loading, setLoading] = useState<boolean>(true);
+
+    // Sync local state with global store
+    useEffect(() => {
+        setPageNumber(pdfPage);
+    }, [pdfPage]);
+
+    // Update global store when local page changes (via controls)
+    const handlePageChange = (newPage: number) => {
+        setPageNumber(newPage);
+        setPdfPage(newPage);
+    };
 
     function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
         setNumPages(numPages);
@@ -41,13 +56,13 @@ export function PDFViewer({ url, className }: PDFViewerProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <GummyButton size="sm" variant="ghost" onClick={() => setPageNumber(p => Math.max(1, p - 1))} disabled={pageNumber <= 1}>
+                    <GummyButton size="sm" variant="ghost" onClick={() => handlePageChange(Math.max(1, pageNumber - 1))} disabled={pageNumber <= 1}>
                         &lt;
                     </GummyButton>
                     <span className="text-xs font-mono text-zinc-400 w-20 text-center">
                         Page {pageNumber} of {numPages || "--"}
                     </span>
-                    <GummyButton size="sm" variant="ghost" onClick={() => setPageNumber(p => Math.min(numPages, p + 1))} disabled={pageNumber >= numPages}>
+                    <GummyButton size="sm" variant="ghost" onClick={() => handlePageChange(Math.min(numPages, pageNumber + 1))} disabled={pageNumber >= numPages}>
                         &gt;
                     </GummyButton>
                 </div>

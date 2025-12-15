@@ -9,6 +9,7 @@ import { FlashcardMenu } from "./FlashcardMenu";
 import { SmartContextBar } from "./SmartContextBar";
 import Highlight from "@tiptap/extension-highlight";
 import DOMPurify from "isomorphic-dompurify";
+import { GrammarChecker } from "@/components/editor/extensions/GrammarChecker";
 
 interface NotebookProps {
     className?: string;
@@ -26,6 +27,27 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
     const [saving, setSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [isFlashcardMode, setIsFlashcardMode] = useState(false);
+    const [grammarEnabled, setGrammarEnabled] = useState(false);
+
+    useEffect(() => {
+        const checkGrammarSetting = () => {
+            const stored = localStorage.getItem('jivvy-grammar-enabled');
+            setGrammarEnabled(stored === 'true');
+        };
+
+        checkGrammarSetting();
+
+        const handleSettingsChange = (e: CustomEvent) => {
+            if (e.detail?.grammarEnabled !== undefined) {
+                setGrammarEnabled(e.detail.grammarEnabled);
+            } else {
+                checkGrammarSetting();
+            }
+        };
+
+        window.addEventListener('jivvy-settings-changed', handleSettingsChange as EventListener);
+        return () => window.removeEventListener('jivvy-settings-changed', handleSettingsChange as EventListener);
+    }, []);
 
     const placeholderText = mode === "paper" ? "Start writing your paper..." : "Start taking lecture notes...";
 
@@ -34,6 +56,9 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
             StarterKit,
             Highlight.configure({
                 multicolor: true,
+            }),
+            GrammarChecker.configure({
+                enabled: grammarEnabled,
             }),
         ],
         content: sanitizedInitialContent || `<p></p>`,
@@ -47,6 +72,14 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
             },
         },
     });
+
+    // Update extension when state changes
+    useEffect(() => {
+        if (editor && !editor.isDestroyed) {
+            // Use the command to toggle instead of recreating the editor
+            editor.commands.setGrammarEnabled(grammarEnabled);
+        }
+    }, [grammarEnabled, editor]);
 
     // Auto-save every 30 seconds
     useEffect(() => {
