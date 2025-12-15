@@ -15,7 +15,6 @@ export interface Citation {
   volume?: string;
   issue?: string;
   doi?: string;
-  accessDate?: string;
 }
 
 export type CitationStyle = 'APA' | 'MLA' | 'Chicago';
@@ -38,7 +37,7 @@ export function formatAPA(citation: Citation): string {
     formatted += ' (n.d.).';
   }
   
-  // Title
+  // Title (articles in regular text, books italicized)
   if (citation.type === 'article' || citation.type === 'pdf') {
     formatted += ` ${title}.`;
   } else {
@@ -171,12 +170,15 @@ export function formatCitation(citation: Citation, style: CitationStyle): string
  */
 export function formatInlineCitation(citation: Citation, style: CitationStyle): string {
   const { author, year, page } = citation;
+  // Extract last name for MLA (assumes "Last, First" format)
+  const lastName = author.split(',')[0].trim();
   
   switch (style) {
     case 'APA':
       return `(${author}, ${year || 'n.d.'}${page ? `, p. ${page}` : ''})`;
     case 'MLA':
-      return `(${author}${page ? ` ${page}` : ''})`;
+      // MLA uses last name only and page without 'p.' prefix
+      return `(${lastName}${page ? ` ${page}` : ''})`;
     case 'Chicago':
       return `(${author} ${year || 'n.d.'}${page ? `, ${page}` : ''})`;
     default:
@@ -201,9 +203,15 @@ export function exportBibliography(citations: Citation[], style: CitationStyle):
 }
 
 /**
- * Copy text to clipboard
+ * Copy text to clipboard with fallback for unsupported environments
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
+  // Check if clipboard API is available
+  if (!navigator.clipboard) {
+    console.warn('Clipboard API not available');
+    return false;
+  }
+  
   try {
     await navigator.clipboard.writeText(text);
     return true;
@@ -217,11 +225,14 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * Download text as a file
  */
 export function downloadAsFile(content: string, filename: string): void {
+  // Sanitize filename to prevent XSS
+  const sanitizedFilename = filename.replace(/[^a-z0-9.-]/gi, '_');
+  
   const blob = new Blob([content], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename;
+  link.download = sanitizedFilename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

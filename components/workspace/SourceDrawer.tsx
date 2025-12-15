@@ -126,7 +126,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
         }
         
         const newCitation: Citation = {
-            id: Date.now().toString(),
+            id: crypto.randomUUID(),
             title: formData.title,
             author: formData.author,
             type: formData.type,
@@ -450,6 +450,8 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
+                                                    // Using native confirm for now - could be replaced with custom modal
+                                                    // eslint-disable-next-line no-restricted-globals
                                                     if (confirm('Delete this citation?')) {
                                                         handleDeleteCitation(citation.id);
                                                     }
@@ -507,10 +509,15 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
 
             {/* Add/Edit Citation Modal */}
             {(isAddingCitation || editingCitation) && (
-                <div className="absolute inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+                <div 
+                    className="absolute inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="citation-modal-title"
+                >
                     <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 w-full max-w-md shadow-2xl my-4">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-bold text-white">
+                            <h3 id="citation-modal-title" className="font-bold text-white">
                                 {editingCitation ? 'Edit Citation' : 'Add Citation'}
                             </h3>
                             <button
