@@ -72,6 +72,7 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
   }, [pdfBuffer]);
 
   // Ask a question - finds relevant pages and uses LOCAL LLM
+  // Implements "Structure-First Retrieval" workflow
   const handleAskQuestion = useCallback(async () => {
     if (!pdfBuffer) {
       setQaError('No PDF loaded');
@@ -85,10 +86,18 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
 
     setIsAnswering(true);
     setQaError(null);
-    setLlmStatus('Finding relevant pages...');
+    setLlmStatus('Analyzing question...');
 
     try {
-      // 1. If no index scanned yet, do it now
+      // Step 1: Get Search Terms from LLM
+      const { extractKeywords } = await import('@/utils/local-llm');
+      const searchTerms = await extractKeywords(
+        question,
+        (progress) => setLlmStatus(progress.status)
+      );
+      console.log('[Q&A] LLM Extracted terms:', searchTerms);
+
+      // Step 2: If no index scanned yet, do it now
       let currentIndex = indexTerms;
       if (currentIndex.length === 0) {
         setLlmStatus('Scanning document index...');
@@ -101,39 +110,42 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
         }
       }
 
-      // 2. Find relevant pages based on question keywords
-      const questionWords = question.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-      const matchedPages = new Set<number>();
-
-      // Try to match with index terms
+      // Step 3: Look up terms in your Index
+      // Match LLM terms against your scanned Index
+      const relevantPages = new Set<number>();
+      
       if (currentIndex.length > 0) {
-        for (const term of currentIndex) {
-          const termLower = term.term.toLowerCase();
-          if (questionWords.some(word => termLower.includes(word) || word.includes(termLower.split(' ')[0]))) {
-            term.pages.forEach(p => matchedPages.add(p));
-          }
-        }
+        currentIndex.forEach(idx => {
+          searchTerms.forEach(searchWord => {
+            if (idx.term.toLowerCase().includes(searchWord.toLowerCase())) {
+              idx.pages.forEach(p => relevantPages.add(p));
+            }
+          });
+        });
       }
 
-      // If no matches from index, try pages 1-10 as fallback
-      if (matchedPages.size === 0) {
-        console.log('[Q&A] No index matches, using fallback pages 1-10');
-        for (let i = 1; i <= 10; i++) matchedPages.add(i);
+      // Step 4: Fallback mechanism (Important for massive docs)
+      // If the index didn't yield results, use standard important pages
+      if (relevantPages.size === 0) {
+        setLlmStatus('No index match, checking introduction...');
+        console.log('[Q&A] No index matches, using fallback pages 1-5');
+        // Fallback: Check standard important pages (1-5)
+        [1, 2, 3, 4, 5].forEach(p => relevantPages.add(p));
       }
 
-      const pagesToExtract = Array.from(matchedPages).slice(0, 10); // Limit to 10 pages for local LLM
-      setLlmStatus(`Extracting ${pagesToExtract.length} pages...`);
-
-      // 3. Extract text from those pages
-      const pageData = await extractSpecificPages(pdfBuffer, pagesToExtract);
-      const context = pageData.map(p => `[Page ${p.page}] ${p.content}`).join('\n\n');
+      // Step 5: Extract Content (Limit to top 5 pages to save context)
+      const uniquePages = Array.from(relevantPages).slice(0, 5);
+      setLlmStatus(`Reading pages: ${uniquePages.join(', ')}...`);
+      
+      const pageData = await extractSpecificPages(pdfBuffer, uniquePages);
+      const context = pageData.map(p => `[Page ${p.page}]\n${p.content}`).join('\n\n');
 
       if (!context.trim()) {
         throw new Error('Could not extract text from relevant pages');
       }
 
-      // 4. Use LOCAL LLM for answering (Transformers.js)
-      setLlmStatus('Loading AI model...');
+      // Step 6: Answer using LOCAL LLM
+      setLlmStatus('Generating answer...');
       const { answerQuestionLocal } = await import('@/utils/local-llm');
       
       const answer = await answerQuestionLocal(
@@ -145,7 +157,7 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
       setQaResults(prev => [{
         question,
         answer: answer,
-        sourcePages: pagesToExtract,
+        sourcePages: uniquePages,
         context: context.slice(0, 500) + '...'
       }, ...prev]);
 

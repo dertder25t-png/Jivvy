@@ -34,7 +34,9 @@ async function getPdfJs(): Promise<typeof pdfjsLib> {
 
 /**
  * Scan PDF for index terms or extract important terms
- * Optimized to scan more pages with better error handling
+ * STRATEGY: Scan standard Index locations for massive files
+ * 1. Scan last 30 pages (Index usually at the end)
+ * 2. Scan first 20 pages (TOC usually at the beginning)
  */
 export async function scanForIndex(pdfData: ArrayBuffer): Promise<{ term: string; pages: number[] }[]> {
   try {
@@ -47,24 +49,47 @@ export async function scanForIndex(pdfData: ArrayBuffer): Promise<{ term: string
     const pdfjs = await getPdfJs();
     const loadingTask = pdfjs.getDocument({ data: pdfData });
     const doc: PDFDocumentProxy = await loadingTask.promise;
+    const numPages = doc.numPages;
 
-    console.log('[PDF Extraction] PDF loaded, pages:', doc.numPages);
+    console.log('[PDF Extraction] PDF loaded, pages:', numPages);
 
     const allText: string[] = [];
-    // Increased page limit for better index detection (was 30)
-    const pageLimit = Math.min(doc.numPages, 50);
+    const pagesToScan = new Set<number>();
+    
+    // Add first 20 pages (Table of Contents typically here)
+    for (let i = 1; i <= Math.min(20, numPages); i++) {
+      pagesToScan.add(i);
+    }
+    
+    // Add last 30 pages (Index typically here)
+    for (let i = Math.max(1, numPages - 30); i <= numPages; i++) {
+      pagesToScan.add(i);
+    }
+
+    const sortedPages = Array.from(pagesToScan).sort((a, b) => a - b);
+    
+    console.log(`[PDF Extraction] Smart scanning ${sortedPages.length} pages for Index/TOC...`);
 
     // Process pages with better error recovery
-    for (let i = 1; i <= pageLimit; i++) {
+    for (const pageNum of sortedPages) {
       try {
-        const page: PDFPageProxy = await doc.getPage(i);
+        const page: PDFPageProxy = await doc.getPage(pageNum);
         const textContent = await page.getTextContent();
         const pageText = textContent.items
           .map((item: any) => item.str || '')
           .join(' ');
-        allText.push(pageText);
+        
+        // Simple check: Does this page look like an index?
+        // (Lots of numbers at end of lines, sorted alphabetically)
+        if (pageNum > numPages - 50 && /Index|Glossary/i.test(pageText)) {
+          // If we found the index section, we might want to scan NEIGHBORING pages too
+          // to capture the full index.
+          allText.push(pageText);
+        } else {
+          allText.push(pageText);
+        }
       } catch (pageError) {
-        console.warn(`[PDF Extraction] Error on page ${i}:`, pageError);
+        console.warn(`[PDF Extraction] Error on page ${pageNum}:`, pageError);
         // Continue with other pages even if one fails
         allText.push(''); // Add empty string to maintain page alignment
       }

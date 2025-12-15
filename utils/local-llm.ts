@@ -211,6 +211,76 @@ export async function summarizeLocal(
 }
 
 /**
+ * Extract keywords from a question for index search
+ * Turns a complex question into 3-5 searchable terms
+ * This is cheaper/faster than a full conversation
+ */
+export async function extractKeywords(
+    question: string,
+    onProgress?: ProgressCallback
+): Promise<string[]> {
+    // Validate input
+    if (!question || question.trim().length === 0) {
+        throw new Error('Question cannot be empty');
+    }
+
+    // Initialize model if needed
+    if (!textGenerationPipeline) {
+        const success = await initLocalLLM(onProgress);
+        if (!success) {
+            throw new Error('Failed to load local LLM model. Please check your internet connection and try again.');
+        }
+    }
+
+    onProgress?.({ status: 'Analyzing question...' });
+
+    // Prompt engineered to return a comma-separated list
+    const prompt = `Extract 3-5 main technical keywords or topics from this question for a manual index search. Return only the keywords separated by commas.
+
+Question: "${question}"
+Keywords:`;
+
+    try {
+        const result = await textGenerationPipeline(prompt, {
+            max_new_tokens: 50,
+            temperature: 0.1, // Low temp for precision
+            do_sample: true,
+            top_k: 20, // Limited vocabulary for focused extraction
+        });
+
+        const text = result[0]?.generated_text || '';
+        
+        // Parse "Engine, Fire, Takeoff" into array
+        const keywords = text
+            .split(',')
+            .map((t: string) => t.trim())
+            .filter((t: string) => t.length > 0 && t.length < 50); // Filter out empty and overly long terms
+
+        onProgress?.({ status: 'Keywords extracted!' });
+        
+        console.log('[LocalLLM] Extracted keywords:', keywords);
+
+        // Return at least the original question words if extraction failed
+        if (keywords.length === 0) {
+            console.warn('[LocalLLM] No keywords extracted, falling back to question words');
+            return question
+                .split(/\s+/)
+                .filter(w => w.length > 3)
+                .slice(0, 5);
+        }
+
+        return keywords;
+    } catch (error) {
+        console.error('[LocalLLM] Keyword extraction error:', error);
+        // Fallback: return important words from the question
+        return question
+            .split(/\s+/)
+            .filter(w => w.length > 3)
+            .slice(0, 5);
+    }
+}
+
+/**
  * Cleanup function to free resources
  * Call this when the model is no longer needed
  */
