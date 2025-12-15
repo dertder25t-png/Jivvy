@@ -211,76 +211,36 @@ export async function summarizeLocal(
 }
 
 /**
- * Extract keywords from a question for index search
- * Turns a complex question into 3-5 searchable terms
- * This is cheaper/faster than a full conversation
+ * Extract search keywords from a user question
+ * Uses the LLM to identify technical terms for index lookup
  */
 export async function extractKeywords(
     question: string,
     onProgress?: ProgressCallback
 ): Promise<string[]> {
-    // Validate input
-    if (!question || question.trim().length === 0) {
-        throw new Error('Question cannot be empty');
-    }
+    if (!textGenerationPipeline) await initLocalLLM(onProgress);
 
-    // Initialize model if needed
-    if (!textGenerationPipeline) {
-        const success = await initLocalLLM(onProgress);
-        if (!success) {
-            throw new Error('Failed to load local LLM model. Please check your internet connection and try again.');
-        }
-    }
-
-    onProgress?.({ status: 'Analyzing question...' });
-
-    // Prompt engineered to return a comma-separated list
-    const prompt = `Extract 3-5 main technical keywords or topics from this question for a manual index search. Return only the keywords separated by commas.
+    // Prompt specifically for the FLAN-T5 model to pull out nouns/topics
+    const prompt = `Extract the main technical topics from this question. Return them as a comma-separated list.
 
 Question: "${question}"
-Keywords:`;
+Topics:`;
 
     try {
         const result = await textGenerationPipeline(prompt, {
-            max_new_tokens: 50,
-            temperature: 0.1, // Low temp for precision
-            do_sample: true,
-            top_k: 20, // Limited vocabulary for focused extraction
+            max_new_tokens: 30,
+            temperature: 0.1, // Low temperature for consistency
         });
 
-        const generatedText = result[0]?.generated_text || '';
-        
-        // Extract only the part after "Keywords:" if present
-        const keywordsMatch = generatedText.match(/Keywords:\s*(.+)/i);
-        const text = keywordsMatch ? keywordsMatch[1] : generatedText;
-        
-        // Parse "Engine, Fire, Takeoff" into array
-        const keywords = text
-            .split(',')
-            .map((t: string) => t.trim())
-            .filter((t: string) => t.length > 0 && t.length < 50); // Filter out empty and overly long terms
-
-        onProgress?.({ status: 'Keywords extracted!' });
-        
-        console.log('[LocalLLM] Extracted keywords:', keywords);
-
-        // Return at least the original question words if extraction failed
-        if (keywords.length === 0) {
-            console.warn('[LocalLLM] No keywords extracted, falling back to question words');
-            return question
-                .split(/\s+/)
-                .filter(w => w.length > 3)
-                .slice(0, 5);
-        }
-
-        return keywords;
-    } catch (error) {
-        console.error('[LocalLLM] Keyword extraction error:', error);
-        // Fallback: return important words from the question
-        return question
-            .split(/\s+/)
-            .filter(w => w.length > 3)
-            .slice(0, 5);
+        const text = result[0]?.generated_text || '';
+        // Clean up the output: split by comma, remove whitespace, remove short words
+        return text.split(',')
+            .map(t => t.trim())
+            .filter(t => t.length > 2);
+    } catch (e) {
+        console.error('Keyword extraction failed', e);
+        // Fallback: simple split if LLM fails
+        return question.split(' ').filter(w => w.length > 3);
     }
 }
 

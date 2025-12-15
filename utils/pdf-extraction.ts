@@ -61,8 +61,8 @@ export async function scanForIndex(pdfData: ArrayBuffer): Promise<{ term: string
       pagesToScan.add(i);
     }
     
-    // Add last 30 pages (Index typically here)
-    for (let i = Math.max(1, numPages - 30); i <= numPages; i++) {
+    // Add last 50 pages (Index typically here)
+    for (let i = Math.max(1, numPages - 50); i <= numPages; i++) {
       pagesToScan.add(i);
     }
 
