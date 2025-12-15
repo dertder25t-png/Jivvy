@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { DataGrid } from './DataGrid';
 import { Loader2, Zap } from 'lucide-react';
+import { TrendChart } from './TrendChart';
+import * as pdfjsLib from 'pdfjs-dist';
 
 // GummyButton substitute if not available or import from correct path
 // Assuming existing GummyButton is in components/ui/GummyButton
@@ -26,6 +28,8 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [metrics, setMetrics] = useState<any[]>([]);
   const [isMining, setIsMining] = useState(false);
+  const [minerMetricName, setMinerMetricName] = useState('Net Profit');
+  const [minerKeywords, setMinerKeywords] = useState('profit, net, income');
   const workerRef = useRef<Worker | null>(null);
 
   useEffect(() => {
@@ -61,21 +65,42 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
     workerRef.current?.postMessage({ type: 'SCAN_INDEX', payload: { pdfBuffer } });
   };
 
-  const handleRunMiner = () => {
+  const handleRunMiner = async () => {
     if (!pdfBuffer) return;
     setIsMining(true);
-    // Simulation of extracting chunks (in real app, use text extraction first)
-    // Here we assume chunks are handled by worker or passed in
-    const demoChunks = ["Net Profit for 2024 was $1.2M", "Revenue increased by 12%"];
 
-    workerRef.current?.postMessage({
-      type: 'MINE_METRIC',
-      payload: {
-        chunks: demoChunks,
-        metric: 'Net Profit',
-        keywords: ['profit', 'net', 'income']
-      }
-    });
+    try {
+        // 1. Read the PDF text on the client (or in worker)
+        // Ensure pdfjs global worker source is set if needed, though usually dealt with in utility/PDFViewer
+        if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+             pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+        }
+
+        const doc = await pdfjsLib.getDocument(pdfBuffer).promise;
+        const chunks: string[] = [];
+
+        // Grab text from first 20 pages (or all) to create chunks
+        for (let i = 1; i <= Math.min(doc.numPages, 20); i++) {
+           const page = await doc.getPage(i);
+           const content = await page.getTextContent();
+           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           const text = content.items.map((item: any) => item.str).join(' ');
+           chunks.push(text);
+        }
+
+        // 2. Send REAL chunks to worker
+        workerRef.current?.postMessage({
+          type: 'MINE_METRIC',
+          payload: {
+            chunks: chunks,
+            metric: minerMetricName,
+            keywords: minerKeywords.split(',').map(k => k.trim())
+          }
+        });
+    } catch (e) {
+        console.error("Error reading PDF text:", e);
+        setIsMining(false);
+    }
   };
 
   // Filter Glossary
@@ -154,13 +179,30 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
              <p className="text-xs text-gray-400 mb-3">
                Extract unstructured data securely on your device.
              </p>
+             <div className="space-y-2 mb-3">
+                 <input
+                     type="text"
+                     className="w-full bg-indigo-900/30 border border-indigo-500/30 rounded px-2 py-1 text-xs text-white"
+                     placeholder="Metric Name (e.g. Total Revenue)"
+                     value={minerMetricName}
+                     onChange={e => setMinerMetricName(e.target.value)}
+                 />
+                 <input
+                     type="text"
+                     className="w-full bg-indigo-900/30 border border-indigo-500/30 rounded px-2 py-1 text-xs text-white"
+                     placeholder="Keywords (comma separated)"
+                     value={minerKeywords}
+                     onChange={e => setMinerKeywords(e.target.value)}
+                 />
+             </div>
              <GummyButton onClick={handleRunMiner} disabled={!pdfBuffer || isMining} className="w-full">
                 {isMining ? "Mining..." : "Run Extraction"}
              </GummyButton>
           </div>
 
-          <div className="flex-1">
+          <div className="flex-1 overflow-y-auto space-y-4">
             <DataGrid data={metrics} />
+            {metrics.length > 0 && <TrendChart data={metrics} />}
           </div>
         </div>
       )}
