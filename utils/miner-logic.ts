@@ -98,14 +98,19 @@ export async function mineMetric(
     }
   }
 
+  // Constants for filtering
+  const MIN_YEAR = 1900;
+  const MAX_YEAR = 2100;
+  const MIN_MEANINGFUL_VALUE = 10;
+
   // Extract monetary or numeric values
   if (foundNumbers.length > 0) {
     // Filter out small numbers that are likely page numbers or years
     const meaningfulNumbers = foundNumbers.filter(n => {
       const cleanNum = n.replace(/[,$£€\s]/g, '');
       const num = parseFloat(cleanNum);
-      // Exclude page numbers, years (1900-2100), and very small numbers
-      return !isNaN(num) && num > 10 && !(num >= 1900 && num <= 2100);
+      // Exclude page numbers, years, and very small numbers
+      return !isNaN(num) && num > MIN_MEANINGFUL_VALUE && !(num >= MIN_YEAR && num <= MAX_YEAR);
     });
 
     if (meaningfulNumbers.length > 0) {

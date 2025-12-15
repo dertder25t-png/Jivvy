@@ -135,7 +135,7 @@ function findAndParseIndex(text: string): { term: string; pages: number[] }[] {
       // Extract all page numbers from the string
       const pageRefs = pageStr
         .match(/\d+/g)
-        ?.map(n => parseInt(n, 10))
+        ?.map(n => parseInt(n))
         .filter(n => n > 0 && n < 10000) || []; // Increased max page to 10000
 
       // Validate term quality

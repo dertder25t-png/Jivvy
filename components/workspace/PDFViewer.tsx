@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Loader2, Download, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GummyButton } from "@/components/ui/GummyButton";
@@ -17,10 +17,10 @@ export function PDFViewer({ url, className }: PDFViewerProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     // Reset loading state when URL changes
-    useState(() => {
+    useEffect(() => {
         setLoading(true);
         setError(false);
-    });
+    }, [url]);
 
     // Handle iframe load
     const handleLoad = () => {
