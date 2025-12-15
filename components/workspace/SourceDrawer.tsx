@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     BookOpen,
     Link2,
@@ -13,6 +13,7 @@ import {
     Quote
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ResearchTools } from './ResearchTools';
 
 interface Citation {
     id: string;
@@ -55,10 +56,20 @@ const MOCK_CITATIONS: Citation[] = [
 ];
 
 export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
-    const [activeTab, setActiveTab] = useState<"sources" | "pdf">("sources");
+    const [activeTab, setActiveTab] = useState<"sources" | "pdf" | "research">("sources");
     const [citations] = useState<Citation[]>(MOCK_CITATIONS);
     const [isAddingCitation, setIsAddingCitation] = useState(false);
     const [collapsed, setCollapsed] = useState(false);
+    const [pdfBuffer, setPdfBuffer] = useState<ArrayBuffer | null>(null);
+
+    useEffect(() => {
+        if (pdfUrl) {
+            fetch(pdfUrl)
+                .then(res => res.arrayBuffer())
+                .then(buf => setPdfBuffer(buf))
+                .catch(err => console.error("Failed to load PDF buffer:", err));
+        }
+    }, [pdfUrl]);
 
     const handleDragStart = (e: React.DragEvent, citation: Citation) => {
         // Format citation for drag & drop into paper
@@ -123,6 +134,17 @@ export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
                     >
                         PDF View
                     </button>
+                    <button
+                        onClick={() => setActiveTab("research")}
+                        className={cn(
+                            "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                            activeTab === "research"
+                                ? "bg-violet-500/20 text-violet-400"
+                                : "text-zinc-500 hover:text-white"
+                        )}
+                    >
+                        Research
+                    </button>
                 </div>
                 <button
                     onClick={() => setCollapsed(true)}
@@ -134,7 +156,16 @@ export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
 
             {/* Tab Content */}
             <div className="flex-1 overflow-hidden">
-                {activeTab === "sources" ? (
+                {activeTab === "research" ? (
+                    <ResearchTools
+                        pdfBuffer={pdfBuffer}
+                        onJumpToPage={(page) => {
+                            console.log("Jump to page:", page);
+                            // Implementation dependent on PDF viewer exposure
+                            // For now just logging
+                        }}
+                    />
+                ) : activeTab === "sources" ? (
                     <div className="h-full flex flex-col">
                         {/* Add Citation Button */}
                         <div className="p-3 border-b border-zinc-800">

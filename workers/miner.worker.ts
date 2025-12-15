@@ -1,54 +1,34 @@
 
-import { pipeline, env } from '@xenova/transformers';
+import { scanForIndex, extractSpecificPages } from '../utils/pdf-extraction';
+import { mineMetric } from '../utils/miner-logic';
 
-// Skip local model checks since we're running in the browser/worker
-env.allowLocalModels = false;
-env.useBrowserCache = true;
+const ctx: Worker = self as any;
 
-class ExtractionSingleton {
-  static task = 'text2text-generation';
-  static model = 'Xenova/LaMini-Flan-T5-783M';
-  static instance: any = null;
+ctx.onmessage = async (event) => {
+  const { type, payload } = event.data;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  static async getInstance(progress_callback: any = null) {
-    if (this.instance === null) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.instance = await pipeline(this.task as any, this.model, { progress_callback });
+  try {
+    switch (type) {
+      case 'SCAN_INDEX':
+        const indexData = await scanForIndex(payload.pdfBuffer);
+        ctx.postMessage({ type: 'INDEX_RESULT', data: indexData });
+        break;
+
+      case 'EXTRACT_PAGES':
+        const pageData = await extractSpecificPages(payload.pdfBuffer, payload.pages);
+        ctx.postMessage({ type: 'PAGES_RESULT', data: pageData });
+        break;
+
+      case 'MINE_METRIC':
+        const { chunks, metric, keywords } = payload;
+        const result = await mineMetric(chunks, metric, keywords);
+        ctx.postMessage({ type: 'METRIC_RESULT', metric, data: result });
+        break;
+
+      default:
+        console.warn('Unknown worker command:', type);
     }
-    return this.instance;
+  } catch (error) {
+    ctx.postMessage({ type: 'ERROR', error: error });
   }
-}
-
-self.addEventListener('message', async (event) => {
-  const { text, prompt, type } = event.data;
-
-  if (type === 'extract') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const generator = await ExtractionSingleton.getInstance((data: any) => {
-          self.postMessage({ type: 'progress', data });
-      });
-
-      // Construct prompt for extraction
-      // "Extract the exact value for 'Net Profit' from this text. Return only the number. Text: [Chunk]"
-      const fullPrompt = `${prompt} Text: ${text}`;
-
-      const output = await generator(fullPrompt, {
-        max_new_tokens: 50, // Short answer expected
-        temperature: 0.1, // Low temperature for deterministic/factual output
-      });
-
-      const result = output[0]?.generated_text;
-
-      self.postMessage({
-        type: 'result',
-        result: result,
-      });
-
-    } catch (error) {
-      console.error(error);
-      self.postMessage({ type: 'error', error: String(error) });
-    }
-  }
-});
+};
