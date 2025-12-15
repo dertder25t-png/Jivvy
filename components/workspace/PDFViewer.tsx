@@ -1,14 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
-import { Loader2, ZoomIn, ZoomOut, RotateCw } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Loader2, ZoomIn, ZoomOut, RotateCw, Download, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GummyButton } from "@/components/ui/GummyButton";
 import { useProjectStore } from "@/lib/store";
-
-// Configure worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface PDFViewerProps {
     url: string;
@@ -16,94 +12,69 @@ interface PDFViewerProps {
 }
 
 export function PDFViewer({ url, className }: PDFViewerProps) {
-    const [numPages, setNumPages] = useState<number>(0);
-    // Use local state for immediate feedback but sync with global store
-    const { pdfPage, setPdfPage } = useProjectStore();
-    const [pageNumber, setPageNumber] = useState<number>(1);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+    const iframeRef = useRef<HTMLIFrameElement>(null);
 
-    const [scale, setScale] = useState<number>(1.0);
-    const [rotation, setRotation] = useState<number>(0);
-    const [loading, setLoading] = useState<boolean>(true);
-
-    // Sync local state with global store
-    useEffect(() => {
-        setPageNumber(pdfPage);
-    }, [pdfPage]);
-
-    // Update global store when local page changes (via controls)
-    const handlePageChange = (newPage: number) => {
-        setPageNumber(newPage);
-        setPdfPage(newPage);
+    // Handle iframe load
+    const handleLoad = () => {
+        setLoading(false);
+        setError(false);
     };
 
-    function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
-        setNumPages(numPages);
+    const handleError = () => {
         setLoading(false);
-    }
+        setError(true);
+    };
+
+    // Open in new tab for download/print
+    const handleOpenExternal = () => {
+        window.open(url, '_blank');
+    };
 
     return (
         <div className={cn("flex flex-col h-full bg-zinc-900/50 rounded-3xl overflow-hidden border border-white/5 relative", className)}>
             {/* Controls */}
             <div className="flex items-center justify-between p-2 md:p-4 bg-zinc-900/80 backdrop-blur-sm border-b border-white/5 z-10">
-                <div className="flex items-center gap-2">
-                    <GummyButton size="sm" variant="ghost" onClick={() => setScale(s => Math.max(0.5, s - 0.1))}>
-                        <ZoomOut size={16} />
-                    </GummyButton>
-                    <span className="text-xs font-mono text-zinc-400 w-12 text-center">{Math.round(scale * 100)}%</span>
-                    <GummyButton size="sm" variant="ghost" onClick={() => setScale(s => Math.min(2.5, s + 0.1))}>
-                        <ZoomIn size={16} />
-                    </GummyButton>
+                <div className="flex items-center gap-2 text-xs text-zinc-400">
+                    <FileText size={14} className="text-lime-400" />
+                    <span>PDF Viewer</span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    <GummyButton size="sm" variant="ghost" onClick={() => handlePageChange(Math.max(1, pageNumber - 1))} disabled={pageNumber <= 1}>
-                        &lt;
-                    </GummyButton>
-                    <span className="text-xs font-mono text-zinc-400 w-20 text-center">
-                        Page {pageNumber} of {numPages || "--"}
-                    </span>
-                    <GummyButton size="sm" variant="ghost" onClick={() => handlePageChange(Math.min(numPages, pageNumber + 1))} disabled={pageNumber >= numPages}>
-                        &gt;
-                    </GummyButton>
-                </div>
-
-                <GummyButton size="sm" variant="ghost" onClick={() => setRotation(r => (r + 90) % 360)}>
-                    <RotateCw size={16} />
+                <GummyButton size="sm" variant="ghost" onClick={handleOpenExternal} title="Open in new tab">
+                    <Download size={16} />
                 </GummyButton>
             </div>
 
             {/* Document Viewer */}
-            <div className="flex-1 overflow-auto flex justify-center p-4 md:p-8 no-scrollbar relative">
+            <div className="flex-1 overflow-hidden relative">
                 {loading && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <Loader2 className="animate-spin text-lime-400" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/80 z-10">
+                        <div className="flex flex-col items-center gap-3">
+                            <Loader2 className="animate-spin text-lime-400" size={32} />
+                            <span className="text-sm text-zinc-400">Loading PDF...</span>
+                        </div>
                     </div>
                 )}
 
-                <Document
-                    file={url}
-                    onLoadSuccess={onDocumentLoadSuccess}
-                    className="shadow-2xl"
-                    loading={
-                        <div className="flex items-center justify-center p-12 text-zinc-500 text-sm">
-                            Loading PDF...
-                        </div>
-                    }
-                    error={
-                        <div className="flex items-center justify-center p-12 text-red-400 text-sm">
-                            Failed to load PDF.
-                        </div>
-                    }
-                >
-                    <Page
-                        pageNumber={pageNumber}
-                        scale={scale}
-                        rotate={rotation}
-                        className="rounded-lg overflow-hidden shadow-lg border border-white/10"
-                        renderAnnotationLayer={false}
-                        renderTextLayer={false}
-                    />
-                </Document>
+                {error && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/80 z-10">
+                        <FileText size={48} className="text-zinc-600 mb-4" />
+                        <span className="text-sm text-red-400 mb-2">Failed to load PDF</span>
+                        <GummyButton size="sm" onClick={handleOpenExternal}>
+                            Open in New Tab
+                        </GummyButton>
+                    </div>
+                )}
+
+                <iframe
+                    ref={iframeRef}
+                    src={url}
+                    className="w-full h-full border-0 bg-zinc-800"
+                    onLoad={handleLoad}
+                    onError={handleError}
+                    title="PDF Document"
+                />
             </div>
         </div>
     );

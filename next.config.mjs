@@ -1,13 +1,25 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    webpack: (config) => {
+    webpack: (config, { isServer }) => {
         config.resolve.alias = {
             ...config.resolve.alias,
             "sharp$": false,
             "onnxruntime-node$": false,
+        };
+
+        // Fix for pdfjs-dist canvas dependency
+        if (!isServer) {
+            config.resolve.fallback = {
+                ...config.resolve.fallback,
+                canvas: false,
+                fs: false,
+                path: false,
+            };
         }
+
         return config;
     },
 };
 
 export default nextConfig;
+

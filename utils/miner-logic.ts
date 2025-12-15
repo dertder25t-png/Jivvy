@@ -1,39 +1,90 @@
 
-import { pipeline, env } from '@xenova/transformers';
+/**
+ * Miner Logic - Keyword-based metric extraction
+ * Works with extracted text from PDFs
+ */
 
-// Skip local model checks if offline (optional, good for production)
-env.allowLocalModels = false;
+import { extractAllText } from './pdf-extraction';
 
-// Singleton pattern to prevent reloading model
-let extractorPipeline: any = null;
+export async function mineMetric(
+  chunksOrBuffer: string[] | ArrayBuffer,
+  metricName: string,
+  keywords: string[]
+): Promise<{ value: string; confidence: number; pageContext?: string }> {
 
-export async function getExtractor() {
-  if (!extractorPipeline) {
-    extractorPipeline = await pipeline('text2text-generation', 'Xenova/LaMini-Flan-T5-783M');
+  // Get text from buffer or use chunks directly
+  let text: string;
+  if (chunksOrBuffer instanceof ArrayBuffer) {
+    console.log('[Miner] Extracting text from PDF buffer...');
+    text = await extractAllText(chunksOrBuffer);
+    console.log('[Miner] Extracted text length:', text.length);
+  } else {
+    text = chunksOrBuffer.join(' ');
   }
-  return extractorPipeline;
-}
 
-export async function mineMetric(chunks: string[], metricName: string, keywords: string[]) {
-  // 1. Filter: Find chunks containing keywords (Fast)
-  const relevantChunks = chunks.filter(chunk =>
-    keywords.some(kw => chunk.toLowerCase().includes(kw.toLowerCase()))
+  if (!text || text.length === 0) {
+    return { value: "No text extracted", confidence: 0 };
+  }
+
+  // 1. Find all sentences containing keywords
+  const sentences = text.split(/[.!?\n]+/).filter(s => s.trim().length > 10);
+  const relevantSentences = sentences.filter(sentence =>
+    keywords.some(kw => sentence.toLowerCase().includes(kw.toLowerCase()))
   );
 
-  if (relevantChunks.length === 0) return { value: "Not Found", confidence: 0 };
+  console.log('[Miner] Found', relevantSentences.length, 'relevant sentences from', sentences.length, 'total');
 
-  // 2. Context: Take top 3 chunks, max 1500 chars (Save memory)
-  const context = relevantChunks.slice(0, 3).join(' ').substring(0, 1500);
-
-  // 3. AI Extraction (Slow/Smart)
-  const extractor = await getExtractor();
-  const prompt = `Extract the value for "${metricName}" from the text below. Return ONLY the number or short value. \n\nContext: ${context}`;
-
-  try {
-    const result = await extractor(prompt, { max_new_tokens: 20, temperature: 0.1 });
-    return { value: result[0].generated_text, confidence: 0.9, pageContext: "Derived from keyword match" };
-  } catch (err) {
-    console.error("AI Error:", err);
-    return { value: "Error", confidence: 0 };
+  if (relevantSentences.length === 0) {
+    return { value: "Keywords not found", confidence: 0 };
   }
+
+  // 2. Extract numbers from relevant sentences
+  const numberPattern = /[\$£€]?\s*[\d,]+\.?\d*\s*(?:million|billion|thousand|k|m|b)?/gi;
+  const percentPattern = /\d+\.?\d*\s*%/g;
+
+  const foundNumbers: string[] = [];
+  const foundPercentages: string[] = [];
+
+  relevantSentences.forEach(sentence => {
+    const numbers = sentence.match(numberPattern) || [];
+    const percentages = sentence.match(percentPattern) || [];
+    foundNumbers.push(...numbers.map(n => n.trim()));
+    foundPercentages.push(...percentages.map(p => p.trim()));
+  });
+
+  // 3. Return the most likely value based on metric type
+  const metricLower = metricName.toLowerCase();
+
+  if (metricLower.includes('percent') || metricLower.includes('%') || metricLower.includes('rate')) {
+    if (foundPercentages.length > 0) {
+      return {
+        value: foundPercentages[0],
+        confidence: 0.8,
+        pageContext: relevantSentences[0].substring(0, 100)
+      };
+    }
+  }
+
+  if (foundNumbers.length > 0) {
+    // Filter out small numbers that are likely page numbers
+    const meaningfulNumbers = foundNumbers.filter(n => {
+      const num = parseFloat(n.replace(/[,$£€]/g, ''));
+      return !isNaN(num) && num > 10;
+    });
+
+    if (meaningfulNumbers.length > 0) {
+      return {
+        value: meaningfulNumbers[0],
+        confidence: 0.75,
+        pageContext: relevantSentences[0].substring(0, 100)
+      };
+    }
+  }
+
+  // 4. Return text context if no numbers found
+  return {
+    value: relevantSentences[0].substring(0, 100).trim(),
+    confidence: 0.5,
+    pageContext: "Found keyword match, showing context"
+  };
 }

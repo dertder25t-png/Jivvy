@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { X, Cpu, Lock } from "lucide-react";
+import { X, Cpu, Lock, LayoutTemplate } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSettingsStore } from "@/lib/store/settings";
 
 interface SettingsModalProps {
     open: boolean;
@@ -11,6 +12,7 @@ interface SettingsModalProps {
 
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     const [grammarEnabled, setGrammarEnabled] = useState(false);
+    const { drawerPosition, setDrawerPosition } = useSettingsStore();
 
     useEffect(() => {
         const stored = localStorage.getItem('jivvy-grammar-enabled');
@@ -23,9 +25,6 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         const newValue = !grammarEnabled;
         setGrammarEnabled(newValue);
         localStorage.setItem('jivvy-grammar-enabled', String(newValue));
-        // Force a page reload or event dispatch to notify components?
-        // Since Notebook reads on mount/render, simpler to rely on state lift or context.
-        // But for this task, I'll dispatch a custom event.
         window.dispatchEvent(new CustomEvent('jivvy-settings-changed', {
             detail: { grammarEnabled: newValue }
         }));
@@ -47,7 +46,47 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                     Settings
                 </h2>
 
-                <div className="space-y-6">
+                <div className="space-y-4">
+                    {/* UI Preferences Section */}
+                    <div className="p-4 rounded-xl bg-zinc-800/50 border border-zinc-700/50">
+                        <div className="flex items-center gap-2 mb-3">
+                            <h3 className="font-medium text-white flex items-center gap-2">
+                                <LayoutTemplate size={16} className="text-violet-400" />
+                                Interface Layout
+                            </h3>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-zinc-300">Project Drawer Position</span>
+                                <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-700">
+                                    <button
+                                        onClick={() => setDrawerPosition('right')}
+                                        className={cn(
+                                            "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                                            drawerPosition === 'right'
+                                                ? "bg-violet-500 text-white shadow-sm"
+                                                : "text-zinc-500 hover:text-white"
+                                        )}
+                                    >
+                                        Right
+                                    </button>
+                                    <button
+                                        onClick={() => setDrawerPosition('bottom')}
+                                        className={cn(
+                                            "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                                            drawerPosition === 'bottom'
+                                                ? "bg-violet-500 text-white shadow-sm"
+                                                : "text-zinc-500 hover:text-white"
+                                        )}
+                                    >
+                                        Bottom
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="p-4 rounded-xl bg-zinc-800/50 border border-zinc-700/50">
                         <div className="flex items-start justify-between gap-4">
                             <div className="flex-1">

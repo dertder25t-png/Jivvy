@@ -170,7 +170,7 @@ export async function rewriteText(text: string, tone: string, sampleText?: strin
         let prompt = "";
 
         if (tone === "custom" && sampleText) {
-             prompt = `Rewrite the target text to match the tone, sentence structure, and style of the sample text provided.
+            prompt = `Rewrite the target text to match the tone, sentence structure, and style of the sample text provided.
 
              Sample Text (Style Reference):
              "${sampleText}"
@@ -304,3 +304,72 @@ Example format:
         };
     }
 }
+
+export interface AnswerQuestionResult {
+    answer: string | null;
+    error?: string;
+}
+
+/**
+ * Answer a question using PDF context with Gemini AI
+ */
+export async function answerQuestion(question: string, context: string): Promise<AnswerQuestionResult> {
+    try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { answer: null, error: "Unauthorized" };
+        }
+
+        try {
+            await limiter.check(10, user.id);
+        } catch {
+            return { answer: null, error: "Rate limit exceeded. Please try again later." };
+        }
+
+        if (!process.env.GEMINI_API_KEY) {
+            return { answer: null, error: "Gemini API key not configured" };
+        }
+
+        if (!question || question.trim().length === 0) {
+            return { answer: null, error: "No question provided" };
+        }
+
+        if (!context || context.trim().length === 0) {
+            return { answer: null, error: "No context provided" };
+        }
+
+        // Use Gemma 3 (12B) for quick Q&A
+        const model = genAI.getGenerativeModel({ model: "gemma-3-12b-it" });
+
+        const prompt = `Answer the following question based ONLY on the provided context from a PDF document.
+
+Question: "${question}"
+
+Context from PDF:
+"""
+${context.slice(0, 12000)}
+"""
+
+Rules:
+- Answer concisely and directly based on the context provided.
+- If the answer is found, quote or reference the relevant parts.
+- If the context doesn't contain the answer, say "I couldn't find this information in the provided pages."
+- Be specific and informative.
+- Do NOT make up information not in the context.`;
+
+        const result = await model.generateContent([{ text: prompt }]);
+        const responseText = result.response.text();
+
+        return { answer: responseText.trim() };
+
+    } catch (error) {
+        console.error("Error answering question:", error);
+        return {
+            answer: null,
+            error: error instanceof Error ? error.message : "Unknown error"
+        };
+    }
+}
+

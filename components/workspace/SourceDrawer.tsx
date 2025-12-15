@@ -10,11 +10,19 @@ import {
     ExternalLink,
     ChevronRight,
     X,
-    Quote
+    Quote,
+    StickyNote,
+    CreditCard,
+    ChevronDown,
+    ChevronUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ResearchTools } from './ResearchTools';
 import { useProjectStore } from "@/lib/store";
+import { FlashcardSidebar } from "./FlashcardSidebar"; // Ensure this matches import path
+// Identifying SyllabusTracker as the "Notes" component
+import { SyllabusTracker } from "./SyllabusTracker";
+import { useSettingsStore } from "@/lib/store/settings";
 
 interface Citation {
     id: string;
@@ -29,6 +37,7 @@ interface SourceDrawerProps {
     className?: string;
     pdfUrl?: string;
     projectId?: string;
+    orientation?: 'vertical' | 'horizontal'; // Prop to force orientation if needed
 }
 
 // Mock citations for demo - in real app, fetch from database
@@ -56,13 +65,20 @@ const MOCK_CITATIONS: Citation[] = [
     },
 ];
 
-export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
-    const [activeTab, setActiveTab] = useState<"sources" | "pdf" | "research">("sources");
+export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOrientation }: SourceDrawerProps) {
+    // Default to 'sources' or previously checked? Let's default to sources.
+    const [activeTab, setActiveTab] = useState<"sources" | "pdf" | "research" | "flashcards" | "notes">("sources");
     const [citations] = useState<Citation[]>(MOCK_CITATIONS);
     const [isAddingCitation, setIsAddingCitation] = useState(false);
     const [collapsed, setCollapsed] = useState(false);
     const [pdfBuffer, setPdfBuffer] = useState<ArrayBuffer | null>(null);
     const { setPdfPage } = useProjectStore();
+
+    // Subscribe to store setting, but allow prop override
+    const storePosition = useSettingsStore(state => state.drawerPosition);
+    // If prop is provided (e.g. wrapper dictates), usage that. Otherwise store.
+    // 'vertical' maps to 'right' position, 'horizontal' maps to 'bottom'.
+    const orientation = propOrientation ?? (storePosition === 'bottom' ? 'horizontal' : 'vertical');
 
     useEffect(() => {
         if (pdfUrl) {
@@ -95,69 +111,83 @@ export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
         }
     };
 
+    const isHorizontal = orientation === 'horizontal';
+
     if (collapsed) {
         return (
             <button
                 onClick={() => setCollapsed(false)}
-                className="h-full w-10 flex items-center justify-center bg-surface border-l border-zinc-800 hover:bg-zinc-900 transition-colors group"
+                className={cn(
+                    "flex items-center justify-center bg-surface hover:bg-zinc-900 transition-colors group z-20",
+                    isHorizontal
+                        ? "w-full h-8 border-t border-zinc-800"
+                        : "h-full w-10 border-l border-zinc-800"
+                )}
             >
-                <ChevronRight size={16} className="text-zinc-500 group-hover:text-violet-400 rotate-180" />
+                {isHorizontal ? (
+                    <span className="flex items-center gap-2 text-xs text-zinc-500 group-hover:text-violet-400">
+                        <ChevronUp size={14} /> Open Drawer
+                    </span>
+                ) : (
+                    <ChevronRight size={16} className="text-zinc-500 group-hover:text-violet-400 rotate-180" />
+                )}
+
             </button>
         );
     }
 
     return (
         <div className={cn(
-            "w-80 h-full flex flex-col bg-surface border-l border-violet-500/20",
+            "flex bg-surface border-zinc-800 overflow-hidden relative transition-all duration-300",
+            isHorizontal
+                ? "w-full h-80 flex-col border-t"
+                : "w-96 h-full flex-col border-l", // Increased width slightly for better content fit
             className
         )}>
             {/* Header with Tabs */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-                <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-lg">
+            <div className={cn(
+                "flex items-center justify-between px-3 py-2 border-b border-zinc-800 bg-surface z-10",
+                isHorizontal && "sticky top-0"
+            )}>
+                <div className="flex items-center gap-1 bg-zinc-900/50 p-1 rounded-lg overflow-x-auto no-scrollbar max-w-[calc(100%-40px)]">
+                    {[
+                        { id: 'sources', label: 'Sources', icon: BookOpen },
+                        { id: 'pdf', label: 'PDF View', icon: FileText },
+                        { id: 'research', label: 'Tools', icon: Link2 }, // Shortened for space
+                        { id: 'flashcards', label: 'Flashcards', icon: CreditCard },
+                        { id: 'notes', label: 'Notes', icon: StickyNote },
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as any)}
+                            className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap",
+                                activeTab === tab.id
+                                    ? "bg-violet-500/20 text-violet-400 shadow-sm"
+                                    : "text-zinc-500 hover:text-white"
+                            )}
+                        >
+                            {/* {tab.label} */}
+                            {/* Condense label on vertical if needed, but horizontal usually has space. */}
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="flex items-center gap-1">
+                    {/* Position Toggle (Just for quick access if desired, or rely on Settings) */}
+                    {/* For now, just collapse button */}
                     <button
-                        onClick={() => setActiveTab("sources")}
-                        className={cn(
-                            "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                            activeTab === "sources"
-                                ? "bg-violet-500/20 text-violet-400"
-                                : "text-zinc-500 hover:text-white"
-                        )}
+                        onClick={() => setCollapsed(true)}
+                        className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors"
                     >
-                        Sources
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("pdf")}
-                        className={cn(
-                            "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                            activeTab === "pdf"
-                                ? "bg-violet-500/20 text-violet-400"
-                                : "text-zinc-500 hover:text-white"
-                        )}
-                    >
-                        PDF View
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("research")}
-                        className={cn(
-                            "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                            activeTab === "research"
-                                ? "bg-violet-500/20 text-violet-400"
-                                : "text-zinc-500 hover:text-white"
-                        )}
-                    >
-                        Research
+                        {isHorizontal ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </button>
                 </div>
-                <button
-                    onClick={() => setCollapsed(true)}
-                    className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors"
-                >
-                    <ChevronRight size={16} />
-                </button>
             </div>
 
             {/* Tab Content */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden relative">
                 {activeTab === "research" ? (
                     <ResearchTools
                         pdfBuffer={pdfBuffer}
@@ -165,24 +195,33 @@ export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
                             setPdfPage(page);
                         }}
                     />
+                ) : activeTab === "flashcards" ? (
+                    <div className="h-full overflow-hidden">
+                        <FlashcardSidebar projectId={projectId} />
+                    </div>
+                ) : activeTab === "notes" ? (
+                    <div className="h-full overflow-hidden">
+                        <SyllabusTracker projectId={projectId} />
+                    </div>
                 ) : activeTab === "sources" ? (
                     <div className="h-full flex flex-col">
                         {/* Add Citation Button */}
                         <div className="p-3 border-b border-zinc-800">
                             <button
                                 onClick={() => setIsAddingCitation(true)}
-                                className="w-full flex items-center justify-center gap-2 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-xl transition-colors text-sm font-medium"
+                                className="w-full flex items-center justify-center gap-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors text-xs font-medium"
                             >
-                                <Plus size={16} />
+                                <Plus size={14} />
                                 Add Citation
                             </button>
                         </div>
 
                         {/* Citations List */}
                         <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                            {/* ... (Existing citation mapping logic remains same) ... */}
                             {citations.length === 0 ? (
                                 <div className="text-center py-8">
-                                    <Quote className="mx-auto text-zinc-700 mb-3" size={32} />
+                                    <Quote className="mx-auto text-zinc-700 mb-3" size={24} />
                                     <p className="text-zinc-500 text-sm">No sources yet</p>
                                     <p className="text-zinc-600 text-xs mt-1">Add citations to reference in your paper</p>
                                 </div>
@@ -229,9 +268,9 @@ export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
                         </div>
 
                         {/* Drag Hint */}
-                        <div className="p-3 border-t border-zinc-800">
-                            <p className="text-xs text-zinc-600 text-center">
-                                Drag citations into your paper to insert
+                        <div className="p-2 border-t border-zinc-800 bg-zinc-900/30">
+                            <p className="text-[10px] text-zinc-600 text-center uppercase tracking-wider">
+                                Drag to Insert
                             </p>
                         </div>
                     </div>
@@ -248,7 +287,7 @@ export function SourceDrawer({ className, pdfUrl }: SourceDrawerProps) {
                                 <div className="text-center py-8 px-4">
                                     <FileText className="mx-auto text-zinc-700 mb-3" size={32} />
                                     <p className="text-zinc-500 text-sm">No PDF attached</p>
-                                    <p className="text-zinc-600 text-xs mt-1">Upload a PDF to your project to view it here</p>
+                                    <p className="text-zinc-600 text-xs mt-1">Upload a PDF to view it here</p>
                                 </div>
                             </div>
                         )}

@@ -1,5 +1,6 @@
 "use client";
 
+
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -11,13 +12,9 @@ import { getProject, createProject, getProjectNotes, saveProjectNote, type Proje
 import { uploadPDF } from "@/utils/supabase/storage";
 import { createClient } from "@/utils/supabase/client";
 import { cn } from "@/lib/utils";
-import { SpecSidebar } from "@/components/workspace/SpecSidebar";
 import { DesignDoctorTool } from "@/components/workspace/DesignDoctorTool";
-import { SourceDrawer } from "@/components/workspace/SourceDrawer";
-import { SyllabusTracker } from "@/components/workspace/SyllabusTracker";
-import { FlashcardSidebar } from "@/components/workspace/FlashcardSidebar";
-import { ExtractionWorkspace } from "@/components/workspace/ExtractionWorkspace";
 import { useProjectStore } from "@/lib/store";
+import { useSettingsStore } from "@/lib/store/settings";
 
 const PDFViewer = dynamic(() => import("@/components/workspace/PDFViewer").then(mod => mod.PDFViewer), {
     ssr: false,
@@ -34,6 +31,26 @@ const Notebook = dynamic(() => import("@/components/workspace/Notebook").then(mo
     loading: () => <div className="h-full w-full flex items-center justify-center text-zinc-500">Loading Notebook...</div>
 });
 
+const SourceDrawer = dynamic(() => import("@/components/workspace/SourceDrawer").then(mod => mod.SourceDrawer), {
+    ssr: false,
+    loading: () => null
+});
+
+const SpecSidebar = dynamic(() => import("@/components/workspace/SpecSidebar").then(mod => mod.SpecSidebar), {
+    ssr: false,
+    loading: () => null
+});
+
+const FlashcardSidebar = dynamic(() => import("@/components/workspace/FlashcardSidebar").then(mod => mod.FlashcardSidebar), {
+    ssr: false,
+    loading: () => null
+});
+
+const ExtractionWorkspace = dynamic(() => import("@/components/workspace/ExtractionWorkspace").then(mod => mod.ExtractionWorkspace), {
+    ssr: false,
+    loading: () => null
+});
+
 // Mock spec items for the properties panel
 export default function ProjectPage() {
     const params = useParams();
@@ -42,6 +59,14 @@ export default function ProjectPage() {
 
     // Global Store
     const { centerMode, setCenterMode, setActiveProjectId } = useProjectStore();
+    const { drawerPosition } = useSettingsStore();
+
+    // Init PDF worker on client
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            import("@/lib/pdf-init");
+        }
+    }, []);
 
     const [project, setProject] = useState<Project | null>(null);
     const [loading, setLoading] = useState(true);
@@ -302,180 +327,188 @@ export default function ProjectPage() {
                 <FlashcardSidebar projectId={projectId} />
             )}
 
-            {/* Paper mode has no left panel - full width editor */}
-            {/* Extraction mode handles its own layout, so we hide standard layout or handle it differently.
-                Actually, the ExtractionWorkspace is a full screen component (below nav).
-                So if mode is extraction, we render it directly.
-             */}
-
+            {/* Extraction mode handles its own layout */}
             {centerMode === 'extraction' ? (
-                <ExtractionWorkspace pdfUrl={project?.pdf_url ?? null} />
+                <ExtractionWorkspace
+                    pdfUrl={project?.pdf_url ?? null}
+                    projectId={projectId}
+                    onPdfUploaded={(url) => setProject(prev => prev ? { ...prev, pdf_url: url } : null)}
+                />
             ) : (
                 /* CENTER PANEL - Canvas or Notebook */
                 <div className="flex-1 h-full flex flex-col overflow-hidden relative">
 
-                {/* Squint Slider (Floating - only on Canvas) */}
-                {centerMode === 'canvas' && (
-                    <div className="absolute bottom-6 left-6 z-20 flex items-center gap-3 bg-zinc-900/90 backdrop-blur-xl p-3 rounded-2xl border border-zinc-800 shadow-xl">
-                        <Eye size={16} className="text-zinc-400" />
-                        <div className="flex flex-col gap-1">
-                            <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Squint Test</span>
-                            <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                value={squintAmount}
-                                onChange={(e) => setSquintAmount(Number(e.target.value))}
-                                className="w-32 h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-lime-400"
-                            />
-                        </div>
-                        <span className="text-xs font-mono text-lime-400 w-8 text-right">{squintAmount}%</span>
-                    </div>
-                )}
-
-                {/* CANVAS AREA - Mid-Grey Background with Breathing Room */}
-                <div
-                    className="flex-1 overflow-hidden p-6 bg-surface relative"
-                    onDrop={handleDrop}
-                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                    onDragLeave={() => setDragOver(false)}
-                >
-                    {/* Design Doctor Floating Tool (Canvas mode only) */}
-                    {centerMode === 'canvas' && <DesignDoctorTool />}
-                    {/* Full-Screen Onboarding Overlay - Only for new projects */}
-                    {projectId === 'new' && !project?.pdf_url && leftPanelCollapsed && !onboardingComplete && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
-                            <div
-                                className={cn(
-                                    "bg-zinc-900 rounded-3xl border border-zinc-800 p-8 text-center max-w-md shadow-2xl",
-                                    dragOver && "border-lime-400 bg-lime-400/5"
-                                )}
-                                onDrop={handleDrop}
-                                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                                onDragLeave={() => setDragOver(false)}
-                            >
-                                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-400/20 to-violet-500/20 flex items-center justify-center mx-auto mb-4">
-                                    <Sparkles className="text-lime-400" size={28} />
+                    {/* The Main Content Area (Canvas/Notes) */}
+                    <div className="flex-1 flex overflow-hidden relative">
+                        {/* Squint Slider (Floating - only on Canvas) */}
+                        {centerMode === 'canvas' && (
+                            <div className="absolute bottom-6 left-6 z-20 flex items-center gap-3 bg-zinc-900/90 backdrop-blur-xl p-3 rounded-2xl border border-zinc-800 shadow-xl">
+                                <Eye size={16} className="text-zinc-400" />
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Squint Test</span>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        value={squintAmount}
+                                        onChange={(e) => setSquintAmount(Number(e.target.value))}
+                                        className="w-32 h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-lime-400"
+                                    />
                                 </div>
-                                <h2 className="text-xl font-bold text-white mb-2">What are you creating?</h2>
-                                <p className="text-zinc-400 text-sm mb-6">Choose your workspace to get started</p>
-
-                                {/* Project Type Cards (Updated to 3 options) */}
-                                <div className="grid grid-cols-3 gap-3 mb-6">
-                                    <button
-                                        onClick={() => handleStartProject('canvas')}
-                                        disabled={isCreatingProject}
-                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-lime-400 hover:bg-lime-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-lime-400/20 flex items-center justify-center transition-colors">
-                                            {isCreatingProject ? (
-                                                <Loader2 size={18} className="text-zinc-400 animate-spin" />
-                                            ) : (
-                                                <PenTool size={18} className="text-zinc-400 group-hover:text-lime-400" />
-                                            )}
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-white text-xs">Canvas</p>
-                                        </div>
-                                    </button>
-                                    <button
-                                        onClick={() => handleStartProject('paper')}
-                                        disabled={isCreatingProject}
-                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-violet-400 hover:bg-violet-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-violet-400/20 flex items-center justify-center transition-colors">
-                                            {isCreatingProject ? (
-                                                <Loader2 size={18} className="text-zinc-400 animate-spin" />
-                                            ) : (
-                                                <FileText size={18} className="text-zinc-400 group-hover:text-violet-400" />
-                                            )}
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-white text-xs">Paper</p>
-                                        </div>
-                                    </button>
-                                    <button
-                                        onClick={() => handleStartProject('notes')}
-                                        disabled={isCreatingProject}
-                                        className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-amber-400 hover:bg-amber-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-amber-400/20 flex items-center justify-center transition-colors">
-                                            {isCreatingProject ? (
-                                                <Loader2 size={18} className="text-zinc-400 animate-spin" />
-                                            ) : (
-                                                <StickyNote size={18} className="text-zinc-400 group-hover:text-amber-400" />
-                                            )}
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-white text-xs">Notes</p>
-                                        </div>
-                                    </button>
-                                </div>
-
-                                {/* Divider */}
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="flex-1 h-px bg-zinc-800" />
-                                    <span className="text-xs text-zinc-600 uppercase">or</span>
-                                    <div className="flex-1 h-px bg-zinc-800" />
-                                </div>
-
-                                {/* Upload PDF */}
-                                <label className="cursor-pointer inline-block">
-                                    <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) handleFileUpload(file);
-                                    }} />
-                                    <span className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-lime-400 transition-colors">
-                                        <Upload size={14} />
-                                        Upload a Design Brief (PDF)
-                                    </span>
-                                </label>
+                                <span className="text-xs font-mono text-lime-400 w-8 text-right">{squintAmount}%</span>
                             </div>
+                        )}
+
+                        {/* CANVAS AREA - Mid-Grey Background with Breathing Room */}
+                        <div
+                            className="flex-1 overflow-hidden p-6 bg-surface relative"
+                            onDrop={handleDrop}
+                            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                            onDragLeave={() => setDragOver(false)}
+                        >
+                            {/* Design Doctor Floating Tool (Canvas mode only) */}
+                            {centerMode === 'canvas' && <DesignDoctorTool />}
+                            {/* Full-Screen Onboarding Overlay - Only for new projects */}
+                            {projectId === 'new' && !project?.pdf_url && leftPanelCollapsed && !onboardingComplete && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+                                    <div
+                                        className={cn(
+                                            "bg-zinc-900 rounded-3xl border border-zinc-800 p-8 text-center max-w-md shadow-2xl",
+                                            dragOver && "border-lime-400 bg-lime-400/5"
+                                        )}
+                                        onDrop={handleDrop}
+                                        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                        onDragLeave={() => setDragOver(false)}
+                                    >
+                                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-400/20 to-violet-500/20 flex items-center justify-center mx-auto mb-4">
+                                            <Sparkles className="text-lime-400" size={28} />
+                                        </div>
+                                        <h2 className="text-xl font-bold text-white mb-2">What are you creating?</h2>
+                                        <p className="text-zinc-400 text-sm mb-6">Choose your workspace to get started</p>
+
+                                        {/* Project Type Cards */}
+                                        <div className="grid grid-cols-3 gap-3 mb-6">
+                                            <button
+                                                onClick={() => handleStartProject('canvas')}
+                                                disabled={isCreatingProject}
+                                                className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-lime-400 hover:bg-lime-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-lime-400/20 flex items-center justify-center transition-colors">
+                                                    {isCreatingProject ? (
+                                                        <Loader2 size={18} className="text-zinc-400 animate-spin" />
+                                                    ) : (
+                                                        <PenTool size={18} className="text-zinc-400 group-hover:text-lime-400" />
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-white text-xs">Canvas</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={() => handleStartProject('paper')}
+                                                disabled={isCreatingProject}
+                                                className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-violet-400 hover:bg-violet-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-violet-400/20 flex items-center justify-center transition-colors">
+                                                    {isCreatingProject ? (
+                                                        <Loader2 size={18} className="text-zinc-400 animate-spin" />
+                                                    ) : (
+                                                        <FileText size={18} className="text-zinc-400 group-hover:text-violet-400" />
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-white text-xs">Paper</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={() => handleStartProject('notes')}
+                                                disabled={isCreatingProject}
+                                                className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-amber-400 hover:bg-amber-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-amber-400/20 flex items-center justify-center transition-colors">
+                                                    {isCreatingProject ? (
+                                                        <Loader2 size={18} className="text-zinc-400 animate-spin" />
+                                                    ) : (
+                                                        <StickyNote size={18} className="text-zinc-400 group-hover:text-amber-400" />
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-white text-xs">Notes</p>
+                                                </div>
+                                            </button>
+                                        </div>
+
+                                        {/* Divider */}
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="flex-1 h-px bg-zinc-800" />
+                                            <span className="text-xs text-zinc-600 uppercase">or</span>
+                                            <div className="flex-1 h-px bg-zinc-800" />
+                                        </div>
+
+                                        {/* Upload PDF */}
+                                        <label className="cursor-pointer inline-block">
+                                            <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) handleFileUpload(file);
+                                            }} />
+                                            <span className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-lime-400 transition-colors">
+                                                <Upload size={14} />
+                                                Upload a Design Brief (PDF)
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Canvas, Paper, or Notes Content */}
+                            {(onboardingComplete || !leftPanelCollapsed || project?.pdf_url) && (
+                                <div className="h-full w-full rounded-3xl overflow-hidden shadow-2xl bg-white/5">
+                                    {centerMode === 'canvas' && (
+                                        <InfiniteCanvas blurAmount={squintAmount} className="h-full" projectId={projectId} />
+                                    )}
+
+                                    {centerMode === 'paper' && notesLoaded && (
+                                        <Notebook
+                                            className="h-full"
+                                            projectId={projectId}
+                                            initialContent={paperContent}
+                                            onSave={handleSavePaper}
+                                            mode="paper"
+                                        />
+                                    )}
+
+                                    {centerMode === 'notes' && notesLoaded && (
+                                        <Notebook
+                                            className="h-full"
+                                            projectId={projectId}
+                                            initialContent={notesContent}
+                                            onSave={handleSaveNotes}
+                                            mode="notes"
+                                        />
+                                    )}
+                                </div>
+                            )}
                         </div>
-                    )}
+                    </div>
 
-                    {/* Canvas, Paper, or Notes Content */}
-                    {(onboardingComplete || !leftPanelCollapsed || project?.pdf_url) && (
-                        <div className="h-full w-full rounded-3xl overflow-hidden shadow-2xl bg-white/5">
-                            {centerMode === 'canvas' && (
-                                <InfiniteCanvas blurAmount={squintAmount} className="h-full" projectId={projectId} />
-                            )}
-
-                            {centerMode === 'paper' && notesLoaded && (
-                                <Notebook
-                                    className="h-full"
-                                    projectId={projectId}
-                                    initialContent={paperContent}
-                                    onSave={handleSavePaper}
-                                    mode="paper"
-                                />
-                            )}
-
-                            {centerMode === 'notes' && notesLoaded && (
-                                <Notebook
-                                    className="h-full"
-                                    projectId={projectId}
-                                    initialContent={notesContent}
-                                    onSave={handleSaveNotes}
-                                    mode="notes"
-                                />
-                            )}
-                        </div>
+                    {centerMode !== 'canvas' && drawerPosition === 'bottom' && (
+                        <SourceDrawer
+                            pdfUrl={project?.pdf_url ?? undefined}
+                            projectId={projectId}
+                            className="bg-surface border-t shadow-[0_-5px_15px_rgba(0,0,0,0.3)]"
+                        />
                     )}
                 </div>
-            </div>
             )}
 
             {/* RIGHT PANEL - Mode-specific sidebar */}
-            {/* We hide right panel for extraction mode as it uses full width split */}
             {centerMode === 'canvas' && (
                 <SpecSidebar pdfUrl={project?.pdf_url ?? undefined} className="bg-surface border-l border-white/5" />
             )}
-            {centerMode === 'paper' && (
+
+            {/* PAPER & NOTES MODE: RIGHT Position */}
+            {(centerMode === 'paper' || centerMode === 'notes') && drawerPosition === 'right' && (
                 <SourceDrawer pdfUrl={project?.pdf_url ?? undefined} projectId={projectId} className="bg-surface" />
-            )}
-            {centerMode === 'notes' && (
-                <SyllabusTracker projectId={projectId} className="bg-surface" />
             )}
         </div>
     );
