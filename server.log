@@ -2,131 +2,101 @@
 > temp_app@0.1.0 dev
 > next dev
 
-  ▲ Next.js 14.2.14
+ ⚠ Port 3000 is in use, trying 3001 instead.
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3001
+
+ ✓ Starting...
+ ✓ Ready in 1970ms
+ ○ Compiling / ...
+ ⨯ ./components/layout/Header.tsx:29:1
+Module not found: Can't resolve '@/components/dashboard/SettingsModal'
+[0m [90m 27 |[39m [36mimport[39m { createClient } [36mfrom[39m [32m"@/utils/supabase/client"[39m[33m;[39m[0m
+[0m [90m 28 |[39m [36mimport[39m { getProject[33m,[39m updateProjectMetadata } [36mfrom[39m [32m"@/app/project/actions"[39m[33m;[39m[0m
+[0m[31m[1m>[22m[39m[90m 29 |[39m [36mimport[39m { [33mSettingsModal[39m } [36mfrom[39m [32m"@/components/dashboard/SettingsModal"[39m[33m;[39m[0m
+[0m [90m    |[39m [31m[1m^[22m[39m[0m
+[0m [90m 30 |[39m[0m
+[0m [90m 31 |[39m [90m// Mock project files for dropdown - in real app, fetch from database[39m[0m
+[0m [90m 32 |[39m [36mconst[39m [33mMOCK_PROJECT_FILES[39m [33m=[39m [[0m
+
+https://nextjs.org/docs/messages/module-not-found
+ ⨯ ./components/layout/Header.tsx:29:1
+Module not found: Can't resolve '@/components/dashboard/SettingsModal'
+[0m [90m 27 |[39m [36mimport[39m { createClient } [36mfrom[39m [32m"@/utils/supabase/client"[39m[33m;[39m[0m
+[0m [90m 28 |[39m [36mimport[39m { getProject[33m,[39m updateProjectMetadata } [36mfrom[39m [32m"@/app/project/actions"[39m[33m;[39m[0m
+[0m[31m[1m>[22m[39m[90m 29 |[39m [36mimport[39m { [33mSettingsModal[39m } [36mfrom[39m [32m"@/components/dashboard/SettingsModal"[39m[33m;[39m[0m
+[0m [90m    |[39m [31m[1m^[22m[39m[0m
+[0m [90m 30 |[39m[0m
+[0m [90m 31 |[39m [90m// Mock project files for dropdown - in real app, fetch from database[39m[0m
+[0m [90m 32 |[39m [36mconst[39m [33mMOCK_PROJECT_FILES[39m [33m=[39m [[0m
+
+https://nextjs.org/docs/messages/module-not-found
+ ⨯ ./components/layout/Header.tsx:29:1
+Module not found: Can't resolve '@/components/dashboard/SettingsModal'
+[0m [90m 27 |[39m [36mimport[39m { createClient } [36mfrom[39m [32m"@/utils/supabase/client"[39m[33m;[39m[0m
+[0m [90m 28 |[39m [36mimport[39m { getProject[33m,[39m updateProjectMetadata } [36mfrom[39m [32m"@/app/project/actions"[39m[33m;[39m[0m
+[0m[31m[1m>[22m[39m[90m 29 |[39m [36mimport[39m { [33mSettingsModal[39m } [36mfrom[39m [32m"@/components/dashboard/SettingsModal"[39m[33m;[39m[0m
+[0m [90m    |[39m [31m[1m^[22m[39m[0m
+[0m [90m 30 |[39m[0m
+[0m [90m 31 |[39m [90m// Mock project files for dropdown - in real app, fetch from database[39m[0m
+[0m [90m 32 |[39m [36mconst[39m [33mMOCK_PROJECT_FILES[39m [33m=[39m [[0m
+
+https://nextjs.org/docs/messages/module-not-found
+ GET / 500 in 12376ms
+ ✓ Compiled /_error in 1550ms (1188 modules)
+ GET / 200 in 614ms
+Error fetching user: Error: Your project's URL and Key are required to create a Supabase client!
+
+Check your Supabase project's API settings to find these values
+
+https://supabase.com/dashboard/project/_/settings/api
+    at createServerClient (webpack-internal:///(action-browser)/./node_modules/@supabase/ssr/dist/module/createServerClient.js:15:15)
+    at createClient (webpack-internal:///(action-browser)/./utils/supabase/server.ts:11:77)
+    at getCurrentUser (webpack-internal:///(action-browser)/./app/user/actions.ts:15:94)
+    at endpoint (webpack-internal:///(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fapp%2Fapp%2Fproject%2Factions.ts%22%2C%5B%22getUserProjects%22%2C%22saveProjectNote%22%2C%22updateProjectMetadata%22%2C%22getProject%22%2C%22updateProjectConstraints%22%2C%22deleteProject%22%2C%22getProjectNotes%22%2C%22createProject%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Ftasks%2Factions.ts%22%2C%5B%22updateTaskStatus%22%2C%22deleteTask%22%2C%22getUserTasks%22%2C%22createTask%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fuser%2Factions.ts%22%2C%5B%22getCurrentUser%22%5D%5D%5D&__client_imported__=true!:20:17)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async /app/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:40:286
+    at async rk (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:38:8297)
+    at async ne (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:42:1256)
+    at async doRender (/app/node_modules/next/dist/server/base-server.js:1427:30)
+    at async cacheEntry.responseCache.get.routeKind (/app/node_modules/next/dist/server/base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (/app/node_modules/next/dist/server/base-server.js:1496:28)
+    at async DevServer.renderPageComponent (/app/node_modules/next/dist/server/base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (/app/node_modules/next/dist/server/base-server.js:1962:32)
+    at async DevServer.pipeImpl (/app/node_modules/next/dist/server/base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (/app/node_modules/next/dist/server/next-server.js:272:17)
+    at async DevServer.handleRequestImpl (/app/node_modules/next/dist/server/base-server.js:818:17)
+    at async /app/node_modules/next/dist/server/dev/next-dev-server.js:339:20
+    at async Span.traceAsyncFn (/app/node_modules/next/dist/trace/trace.js:154:20)
+    at async DevServer.handleRequest (/app/node_modules/next/dist/server/dev/next-dev-server.js:336:24)
+    at async invokeRender (/app/node_modules/next/dist/server/lib/router-server.js:179:21)
+    at async handleRequest (/app/node_modules/next/dist/server/lib/router-server.js:359:24)
+    at async requestHandlerImpl (/app/node_modules/next/dist/server/lib/router-server.js:383:13)
+    at async Server.requestListener (/app/node_modules/next/dist/server/lib/start-server.js:141:13)
+ POST / 200 in 144ms
+ ✓ Compiled in 2.1s (590 modules)
+ ✓ Compiled in 759ms (590 modules)
+ ✓ Compiled in 776ms (590 modules)
+ ✓ Compiled in 800ms (639 modules)
+ ✓ Compiled in 445ms (590 modules)
+ ✓ Compiled in 453ms (590 modules)
+ ✓ Compiled in 543ms (590 modules)
+ ✓ Compiled in 216ms (576 modules)
+ ○ Compiling / ...
+ ✓ Compiled / in 578ms (594 modules)
+ GET / 200 in 896ms
+ POST / 200 in 88ms
+ POST / 200 in 20ms
+ POST / 200 in 14ms
+ POST / 200 in 15ms
+ ✓ Compiled in 785ms (625 modules)
+ ✓ Compiled in 334ms (625 modules)
+ ✓ Compiled in 493ms (590 modules)
+ ✓ Compiled in 754ms (590 modules)
+ ✓ Compiled in 461ms (590 modules)
+ ⚠ Found a change in next.config.mjs. Restarting the server to apply the changes...
+  ▲ Next.js 14.2.35
   - Local:        http://localhost:3000
 
  ✓ Starting...
- ✓ Ready in 1806ms
- ○ Compiling /project/[id] ...
- ✓ Compiled /project/[id] in 21.5s (3049 modules)
- ✓ Compiled in 1123ms (1420 modules)
- GET /project/new 200 in 23622ms
-Error fetching user: Error: Your project's URL and Key are required to create a Supabase client!
-
-Check your Supabase project's API settings to find these values
-
-https://supabase.com/dashboard/project/_/settings/api
-    at createServerClient (webpack-internal:///(action-browser)/./node_modules/@supabase/ssr/dist/module/createServerClient.js:15:15)
-    at createClient (webpack-internal:///(action-browser)/./utils/supabase/server.ts:11:77)
-    at getCurrentUser (webpack-internal:///(action-browser)/./app/user/actions.ts:15:94)
-    at endpoint (webpack-internal:///(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fapp%2Fapp%2Fproject%2Factions.ts%22%2C%5B%22getUserProjects%22%2C%22saveProjectNote%22%2C%22updateProjectMetadata%22%2C%22getProject%22%2C%22updateProjectConstraints%22%2C%22deleteProject%22%2C%22getProjectNotes%22%2C%22createProject%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fai%2Factions.ts%22%2C%5B%22rewriteText%22%2C%22generateSpecSheet%22%2C%22generateSearchQueries%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fcritique%2Factions.ts%22%2C%5B%22critiqueFullCanvas%22%2C%22critiqueCrop%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fproject%2Fupload-actions.ts%22%2C%5B%22uploadImageAction%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fflashcards%2Factions.ts%22%2C%5B%22createFlashcard%22%2C%22getProjectFlashcards%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fuser%2Factions.ts%22%2C%5B%22getCurrentUser%22%5D%5D%5D&__client_imported__=true!:24:17)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async /app/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:39:418
-    at async r_ (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:38:8148)
-    at async r8 (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:41:1256)
-    at async doRender (/app/node_modules/next/dist/server/base-server.js:1406:30)
-    at async cacheEntry.responseCache.get.routeKind (/app/node_modules/next/dist/server/base-server.js:1555:40)
-    at async DevServer.renderToResponseWithComponentsImpl (/app/node_modules/next/dist/server/base-server.js:1475:28)
-    at async DevServer.renderPageComponent (/app/node_modules/next/dist/server/base-server.js:1901:24)
-    at async DevServer.renderToResponseImpl (/app/node_modules/next/dist/server/base-server.js:1939:32)
-    at async DevServer.pipeImpl (/app/node_modules/next/dist/server/base-server.js:914:25)
-    at async NextNodeServer.handleCatchallRenderRequest (/app/node_modules/next/dist/server/next-server.js:272:17)
-    at async DevServer.handleRequestImpl (/app/node_modules/next/dist/server/base-server.js:810:17)
-    at async /app/node_modules/next/dist/server/dev/next-dev-server.js:339:20
-    at async Span.traceAsyncFn (/app/node_modules/next/dist/trace/trace.js:154:20)
-    at async DevServer.handleRequest (/app/node_modules/next/dist/server/dev/next-dev-server.js:336:24)
-    at async invokeRender (/app/node_modules/next/dist/server/lib/router-server.js:173:21)
-    at async handleRequest (/app/node_modules/next/dist/server/lib/router-server.js:350:24)
-    at async requestHandlerImpl (/app/node_modules/next/dist/server/lib/router-server.js:374:13)
-    at async Server.requestListener (/app/node_modules/next/dist/server/lib/start-server.js:141:13)
- POST /project/new 200 in 401ms
-Error fetching user: Error: Your project's URL and Key are required to create a Supabase client!
-
-Check your Supabase project's API settings to find these values
-
-https://supabase.com/dashboard/project/_/settings/api
-    at createServerClient (webpack-internal:///(action-browser)/./node_modules/@supabase/ssr/dist/module/createServerClient.js:15:15)
-    at createClient (webpack-internal:///(action-browser)/./utils/supabase/server.ts:11:77)
-    at getCurrentUser (webpack-internal:///(action-browser)/./app/user/actions.ts:15:94)
-    at endpoint (webpack-internal:///(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fapp%2Fapp%2Fproject%2Factions.ts%22%2C%5B%22getUserProjects%22%2C%22saveProjectNote%22%2C%22updateProjectMetadata%22%2C%22getProject%22%2C%22updateProjectConstraints%22%2C%22deleteProject%22%2C%22getProjectNotes%22%2C%22createProject%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fai%2Factions.ts%22%2C%5B%22rewriteText%22%2C%22generateSpecSheet%22%2C%22generateSearchQueries%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fcritique%2Factions.ts%22%2C%5B%22critiqueFullCanvas%22%2C%22critiqueCrop%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fproject%2Fupload-actions.ts%22%2C%5B%22uploadImageAction%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fflashcards%2Factions.ts%22%2C%5B%22createFlashcard%22%2C%22getProjectFlashcards%22%5D%5D%2C%5B%22%2Fapp%2Fapp%2Fuser%2Factions.ts%22%2C%5B%22getCurrentUser%22%5D%5D%5D&__client_imported__=true!:24:17)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async /app/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:39:418
-    at async r_ (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:38:8148)
-    at async r8 (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:41:1256)
-    at async doRender (/app/node_modules/next/dist/server/base-server.js:1406:30)
-    at async cacheEntry.responseCache.get.routeKind (/app/node_modules/next/dist/server/base-server.js:1555:40)
-    at async DevServer.renderToResponseWithComponentsImpl (/app/node_modules/next/dist/server/base-server.js:1475:28)
-    at async DevServer.renderPageComponent (/app/node_modules/next/dist/server/base-server.js:1901:24)
-    at async DevServer.renderToResponseImpl (/app/node_modules/next/dist/server/base-server.js:1939:32)
-    at async DevServer.pipeImpl (/app/node_modules/next/dist/server/base-server.js:914:25)
-    at async NextNodeServer.handleCatchallRenderRequest (/app/node_modules/next/dist/server/next-server.js:272:17)
-    at async DevServer.handleRequestImpl (/app/node_modules/next/dist/server/base-server.js:810:17)
-    at async /app/node_modules/next/dist/server/dev/next-dev-server.js:339:20
-    at async Span.traceAsyncFn (/app/node_modules/next/dist/trace/trace.js:154:20)
-    at async DevServer.handleRequest (/app/node_modules/next/dist/server/dev/next-dev-server.js:336:24)
-    at async invokeRender (/app/node_modules/next/dist/server/lib/router-server.js:173:21)
-    at async handleRequest (/app/node_modules/next/dist/server/lib/router-server.js:350:24)
-    at async requestHandlerImpl (/app/node_modules/next/dist/server/lib/router-server.js:374:13)
-    at async Server.requestListener (/app/node_modules/next/dist/server/lib/start-server.js:141:13)
- POST /project/new 200 in 188ms
- ✓ Compiled in 1660ms (3027 modules)
- ✓ Compiled in 826ms (3027 modules)
- ✓ Compiled in 729ms (3027 modules)
- ✓ Compiled in 1691ms (1420 modules)
- ✓ Compiled in 571ms (1420 modules)
- ✓ Compiled in 2.4s (3031 modules)
- ✓ Compiled in 1712ms (3031 modules)
-TypeError: Cannot read properties of undefined (reading 'call')
-    at Object.t [as require] (/app/.next/server/webpack-runtime.js:1:128)
-    at require (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:16:18550)
-    at I (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:94362)
-    at /app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:96668
-    at F._fromJSON (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:97106)
-    at JSON.parse (<anonymous>)
-    at O (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:94083)
-    at t (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:100582)
- ⨯ TypeError: Cannot read properties of undefined (reading 'call')
-    at Object.t [as require] (/app/.next/server/webpack-runtime.js:1:128)
-digest: "239373591"
- ⨯ TypeError: Cannot read properties of undefined (reading 'call')
-    at Object.t [as require] (/app/.next/server/webpack-runtime.js:1:128)
-    at require (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:16:18550)
-    at I (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:94362)
-    at /app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:96668
-    at F._fromJSON (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:97106)
-    at JSON.parse (<anonymous>)
-    at O (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:94083)
-    at t (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:100582) {
-  page: '/project/new'
-}
- ○ Compiling /_error ...
- ✓ Compiled /_error in 3.7s (3242 modules)
- GET /project/new 500 in 4593ms
- ✓ Compiled in 20.3s (3287 modules)
- ✓ Compiled in 525ms (1610 modules)
- ✓ Compiled in 426ms (1610 modules)
- ✓ Compiled in 698ms (1610 modules)
- ✓ Compiled in 541ms (1610 modules)
- ✓ Compiled in 2.5s (3265 modules)
- ✓ Compiled in 783ms (3265 modules)
- ✓ Compiled in 720ms (3265 modules)
- ✓ Compiled in 946ms (3265 modules)
- ✓ Compiled in 745ms (3265 modules)
- ✓ Compiled in 664ms (3265 modules)
- ✓ Compiled in 702ms (3265 modules)
- ✓ Compiled in 619ms (1610 modules)
- ✓ Compiled in 1330ms (3296 modules)
- ✓ Compiled in 787ms (3296 modules)
- ✓ Compiled in 863ms (3296 modules)
- ✓ Compiled in 749ms (3296 modules)
- ✓ Compiled in 1290ms (3296 modules)
- ✓ Compiled in 3.1s (3296 modules)
- ✓ Compiled in 852ms (3296 modules)
- ✓ Compiled in 893ms (3296 modules)
- ✓ Compiled in 717ms (3296 modules)
- ✓ Compiled in 868ms (3296 modules)
- ✓ Compiled in 2.3s (3296 modules)
- ✓ Compiled in 673ms (3296 modules)
- ✓ Compiled in 627ms (3296 modules)
- ✓ Compiled in 4.4s (3296 modules)
- ✓ Compiled in 881ms (3296 modules)
+ ✓ Ready in 2.6s

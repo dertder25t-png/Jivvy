@@ -16,7 +16,8 @@ import {
     Library,
     FolderOpen,
     X,
-    CalendarDays
+    CalendarDays,
+    Settings
 } from "lucide-react";
 import { JivvyAvatar } from "@/components/ui/JivvyAvatar";
 import { GummyButton } from "@/components/ui/GummyButton";
@@ -25,6 +26,7 @@ import { useProjectStore } from "@/lib/store";
 import { getCurrentUser, type UserInfo } from "@/app/user/actions";
 import { createClient } from "@/utils/supabase/client";
 import { getProject, updateProjectMetadata } from "@/app/project/actions";
+import { SettingsModal } from "@/components/dashboard/SettingsModal";
 
 // Mock project files for dropdown - in real app, fetch from database
 const MOCK_PROJECT_FILES = [
@@ -42,6 +44,7 @@ const Header = () => {
     const [projectTitle, setProjectTitle] = useState<string>("");
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [titleInputValue, setTitleInputValue] = useState("");
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const libraryRef = useRef<HTMLDivElement>(null);
     const titleInputRef = useRef<HTMLInputElement>(null);
@@ -378,6 +381,12 @@ const Header = () => {
                     <Bell size={18} className="text-zinc-400" />
                     <div className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
                 </button>
+                <button
+                    onClick={() => setSettingsOpen(true)}
+                    className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center hover:bg-zinc-800 transition-colors"
+                >
+                    <Settings size={18} className="text-zinc-400" />
+                </button>
                 <Link href="/project/new">
                     <GummyButton
                         className="bg-lime-400 hover:bg-lime-300 text-black rounded-full font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(163,230,53,0.3)]"
@@ -386,6 +395,8 @@ const Header = () => {
                     </GummyButton>
                 </Link>
             </div>
+
+            <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
         </header>
     );
 };
