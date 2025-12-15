@@ -13,17 +13,37 @@ interface PDFViewerProps {
 export function PDFViewer({ url, className }: PDFViewerProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    const [retryCount, setRetryCount] = useState(0);
     const iframeRef = useRef<HTMLIFrameElement>(null);
+
+    // Reset loading state when URL changes
+    useState(() => {
+        setLoading(true);
+        setError(false);
+    });
 
     // Handle iframe load
     const handleLoad = () => {
         setLoading(false);
         setError(false);
+        setRetryCount(0); // Reset retry count on successful load
     };
 
     const handleError = () => {
         setLoading(false);
         setError(true);
+        console.error('[PDFViewer] Failed to load PDF iframe');
+    };
+
+    // Retry loading the PDF
+    const handleRetry = () => {
+        setRetryCount(prev => prev + 1);
+        setLoading(true);
+        setError(false);
+        // Force iframe reload by updating key
+        if (iframeRef.current) {
+            iframeRef.current.src = url;
+        }
     };
 
     // Open in new tab for download/print
@@ -60,19 +80,33 @@ export function PDFViewer({ url, className }: PDFViewerProps) {
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/80 z-10">
                         <FileText size={48} className="text-zinc-600 mb-4" />
                         <span className="text-sm text-red-400 mb-2">Failed to load PDF</span>
-                        <GummyButton size="sm" onClick={handleOpenExternal}>
-                            Open in New Tab
-                        </GummyButton>
+                        {retryCount < 3 && (
+                            <p className="text-xs text-zinc-500 mb-3">
+                                Attempt {retryCount + 1} failed. You can retry or open externally.
+                            </p>
+                        )}
+                        <div className="flex gap-2">
+                            {retryCount < 3 && (
+                                <GummyButton size="sm" onClick={handleRetry} variant="ghost">
+                                    Retry
+                                </GummyButton>
+                            )}
+                            <GummyButton size="sm" onClick={handleOpenExternal}>
+                                Open in New Tab
+                            </GummyButton>
+                        </div>
                     </div>
                 )}
 
                 <iframe
                     ref={iframeRef}
                     src={url}
+                    key={`pdf-iframe-${retryCount}`}
                     className="w-full h-full border-0 bg-zinc-800"
                     onLoad={handleLoad}
                     onError={handleError}
                     title="PDF Document"
+                    aria-label="PDF Document Viewer"
                 />
             </div>
         </div>
