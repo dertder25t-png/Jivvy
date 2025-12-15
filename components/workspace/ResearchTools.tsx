@@ -107,7 +107,7 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
   const filteredTerms = indexTerms.filter(t => t.term.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="flex flex-col h-full bg-black/40 text-white p-4 space-y-4">
+    <div className="flex flex-col h-full bg-black/40 text-white p-4 space-y-4 rounded-xl">
 
       {/* Tab Switcher */}
       <div className="flex space-x-2 border-b border-white/10 pb-2">

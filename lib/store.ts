@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type ProjectCenterMode = "canvas" | "paper" | "notes";
+type ProjectCenterMode = "canvas" | "paper" | "notes" | "extraction";
 
 interface ProjectState {
     activeProjectId: string | null;

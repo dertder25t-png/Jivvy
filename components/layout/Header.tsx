@@ -15,6 +15,7 @@ import {
     ChevronDown,
     Library,
     FolderOpen,
+    ScanSearch,
     X,
     CalendarDays,
     Settings
@@ -33,6 +34,7 @@ const MOCK_PROJECT_FILES = [
     { id: "canvas", name: "Canvas", icon: PenTool, color: "text-lime-400" },
     { id: "paper", name: "Paper", icon: FileText, color: "text-violet-400" },
     { id: "notes", name: "Notes", icon: StickyNote, color: "text-amber-400" },
+    { id: "extraction", name: "Extraction", icon: ScanSearch, color: "text-cyan-400" },
 ];
 
 const Header = () => {
@@ -255,7 +257,7 @@ const Header = () => {
                                                 <button
                                                     key={file.id}
                                                     onClick={() => {
-                                                        setCenterMode(file.id as "canvas" | "paper" | "notes");
+                                                            setCenterMode(file.id as "canvas" | "paper" | "notes" | "extraction");
                                                         setFileDropdownOpen(false);
                                                     }}
                                                     className={cn(
