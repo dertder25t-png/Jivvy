@@ -43,7 +43,10 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
 
   // Scan for index terms
   const handleScanIndex = useCallback(async () => {
-    if (!pdfBuffer) return;
+    if (!pdfBuffer) {
+      setScanError('No PDF loaded');
+      return;
+    }
 
     setIsScanning(true);
     setScanError(null);
@@ -53,10 +56,16 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
       const terms = await scanForIndex(pdfBuffer);
       const duration = Math.round(performance.now() - startTime);
       console.log(`[ResearchTools] Scan completed in ${duration}ms, found ${terms.length} terms`);
-      setIndexTerms(terms);
+      
+      if (terms.length === 0) {
+        setScanError('No index terms found in document');
+      } else {
+        setIndexTerms(terms);
+      }
     } catch (error) {
       console.error('[ResearchTools] Scan error:', error);
-      setScanError(error instanceof Error ? error.message : 'Scan failed');
+      const errorMessage = error instanceof Error ? error.message : 'Scan failed';
+      setScanError(errorMessage);
     } finally {
       setIsScanning(false);
     }
@@ -64,7 +73,15 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
 
   // Ask a question - finds relevant pages and uses LOCAL LLM
   const handleAskQuestion = useCallback(async () => {
-    if (!pdfBuffer || !question.trim()) return;
+    if (!pdfBuffer) {
+      setQaError('No PDF loaded');
+      return;
+    }
+
+    if (!question.trim()) {
+      setQaError('Please enter a question');
+      return;
+    }
 
     setIsAnswering(true);
     setQaError(null);
@@ -75,23 +92,32 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
       let currentIndex = indexTerms;
       if (currentIndex.length === 0) {
         setLlmStatus('Scanning document index...');
-        currentIndex = await scanForIndex(pdfBuffer);
-        setIndexTerms(currentIndex);
+        try {
+          currentIndex = await scanForIndex(pdfBuffer);
+          setIndexTerms(currentIndex);
+        } catch (scanError) {
+          console.warn('[Q&A] Index scan failed, will use fallback pages:', scanError);
+          // Continue with empty index - will use fallback pages
+        }
       }
 
       // 2. Find relevant pages based on question keywords
       const questionWords = question.toLowerCase().split(/\s+/).filter(w => w.length > 2);
       const matchedPages = new Set<number>();
 
-      for (const term of currentIndex) {
-        const termLower = term.term.toLowerCase();
-        if (questionWords.some(word => termLower.includes(word) || word.includes(termLower.split(' ')[0]))) {
-          term.pages.forEach(p => matchedPages.add(p));
+      // Try to match with index terms
+      if (currentIndex.length > 0) {
+        for (const term of currentIndex) {
+          const termLower = term.term.toLowerCase();
+          if (questionWords.some(word => termLower.includes(word) || word.includes(termLower.split(' ')[0]))) {
+            term.pages.forEach(p => matchedPages.add(p));
+          }
         }
       }
 
       // If no matches from index, try pages 1-10 as fallback
       if (matchedPages.size === 0) {
+        console.log('[Q&A] No index matches, using fallback pages 1-10');
         for (let i = 1; i <= 10; i++) matchedPages.add(i);
       }
 
@@ -103,13 +129,13 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
       const context = pageData.map(p => `[Page ${p.page}] ${p.content}`).join('\n\n');
 
       if (!context.trim()) {
-        setQaError('Could not extract text from relevant pages');
-        setIsAnswering(false);
-        return;
+        throw new Error('Could not extract text from relevant pages');
       }
 
       // 4. Use LOCAL LLM for answering (Transformers.js)
+      setLlmStatus('Loading AI model...');
       const { answerQuestionLocal } = await import('@/utils/local-llm');
+      
       const answer = await answerQuestionLocal(
         question,
         context.slice(0, 3000), // Smaller context for local model
@@ -128,7 +154,8 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
 
     } catch (error) {
       console.error('[Q&A] Error:', error);
-      setQaError(error instanceof Error ? error.message : 'Failed to get answer');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get answer';
+      setQaError(errorMessage);
       setLlmStatus('');
     } finally {
       setIsAnswering(false);
@@ -137,7 +164,20 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
 
   // Mine metrics from PDF
   const handleRunMiner = useCallback(async () => {
-    if (!pdfBuffer) return;
+    if (!pdfBuffer) {
+      setMinerError('No PDF loaded');
+      return;
+    }
+
+    if (!minerMetricName.trim()) {
+      setMinerError('Please enter a metric name');
+      return;
+    }
+
+    if (!minerKeywords.trim()) {
+      setMinerError('Please enter keywords');
+      return;
+    }
 
     setIsMining(true);
     setMinerError(null);
@@ -146,12 +186,15 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
       const text = await extractAllText(pdfBuffer);
 
       if (!text || text.length === 0) {
-        setMinerError('No text could be extracted from the PDF');
-        setIsMining(false);
-        return;
+        throw new Error('No text could be extracted from the PDF');
       }
 
-      const keywords = minerKeywords.split(',').map(k => k.trim().toLowerCase());
+      const keywords = minerKeywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
+      
+      if (keywords.length === 0) {
+        throw new Error('No valid keywords provided');
+      }
+
       const sentences = text.split(/[.!?\n]+/).filter(s => s.trim().length > 10);
 
       const relevantSentences = sentences.filter(sentence =>
@@ -162,13 +205,15 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
         setMetrics(prev => [...prev, {
           metric: minerMetricName,
           value: 'Keywords not found',
-          confidence: 0
+          confidence: 0,
+          keywords: keywords.join(', ')
         }]);
       } else {
-        const numberPattern = /[\$£€]?\s*[\d,]+\.?\d*/g;
+        // Look for numbers with currency symbols or percentages
+        const numberPattern = /[\$£€]?\s*[\d,]+\.?\d*\s*%?/g;
         const numbers = relevantSentences.join(' ').match(numberPattern) || [];
         const meaningfulNumbers = numbers.filter(n => {
-          const num = parseFloat(n.replace(/[,$£€\s]/g, ''));
+          const num = parseFloat(n.replace(/[,$£€\s%]/g, ''));
           return !isNaN(num) && num > 10;
         });
 
@@ -176,12 +221,14 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
           metric: minerMetricName,
           value: meaningfulNumbers[0] || relevantSentences[0].substring(0, 50) + '...',
           confidence: meaningfulNumbers.length > 0 ? 0.75 : 0.5,
-          pageContext: relevantSentences[0].substring(0, 100)
+          pageContext: relevantSentences[0].substring(0, 100),
+          matchCount: relevantSentences.length
         }]);
       }
     } catch (error) {
       console.error('[ResearchTools] Miner error:', error);
-      setMinerError(error instanceof Error ? error.message : 'Extraction failed');
+      const errorMessage = error instanceof Error ? error.message : 'Extraction failed';
+      setMinerError(errorMessage);
     } finally {
       setIsMining(false);
     }
@@ -295,7 +342,7 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
               <div className="text-center text-zinc-500 py-8">
                 <MessageSquare size={32} className="mx-auto mb-3 opacity-50" />
                 <p className="text-sm">Ask a question about your PDF</p>
-                <p className="text-xs mt-1 text-zinc-600">I'll find relevant pages and give you answers</p>
+                <p className="text-xs mt-1 text-zinc-600">I&apos;ll find relevant pages and give you answers</p>
               </div>
             )}
           </div>

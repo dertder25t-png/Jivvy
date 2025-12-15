@@ -10,16 +10,16 @@ import { cn } from "@/lib/utils";
 
 interface ExtractionWorkspaceProps {
     pdfUrl: string | null;
-    projectId?: string;
     onPdfUploaded?: (url: string) => void;
 }
 
-export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, projectId, onPdfUploaded }: ExtractionWorkspaceProps) {
+export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: ExtractionWorkspaceProps) {
     const { setPdfPage } = useProjectStore();
     const [pdfBuffer, setPdfBuffer] = useState<ArrayBuffer | null>(null);
     const [localPdfUrl, setLocalPdfUrl] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -30,16 +30,32 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, projectId, onPdfUpl
     useEffect(() => {
         if (activePdfUrl) {
             setLoading(true);
+            setLoadError(null);
+            
             fetch(activePdfUrl)
-                .then(res => res.arrayBuffer())
+                .then(res => {
+                    if (!res.ok) {
+                        throw new Error(`Failed to fetch PDF: ${res.status} ${res.statusText}`);
+                    }
+                    return res.arrayBuffer();
+                })
                 .then(buf => {
+                    if (!buf || buf.byteLength === 0) {
+                        throw new Error('PDF file is empty');
+                    }
                     setPdfBuffer(buf);
                     setLoading(false);
                 })
                 .catch(err => {
                     console.error("Failed to load PDF buffer:", err);
+                    setLoadError(err instanceof Error ? err.message : 'Failed to load PDF');
                     setLoading(false);
+                    setPdfBuffer(null);
                 });
+        } else {
+            // Clear buffer when no URL
+            setPdfBuffer(null);
+            setLoadError(null);
         }
     }, [activePdfUrl]);
 
@@ -54,12 +70,21 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, projectId, onPdfUpl
 
     // Handle local file - keeps file on device, no cloud upload
     const handleLocalFile = useCallback((file: File) => {
+        // Validate file type
         if (!file.type.includes('pdf')) {
-            alert('Please select a PDF file');
+            setLoadError('Please select a valid PDF file');
+            return;
+        }
+
+        // Validate file size (limit to 50MB for browser processing)
+        const maxSize = 50 * 1024 * 1024; // 50MB
+        if (file.size > maxSize) {
+            setLoadError('PDF file is too large (max 50MB)');
             return;
         }
 
         setLoading(true);
+        setLoadError(null);
         setFileName(file.name);
 
         // Create a local blob URL - stays on device, no network request
@@ -70,12 +95,18 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, projectId, onPdfUpl
         const reader = new FileReader();
         reader.onload = (e) => {
             if (e.target?.result instanceof ArrayBuffer) {
+                if (e.target.result.byteLength === 0) {
+                    setLoadError('PDF file is empty');
+                    setLoading(false);
+                    return;
+                }
                 setPdfBuffer(e.target.result);
             }
             setLoading(false);
         };
-        reader.onerror = () => {
-            console.error("Failed to read file");
+        reader.onerror = (e) => {
+            console.error("Failed to read file:", e);
+            setLoadError('Failed to read PDF file');
             setLoading(false);
         };
         reader.readAsArrayBuffer(file);
@@ -233,6 +264,17 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, projectId, onPdfUpl
             {/* Right Pane: Extraction Tools (50%) */}
             <div className="w-1/2 h-full bg-surface">
                 <div className="h-full w-full p-4">
+                    {loadError && (
+                        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm flex items-center justify-between">
+                            <span>{loadError}</span>
+                            <button
+                                onClick={() => setLoadError(null)}
+                                className="text-red-400 hover:text-red-300"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                    )}
                     <ResearchTools
                         pdfBuffer={pdfBuffer}
                         onJumpToPage={(page) => setPdfPage(page)}
