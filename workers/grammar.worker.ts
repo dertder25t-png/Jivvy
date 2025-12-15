@@ -9,11 +9,13 @@ env.useBrowserCache = true;
 class GrammarCorrectionSingleton {
   static task = 'text2text-generation';
   static model = 'Xenova/grammar-correction'; // or 'Xenova/gec-t5-small' for speed
-  static instance = null;
+  static instance: any = null;
 
-  static async getInstance(progress_callback = null) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static async getInstance(progress_callback: any = null) {
     if (this.instance === null) {
-      this.instance = await pipeline(this.task, this.model, { progress_callback });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.instance = await pipeline(this.task as any, this.model, { progress_callback });
     }
     return this.instance;
   }
@@ -24,7 +26,8 @@ self.addEventListener('message', async (event) => {
 
   if (type === 'check') {
     try {
-      const generator = await GrammarCorrectionSingleton.getInstance((data) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const generator = await GrammarCorrectionSingleton.getInstance((data: any) => {
           self.postMessage({ type: 'progress', data });
       });
 
@@ -35,9 +38,9 @@ self.addEventListener('message', async (event) => {
       const diffs = [];
       if (corrected && corrected !== text) {
           // fast-myers-diff returns iterator of [sx, ex, correction, ey]
-          const patches = [...calcPatch(text, corrected)];
+          const patches = Array.from(calcPatch(text, corrected));
 
-          for (const [sx, ex, correction, ey] of patches) {
+          for (const [sx, ex, correction] of patches) {
               diffs.push({
                   from: sx,
                   to: ex,
@@ -55,7 +58,7 @@ self.addEventListener('message', async (event) => {
 
     } catch (error) {
       console.error(error);
-      self.postMessage({ type: 'error', error: error.toString() });
+      self.postMessage({ type: 'error', error: String(error) });
     }
   }
 });
