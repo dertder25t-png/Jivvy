@@ -1,7 +1,7 @@
 "use client";
 
 import { useEditor, useValue, DefaultColorStyle, DefaultDashStyle, DefaultFillStyle, DefaultSizeStyle } from "tldraw";
-import { HexColorPicker } from "react-colorful";
+import { AdvancedColorPicker } from "./AdvancedColorPicker";
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { TiltCard } from "@/components/ui/TiltCard";
@@ -144,9 +144,9 @@ export function CustomStylePanel() {
                     {showColorPicker && (
                         <div
                             ref={colorPickerRef}
-                            className="absolute top-12 left-0 z-50 p-2 bg-[#2a2a2d] border border-white/10 rounded-2xl shadow-xl"
+                            className="absolute top-12 left-0 z-50 rounded-3xl shadow-2xl"
                         >
-                            <HexColorPicker color={currentHex} onChange={handleColorChange} />
+                            <AdvancedColorPicker color={currentHex} onChange={handleColorChange} onClose={() => setShowColorPicker(false)} />
                         </div>
                     )}
                 </div>

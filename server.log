@@ -72,3 +72,33 @@ https://supabase.com/dashboard/project/_/settings/api
  ✓ Compiled in 1660ms (3027 modules)
  ✓ Compiled in 826ms (3027 modules)
  ✓ Compiled in 729ms (3027 modules)
+ ✓ Compiled in 1691ms (1420 modules)
+ ✓ Compiled in 571ms (1420 modules)
+ ✓ Compiled in 2.4s (3031 modules)
+ ✓ Compiled in 1712ms (3031 modules)
+TypeError: Cannot read properties of undefined (reading 'call')
+    at Object.t [as require] (/app/.next/server/webpack-runtime.js:1:128)
+    at require (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:16:18550)
+    at I (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:94362)
+    at /app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:96668
+    at F._fromJSON (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:97106)
+    at JSON.parse (<anonymous>)
+    at O (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:94083)
+    at t (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:100582)
+ ⨯ TypeError: Cannot read properties of undefined (reading 'call')
+    at Object.t [as require] (/app/.next/server/webpack-runtime.js:1:128)
+digest: "239373591"
+ ⨯ TypeError: Cannot read properties of undefined (reading 'call')
+    at Object.t [as require] (/app/.next/server/webpack-runtime.js:1:128)
+    at require (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:16:18550)
+    at I (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:94362)
+    at /app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:96668
+    at F._fromJSON (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:97106)
+    at JSON.parse (<anonymous>)
+    at O (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:94083)
+    at t (/app/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:100582) {
+  page: '/project/new'
+}
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 3.7s (3242 modules)
+ GET /project/new 500 in 4593ms
