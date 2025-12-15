@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Loader2, ZoomIn, ZoomOut, RotateCw, Download, FileText } from "lucide-react";
+import { useState, useRef } from "react";
+import { Loader2, Download, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GummyButton } from "@/components/ui/GummyButton";
-import { useProjectStore } from "@/lib/store";
 
 interface PDFViewerProps {
     url: string;

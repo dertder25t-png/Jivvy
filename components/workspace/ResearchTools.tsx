@@ -295,7 +295,7 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
               <div className="text-center text-zinc-500 py-8">
                 <MessageSquare size={32} className="mx-auto mb-3 opacity-50" />
                 <p className="text-sm">Ask a question about your PDF</p>
-                <p className="text-xs mt-1 text-zinc-600">I'll find relevant pages and give you answers</p>
+                <p className="text-xs mt-1 text-zinc-600">I&apos;ll find relevant pages and give you answers</p>
               </div>
             )}
           </div>

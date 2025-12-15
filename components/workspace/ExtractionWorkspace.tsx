@@ -10,11 +10,10 @@ import { cn } from "@/lib/utils";
 
 interface ExtractionWorkspaceProps {
     pdfUrl: string | null;
-    projectId?: string;
     onPdfUploaded?: (url: string) => void;
 }
 
-export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, projectId, onPdfUploaded }: ExtractionWorkspaceProps) {
+export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: ExtractionWorkspaceProps) {
     const { setPdfPage } = useProjectStore();
     const [pdfBuffer, setPdfBuffer] = useState<ArrayBuffer | null>(null);
     const [localPdfUrl, setLocalPdfUrl] = useState<string | null>(null);

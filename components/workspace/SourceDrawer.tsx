@@ -159,7 +159,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                     ].map(tab => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
+                            onClick={() => setActiveTab(tab.id as "sources" | "pdf" | "research" | "flashcards" | "notes")}
                             className={cn(
                                 "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap",
                                 activeTab === tab.id
