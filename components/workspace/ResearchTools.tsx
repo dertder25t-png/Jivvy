@@ -90,12 +90,12 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
 
     try {
       // Step 1: Get Search Terms from LLM
+      // 2. REPLACED: Smart Keyword Extraction
+      setLlmStatus('Analyzing question for keywords...');
+
       const { extractKeywords } = await import('@/utils/local-llm');
-      const searchTerms = await extractKeywords(
-        question,
-        (progress) => setLlmStatus(progress.status)
-      );
-      console.log('[Q&A] LLM Extracted terms:', searchTerms);
+      const searchTerms = await extractKeywords(question, (p) => setLlmStatus(p.status));
+      console.log('[Q&A] LLM Identified Search Terms:', searchTerms);
 
       // Step 2: If no index scanned yet, do it now
       let currentIndex = indexTerms;
@@ -115,22 +115,26 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
       const relevantPages = new Set<number>();
       
       if (currentIndex.length > 0) {
-        currentIndex.forEach(idx => {
-          searchTerms.forEach(searchWord => {
-            if (idx.term.toLowerCase().includes(searchWord.toLowerCase())) {
-              idx.pages.forEach(p => relevantPages.add(p));
+        currentIndex.forEach(idxEntry => {
+            const entryLower = idxEntry.term.toLowerCase();
+            // Check if any of our LLM terms appear in this index entry
+            const isMatch = searchTerms.some(term =>
+                entryLower.includes(term.toLowerCase()) ||
+                term.toLowerCase().includes(entryLower)
+            );
+
+            if (isMatch) {
+                idxEntry.pages.forEach(p => relevantPages.add(p));
             }
-          });
         });
       }
 
       // Step 4: Fallback mechanism (Important for massive docs)
       // If the index didn't yield results, use standard important pages
       if (relevantPages.size === 0) {
-        setLlmStatus('No index match, checking introduction...');
-        console.log('[Q&A] No index matches, using fallback pages 1-5');
-        // Fallback: Check standard important pages (1-5)
-        [1, 2, 3, 4, 5].forEach(p => relevantPages.add(p));
+        setLlmStatus('No index match, scanning Introduction...');
+        // Fallback to first 10 pages if index fails
+        for (let i = 1; i <= 10; i++) relevantPages.add(i);
       }
 
       // Step 5: Extract Content (Limit to top 5 pages to save context)
