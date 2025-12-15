@@ -79,15 +79,7 @@ export async function scanForIndex(pdfData: ArrayBuffer): Promise<{ term: string
           .map((item: any) => item.str || '')
           .join(' ');
         
-        // Simple check: Does this page look like an index?
-        // (Lots of numbers at end of lines, sorted alphabetically)
-        if (pageNum > numPages - 50 && /Index|Glossary/i.test(pageText)) {
-          // If we found the index section, we might want to scan NEIGHBORING pages too
-          // to capture the full index.
-          allText.push(pageText);
-        } else {
-          allText.push(pageText);
-        }
+        allText.push(pageText);
       } catch (pageError) {
         console.warn(`[PDF Extraction] Error on page ${pageNum}:`, pageError);
         // Continue with other pages even if one fails

@@ -248,7 +248,11 @@ Keywords:`;
             top_k: 20, // Limited vocabulary for focused extraction
         });
 
-        const text = result[0]?.generated_text || '';
+        const generatedText = result[0]?.generated_text || '';
+        
+        // Extract only the part after "Keywords:" if present
+        const keywordsMatch = generatedText.match(/Keywords:\s*(.+)/i);
+        const text = keywordsMatch ? keywordsMatch[1] : generatedText;
         
         // Parse "Engine, Fire, Takeoff" into array
         const keywords = text
