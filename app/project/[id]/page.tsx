@@ -77,6 +77,7 @@ export default function ProjectPage() {
     const [squintAmount, setSquintAmount] = useState(0);
     const [onboardingComplete, setOnboardingComplete] = useState(false);
     const [isCreatingProject, setIsCreatingProject] = useState(false);
+    const [toolSwitcherOpen, setToolSwitcherOpen] = useState(true);
 
     // Notes state
     const [notesLoaded, setNotesLoaded] = useState(false);
@@ -247,13 +248,14 @@ export default function ProjectPage() {
     }
 
     return (
-        <div className="flex h-[calc(100vh-5rem)] w-full overflow-hidden bg-background fixed top-20 left-0 right-0 bottom-0">
+        <div className="flex h-[calc(100vh-4rem)] lg:h-[calc(100vh-5rem)] w-full overflow-hidden bg-background fixed top-16 lg:top-20 left-0 right-0 bottom-0">
 
             {/* LEFT PANEL - Mode-specific */}
             {centerMode === 'canvas' && (
                 <>
                     <div className={cn(
-                        "h-full flex flex-col border-r border-zinc-800 bg-background transition-all duration-300",
+                        "h-full flex-col border-r border-zinc-800 bg-background transition-all duration-300",
+                        "hidden lg:flex", // Hide on mobile
                         leftPanelCollapsed ? "w-0" : "w-[320px] min-w-[320px]"
                     )}>
                         {!leftPanelCollapsed && (
@@ -314,7 +316,7 @@ export default function ProjectPage() {
                     {leftPanelCollapsed && (
                         <button
                             onClick={() => setLeftPanelCollapsed(false)}
-                            className="h-full w-10 flex items-center justify-center bg-background border-r border-zinc-800 hover:bg-zinc-900 transition-colors group"
+                            className="hidden lg:flex h-full w-10 items-center justify-center bg-background border-r border-zinc-800 hover:bg-zinc-900 transition-colors group"
                         >
                             <ChevronRight size={16} className="text-zinc-500 group-hover:text-lime-400" />
                         </button>
@@ -322,9 +324,11 @@ export default function ProjectPage() {
                 </>
             )}
 
-            {/* LEFT PANEL - Notes Mode: Flashcard Sidebar */}
+            {/* LEFT PANEL - Notes Mode: Flashcard Sidebar (hidden on mobile) */}
             {centerMode === 'notes' && (
-                <FlashcardSidebar projectId={projectId} />
+                <div className="hidden lg:block">
+                    <FlashcardSidebar projectId={projectId} />
+                </div>
             )}
 
             {/* Extraction mode handles its own layout */}
@@ -461,7 +465,7 @@ export default function ProjectPage() {
 
                             {/* Canvas, Paper, or Notes Content */}
                             {(onboardingComplete || !leftPanelCollapsed || project?.pdf_url) && (
-                                <div className="h-full w-full rounded-3xl overflow-hidden shadow-2xl bg-white/5">
+                                <div className="h-full w-full rounded-3xl overflow-hidden shadow-2xl bg-white/5 pb-16 lg:pb-0">
                                     {centerMode === 'canvas' && (
                                         <InfiniteCanvas blurAmount={squintAmount} className="h-full" projectId={projectId} />
                                     )}
@@ -490,25 +494,81 @@ export default function ProjectPage() {
                         </div>
                     </div>
 
+                    {/* Desktop only: Bottom drawer for paper/notes mode */}
                     {centerMode !== 'canvas' && drawerPosition === 'bottom' && (
-                        <SourceDrawer
-                            pdfUrl={project?.pdf_url ?? undefined}
-                            projectId={projectId}
-                            className="bg-surface border-t shadow-[0_-5px_15px_rgba(0,0,0,0.3)]"
-                        />
+                        <div className="hidden lg:block">
+                            <SourceDrawer
+                                pdfUrl={project?.pdf_url ?? undefined}
+                                projectId={projectId}
+                                className="bg-surface border-t shadow-[0_-5px_15px_rgba(0,0,0,0.3)]"
+                            />
+                        </div>
                     )}
                 </div>
             )}
 
-            {/* RIGHT PANEL - Mode-specific sidebar */}
+            {/* RIGHT PANEL - Mode-specific sidebar - Desktop only */}
             {centerMode === 'canvas' && (
-                <SpecSidebar pdfUrl={project?.pdf_url ?? undefined} className="bg-surface border-l border-white/5" />
+                <div className="hidden lg:block">
+                    <SpecSidebar pdfUrl={project?.pdf_url ?? undefined} className="bg-surface border-l border-white/5" />
+                </div>
             )}
 
-            {/* PAPER & NOTES MODE: RIGHT Position */}
+            {/* PAPER & NOTES MODE: RIGHT Position - Desktop only */}
             {(centerMode === 'paper' || centerMode === 'notes') && drawerPosition === 'right' && (
-                <SourceDrawer pdfUrl={project?.pdf_url ?? undefined} projectId={projectId} className="bg-surface" />
+                <div className="hidden lg:block">
+                    <SourceDrawer pdfUrl={project?.pdf_url ?? undefined} projectId={projectId} className="bg-surface" />
+                </div>
             )}
+
+            {/* MOBILE TOOL SWITCHER - floating bar with toggle */}
+            <div className="lg:hidden fixed bottom-4 left-0 right-0 z-40 flex flex-col items-center pointer-events-none">
+                {/* Toggle Button */}
+                <button
+                    onClick={() => setToolSwitcherOpen(!toolSwitcherOpen)}
+                    className="mb-2 w-10 h-6 bg-zinc-800/90 backdrop-blur-sm rounded-full flex items-center justify-center pointer-events-auto border border-zinc-700 shadow-lg"
+                >
+                    <ChevronRight
+                        size={14}
+                        className={cn(
+                            "text-zinc-400 transition-transform duration-300",
+                            toolSwitcherOpen ? "rotate-90" : "-rotate-90"
+                        )}
+                    />
+                </button>
+
+                {/* Tool Switcher Bar */}
+                <div className={cn(
+                    "bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 rounded-2xl p-1.5 flex justify-around pointer-events-auto shadow-xl mx-4 transition-all duration-300 ease-out",
+                    toolSwitcherOpen
+                        ? "opacity-100 translate-y-0 max-w-sm"
+                        : "opacity-0 translate-y-4 pointer-events-none max-w-sm"
+                )}>
+                    {[
+                        { id: 'canvas', label: 'Canvas', icon: PenTool, color: 'text-lime-400' },
+                        { id: 'paper', label: 'Paper', icon: FileText, color: 'text-violet-400' },
+                        { id: 'notes', label: 'Notes', icon: StickyNote, color: 'text-amber-400' },
+                        { id: 'extraction', label: 'Extract', icon: Sparkles, color: 'text-cyan-400' },
+                    ].map((mode) => (
+                        <button
+                            key={mode.id}
+                            onClick={() => setCenterMode(mode.id as 'canvas' | 'paper' | 'notes' | 'extraction')}
+                            className={cn(
+                                "flex flex-col items-center gap-0.5 px-4 py-2 rounded-xl transition-all",
+                                centerMode === mode.id
+                                    ? "bg-zinc-800"
+                                    : "active:bg-zinc-800/50"
+                            )}
+                        >
+                            <mode.icon size={20} className={centerMode === mode.id ? mode.color : "text-zinc-500"} />
+                            <span className={cn(
+                                "text-[9px] font-medium",
+                                centerMode === mode.id ? "text-white" : "text-zinc-500"
+                            )}>{mode.label}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }

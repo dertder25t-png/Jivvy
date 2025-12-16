@@ -357,7 +357,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
             "flex bg-surface border-zinc-800 overflow-hidden relative transition-all duration-300",
             isHorizontal
                 ? "w-full h-80 flex-col border-t"
-                : "w-96 h-full flex-col border-l", // Increased width slightly for better content fit
+                : "w-96 h-full flex-col border-l",
             className
         )}>
             {/* Header with Tabs */}

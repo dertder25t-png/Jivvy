@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Excalidraw, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
+import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types/types";
 import { createClient } from "@/utils/supabase/client";
 import { CanvasErrorBoundary } from "./CanvasErrorBoundary";
 
@@ -10,29 +12,28 @@ interface ExcalidrawWrapperProps {
 }
 
 // Helper to ensure we don't pass invalid state that crashes the canvas
-const sanitizeAppState = (appState: any) => {
+const sanitizeAppState = (appState: Partial<AppState>) => {
     if (!appState) return {};
 
     // Clamp zoom to reasonable limits to prevent "Canvas exceeds max size" error
-    let zoomValue = appState.zoom?.value;
+    // Use 'any' cast for zoomValue to bypass Excalidraw's branded type check
+    let zoomValue = appState.zoom?.value || 1;
     if (typeof zoomValue === 'number') {
         if (zoomValue < 0.1) zoomValue = 0.1;
         if (zoomValue > 10) zoomValue = 10;
-    } else {
-        zoomValue = 1;
     }
 
     // Clamp scroll values to prevent rendering into the void
     const MAX_SCROLL = 50000;
-    let scrollX = Number.isFinite(appState.scrollX) ? appState.scrollX : 0;
-    let scrollY = Number.isFinite(appState.scrollY) ? appState.scrollY : 0;
+    let scrollX = appState.scrollX || 0;
+    let scrollY = appState.scrollY || 0;
 
     if (Math.abs(scrollX) > MAX_SCROLL) scrollX = 0;
     if (Math.abs(scrollY) > MAX_SCROLL) scrollY = 0;
 
     return {
         ...appState,
-        zoom: { value: zoomValue },
+        zoom: { value: zoomValue as any },
         scrollX,
         scrollY,
         theme: "dark",
@@ -44,8 +45,8 @@ const sanitizeAppState = (appState: any) => {
 };
 
 export default function ExcalidrawWrapper({ projectId }: ExcalidrawWrapperProps) {
-    const [elements, setElements] = useState<any[]>([]);
-    const [appState, setAppState] = useState<any>({});
+    const [elements, setElements] = useState<readonly ExcalidrawElement[]>([]);
+    const [appState, setAppState] = useState<Partial<AppState>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [lastSaved, setLastSaved] = useState<number>(Date.now());
     const supabase = createClient();
@@ -81,9 +82,9 @@ export default function ExcalidrawWrapper({ projectId }: ExcalidrawWrapperProps)
     }, [projectId]);
 
     const handleChange = (
-        els: any[],
-        state: any,
-        files: any
+        els: readonly ExcalidrawElement[],
+        state: AppState,
+        files: BinaryFiles
     ) => {
         // Debounced Save
         if (saveTimeoutRef.current) {

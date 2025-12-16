@@ -14,9 +14,9 @@ import { getUserTasks, createTask, updateTaskStatus, type Task } from "@/app/tas
 interface TimelineStreamProps {
     className?: string;
     compact?: boolean; // For widget mode vs full page
+    hasCornerAction?: boolean;
 }
 
-// Color palette matching project colors
 const TASK_COLORS: Record<string, { bg: string; border: string; text: string }> = {
     lime: { bg: "bg-lime-500/10", border: "border-lime-500/30", text: "text-lime-400" },
     violet: { bg: "bg-violet-500/10", border: "border-violet-500/30", text: "text-violet-400" },
@@ -26,7 +26,6 @@ const TASK_COLORS: Record<string, { bg: string; border: string; text: string }> 
     zinc: { bg: "bg-zinc-800", border: "border-zinc-700", text: "text-zinc-400" },
 };
 
-// Helper to group tasks by time period
 function groupTasksByPeriod(tasks: Task[]) {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -57,7 +56,6 @@ function groupTasksByPeriod(tasks: Task[]) {
     return groups.filter(g => g.tasks.length > 0);
 }
 
-// Format due date for display
 function formatDueDate(dateString: string): string {
     const date = new Date(dateString);
     const now = new Date();
@@ -71,7 +69,7 @@ function formatDueDate(dateString: string): string {
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-export function TimelineStream({ className }: TimelineStreamProps) {
+export function TimelineStream({ className, hasCornerAction }: TimelineStreamProps) {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAddingTask, setIsAddingTask] = useState(false);
@@ -148,7 +146,10 @@ export function TimelineStream({ className }: TimelineStreamProps) {
             className
         )}>
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+            <div className={cn(
+                "flex items-center justify-between px-4 py-3 border-b border-zinc-800",
+                hasCornerAction && "pr-16"
+            )}>
                 <div className="flex items-center gap-2">
                     <Clock size={16} className="text-lime-400" />
                     <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">

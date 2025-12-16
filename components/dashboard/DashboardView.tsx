@@ -7,6 +7,7 @@ import {
     Layers,
     BookOpen,
     ChevronDown,
+    ChevronRight,
     Plus,
     Loader2,
     Sparkles
@@ -49,6 +50,7 @@ function formatRelativeTime(dateString: string): string {
 }
 
 const DashboardView = () => {
+    const [showProjects, setShowProjects] = useState(true);
     const [scrolled, setScrolled] = useState(false);
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState<Project[]>([]);
@@ -72,7 +74,7 @@ const DashboardView = () => {
         fetchProjects();
     }, []);
 
-    // Handle scroll for hero animation
+    // Handle scroll for hero animation (desktop only)
     useEffect(() => {
         const handleScroll = () => {
             if (contentRef.current) {
@@ -114,188 +116,284 @@ const DashboardView = () => {
         return (
             <div className="h-full w-full flex items-center justify-center bg-background">
                 <div className="text-center max-w-md p-8">
-                    <div className="w-20 h-20 rounded-3xl bg-zinc-900 flex items-center justify-center mx-auto mb-6">
-                        <BookOpen className="text-lime-400" size={32} />
-                    </div>
-                    <h2 className="text-2xl font-bold text-white mb-3">Welcome to Jivvy</h2>
-                    <p className="text-zinc-400 mb-6">Sign in to access your projects and start creating.</p>
-                    <Link href="/login">
-                        <button className="px-6 py-3 bg-lime-400 text-black font-bold rounded-full hover:bg-lime-300 transition-colors shadow-[0_0_20px_rgba(163,230,53,0.3)]">
-                            Sign In
-                        </button>
-                    </Link>
+                    <Link href="/login"><button className="px-6 py-3 bg-lime-400 text-black font-bold rounded-full">Sign In</button></Link>
                 </div>
             </div>
         );
     }
 
-    // Empty State - No Projects
+    // Empty State
     if (projects.length === 0) {
         return (
             <div className="h-full w-full flex items-center justify-center bg-background">
                 <div className="text-center max-w-md p-8">
-                    <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-lime-400/20 to-violet-500/20 flex items-center justify-center mx-auto mb-6">
-                        <Sparkles className="text-lime-400" size={40} />
-                    </div>
                     <h2 className="text-2xl font-bold text-white mb-3">Create Your First Project</h2>
-                    <p className="text-zinc-400 mb-8">Start organizing your work with Jivvy. Upload a PDF design brief or just start with a blank canvas.</p>
-                    <Link href="/project/new">
-                        <button className="px-8 py-4 bg-lime-400 text-black font-bold rounded-full hover:bg-lime-300 transition-all shadow-[0_0_30px_rgba(163,230,53,0.3)] flex items-center gap-3 mx-auto hover:scale-105">
-                            <Plus size={20} />
-                            New Project
-                        </button>
-                    </Link>
+                    <Link href="/project/new"><button className="px-8 py-4 bg-lime-400 text-black font-bold rounded-full">New Project</button></Link>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="max-w-[1600px] mx-auto h-full flex flex-col relative bg-background">
+        <div className="h-full flex flex-col lg:flex-row relative bg-background overflow-hidden">
 
-            {/* --- HERO SECTION (Active Project Hub) --- */}
-            <div
-                className={cn(
-                    "px-4 md:px-8 absolute inset-0 z-10 transition-all duration-700 ease-[cubic-bezier(0.68,-0.55,0.27,1.55)]",
-                    scrolled
-                        ? "opacity-0 -translate-y-20 scale-95 pointer-events-none blur-sm"
-                        : "opacity-100 translate-y-0 h-[50vh] pt-6"
-                )}
-            >
-                <div className="h-full grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-6">
-
-                    {/* Main Hero Card (Active Project) */}
-                    {activeProject && (
-                        <TiltCard
-                            className={cn(
-                                "col-span-1 md:col-span-2 lg:col-span-4 row-span-2 flex flex-col justify-between p-6 md:p-8 rounded-3xl shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] relative overflow-hidden transition-colors duration-500",
-                                activeColor.bg,
-                                activeColor.text
-                            )}
-                            delay={0}
-                        >
-                            <div className="flex justify-between items-start z-10 relative">
-                                <Link href={`/project/${activeProject.id}`}>
-                                    <div className="bg-black/10 p-4 rounded-3xl backdrop-blur-md hover:bg-black/20 transition-colors cursor-pointer">
-                                        <Play
-                                            size={32}
-                                            className={cn("fill-current ml-1", activeColor.text === 'text-white' ? 'text-white' : 'text-black')}
-                                        />
+            {/* === MOBILE LAYOUT === */}
+            <div className="lg:hidden h-full flex flex-col overflow-hidden">
+                {/* Mobile Hero - Featured Project */}
+                {activeProject && (
+                    <div className="flex-shrink-0 p-4 pb-2">
+                        <Link href={`/project/${activeProject.id}`}>
+                            <div
+                                className={cn(
+                                    "p-5 rounded-3xl shadow-lg relative overflow-hidden",
+                                    activeColor.bg,
+                                    activeColor.text
+                                )}
+                            >
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="bg-black/10 p-3 rounded-2xl backdrop-blur-md">
+                                        <Play size={24} className="fill-current ml-0.5" />
                                     </div>
-                                </Link>
-                                <div className="flex flex-col items-end gap-2">
-                                    <span className="bg-black/10 px-4 py-1.5 rounded-full text-xs font-bold backdrop-blur-md uppercase tracking-wider">
+                                    <span className="bg-black/10 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md uppercase tracking-wider">
                                         {activeProject.category || 'Project'}
                                     </span>
                                 </div>
-                            </div>
-
-                            <div className="z-10 relative mt-8">
-                                <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold leading-[0.9] tracking-tight mb-3">
+                                <h2 className="text-2xl font-bold leading-tight mb-2">
                                     {activeProject.title}
                                 </h2>
-                                <div className="flex items-center gap-4 opacity-80 font-medium text-sm md:text-lg">
-                                    <span className="flex items-center gap-2">
-                                        <Layers size={18} />
+                                <div className="flex items-center gap-3 opacity-80 text-sm">
+                                    <span className="flex items-center gap-1.5">
+                                        <Layers size={14} />
                                         {activeProject.pdf_url ? '1 PDF' : 'No files'}
                                     </span>
-                                    <span className="w-1.5 h-1.5 bg-current rounded-full opacity-50" />
+                                    <span className="w-1 h-1 bg-current rounded-full opacity-50" />
                                     <span>Updated {formatRelativeTime(activeProject.updated_at || activeProject.created_at)}</span>
                                 </div>
-                            </div>
-
-                            {/* Decorative blob */}
-                            <div className="absolute -right-20 -bottom-20 w-[300px] h-[300px] bg-white/20 rounded-full blur-[80px] pointer-events-none mix-blend-overlay animate-blob" />
-                        </TiltCard>
-                    )}
-
-                    {/* The Stream Widget */}
-                    <div className="hidden md:block col-span-1 md:col-span-2 lg:col-span-2 row-span-2">
-                        <TimelineStream className="h-full" compact />
-                    </div>
-
-                </div>
-
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 animate-bounce text-zinc-500 flex flex-col items-center gap-1 pointer-events-none opacity-50">
-                    <span className="text-[10px] font-bold uppercase tracking-widest">All Projects</span>
-                    <ChevronDown size={14} />
-                </div>
-            </div>
-
-            {/* --- CONTENT DRAWER (Project List) --- */}
-            <div
-                ref={contentRef}
-                className={cn(
-                    "flex-1 overflow-y-auto no-scrollbar relative z-20 pt-[50vh] transition-all duration-700",
-                    scrolled ? "pt-0" : ""
-                )}
-            >
-                {/* Sticky Header */}
-                <div className="sticky top-0 z-30 bg-background/90 backdrop-blur-md border-b border-zinc-800 py-4 px-4 md:px-8 mb-6 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <LayoutGrid size={18} className="text-lime-400" />
-                        <span className="font-bold text-white">All Projects</span>
-                        <span className="text-zinc-500 text-sm">({projects.length})</span>
-                    </div>
-                </div>
-
-                {/* Projects Grid */}
-                <div className="px-4 md:px-8 pb-32 min-h-screen">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-
-                        {/* Create Project Card */}
-                        <Link href="/project/new">
-                            <div className="h-64 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-4 text-zinc-500 hover:text-white hover:border-zinc-600 hover:bg-zinc-900/50 transition-all cursor-pointer group">
-                                <div className="w-16 h-16 rounded-full bg-zinc-900 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                    <Plus size={32} />
-                                </div>
-                                <span className="font-bold text-sm uppercase tracking-wider">Create Project</span>
+                                {/* Decorative */}
+                                <div className="absolute -right-10 -bottom-10 w-[150px] h-[150px] bg-white/20 rounded-full blur-[50px] pointer-events-none" />
                             </div>
                         </Link>
+                    </div>
+                )}
 
-                        {/* Project Cards */}
+                {/* Mobile Projects Grid */}
+                <div className="flex-1 overflow-y-auto px-4 pb-24">
+                    {/* Section Header */}
+                    <div className="flex items-center justify-between py-3 sticky top-0 bg-background/95 backdrop-blur-sm z-10">
+                        <div className="flex items-center gap-2">
+                            <span className="font-bold text-white text-sm">All Projects</span>
+                            <span className="text-zinc-500 text-xs">({projects.length})</span>
+                        </div>
+                        <Link href="/project/new">
+                            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-full text-xs text-white transition-colors">
+                                <Plus size={14} />
+                                New
+                            </button>
+                        </Link>
+                    </div>
+
+                    {/* Projects */}
+                    <div className="grid grid-cols-2 gap-3">
                         {projects.map((project, index) => {
                             const color = getProjectColor(index);
                             return (
-                                <div
+                                <Link
                                     key={project.id}
-                                    onClick={() => setActiveProjectIndex(index)}
+                                    href={`/project/${project.id}`}
                                 >
-                                    <Link href={`/project/${project.id}`}>
-                                        <TiltCard
-                                            delay={index * 50}
-                                            noTilt
-                                            className={cn(
-                                                color.bg,
-                                                "p-6 h-64 flex flex-col justify-between group border-2 border-transparent hover:border-white/20 rounded-3xl shadow-lg transition-all hover:-translate-y-1 cursor-pointer",
-                                                color.text,
-                                                activeProjectIndex === index ? "ring-4 ring-white/20 scale-[1.02]" : "opacity-90 hover:opacity-100"
-                                            )}
-                                        >
-                                            <div className="flex justify-between items-start relative z-10">
-                                                <div className="bg-black/10 w-12 h-12 rounded-2xl flex items-center justify-center backdrop-blur-md group-hover:rotate-12 transition-transform duration-300">
-                                                    <BookOpen size={24} />
-                                                </div>
-                                                <div className="bg-black/10 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md uppercase tracking-wide">
-                                                    {project.category || 'General'}
-                                                </div>
-                                            </div>
-                                            <div className="relative z-10">
-                                                <h3 className="text-2xl font-bold leading-tight mb-3 group-hover:scale-105 transition-transform origin-left line-clamp-2">
-                                                    {project.title}
-                                                </h3>
-                                                <div className="flex items-center gap-2 opacity-70">
-                                                    <Layers size={14} />
-                                                    <span className="text-xs font-medium">
-                                                        Updated {formatRelativeTime(project.updated_at || project.created_at)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </TiltCard>
-                                    </Link>
-                                </div>
+                                    <div
+                                        className={cn(
+                                            "p-4 rounded-2xl transition-all active:scale-95",
+                                            color.bg,
+                                            color.text
+                                        )}
+                                    >
+                                        <div className="bg-black/10 w-8 h-8 rounded-xl flex items-center justify-center mb-3">
+                                            <BookOpen size={14} />
+                                        </div>
+                                        <h3 className="font-bold text-sm leading-tight line-clamp-2 mb-1">
+                                            {project.title}
+                                        </h3>
+                                        <span className="text-[10px] opacity-70">
+                                            {formatRelativeTime(project.updated_at || project.created_at)}
+                                        </span>
+                                    </div>
+                                </Link>
                             );
                         })}
+                    </div>
+                </div>
+            </div>
+
+            {/* === DESKTOP LAYOUT === */}
+            {/* Hero Section (Active Project Hub) - Desktop Only */}
+            <div
+                className={cn(
+                    "hidden lg:block relative z-10 transition-all duration-700 ease-[cubic-bezier(0.68,-0.55,0.27,1.55)]",
+                    "lg:static lg:h-full lg:pt-8 lg:pl-8 lg:pr-4",
+                    showProjects ? "lg:w-[60%]" : "lg:w-full lg:pr-8",
+                    scrolled
+                        ? "pointer-events-none lg:pointer-events-auto"
+                        : "overflow-hidden"
+                )}
+            >
+                <div className="h-full grid grid-cols-6 gap-6 relative">
+
+                    {/* Main Hero Card (Active Project) */}
+                    <div className={cn(
+                        "col-span-4 h-full transition-all duration-700 ease-[cubic-bezier(0.76,0,0.24,1)]",
+                        scrolled ? "lg:transform-none" : ""
+                    )}>
+                        {activeProject && (
+                            <TiltCard
+                                className={cn(
+                                    "h-full flex flex-col justify-between p-8 rounded-3xl shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] relative overflow-hidden transition-colors duration-500",
+                                    activeColor.bg,
+                                    activeColor.text
+                                )}
+                                delay={0}
+                            >
+                                <div className="flex justify-between items-start z-10 relative">
+                                    <Link href={`/project/${activeProject.id}`}>
+                                        <div className="bg-black/10 p-4 rounded-3xl backdrop-blur-md hover:bg-black/20 transition-colors cursor-pointer">
+                                            <Play
+                                                size={32}
+                                                className={cn("fill-current ml-1", activeColor.text === 'text-white' ? 'text-white' : 'text-black')}
+                                            />
+                                        </div>
+                                    </Link>
+                                    <div className="flex flex-col items-end gap-2">
+                                        <span className="bg-black/10 px-4 py-1.5 rounded-full text-xs font-bold backdrop-blur-md uppercase tracking-wider">
+                                            {activeProject.category || 'Project'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="z-10 relative mt-8">
+                                    <h2 className="text-5xl lg:text-6xl font-bold leading-[0.9] tracking-tight mb-3">
+                                        {activeProject.title}
+                                    </h2>
+                                    <div className="flex items-center gap-4 opacity-80 font-medium text-lg">
+                                        <span className="flex items-center gap-2">
+                                            <Layers size={18} />
+                                            {activeProject.pdf_url ? '1 PDF' : 'No files'}
+                                        </span>
+                                        <span className="w-1.5 h-1.5 bg-current rounded-full opacity-50" />
+                                        <span>Updated {formatRelativeTime(activeProject.updated_at || activeProject.created_at)}</span>
+                                    </div>
+                                </div>
+
+                                {/* Decorative blob */}
+                                <div className="absolute -right-20 -bottom-20 w-[300px] h-[300px] bg-white/20 rounded-full blur-[80px] pointer-events-none mix-blend-overlay animate-blob" />
+                            </TiltCard>
+                        )}
+                    </div>
+
+                    {/* The Stream Widget (Calendar) */}
+                    <div className={cn(
+                        "col-span-2 h-full transition-all duration-700 ease-[cubic-bezier(0.76,0,0.24,1)] delay-75 relative group",
+                        scrolled ? "lg:transform-none" : ""
+                    )}>
+                        <TimelineStream className="h-full" compact hasCornerAction={!showProjects} />
+
+                        {!showProjects && (
+                            <button
+                                onClick={() => setShowProjects(true)}
+                                className="absolute top-0 right-0 w-16 h-16 bg-lime-400 rounded-bl-[32px] rounded-tr-[24px] shadow-lg flex items-center justify-center text-black hover:scale-105 active:scale-95 transition-all duration-300 z-50 group-hover:shadow-[0_0_30px_rgba(163,230,53,0.4)]"
+                                title="Show Projects"
+                            >
+                                <div className="absolute top-4 right-4">
+                                    <LayoutGrid size={24} />
+                                </div>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Content Drawer (Project List) - Desktop Only */}
+            <div
+                ref={contentRef}
+                className={cn(
+                    "hidden lg:flex flex-1 overflow-y-auto no-scrollbar relative z-20",
+                    "lg:pt-0 lg:h-full transition-all duration-500 ease-in-out",
+                    showProjects ? "lg:w-[40%] opacity-100" : "lg:w-0 opacity-0 overflow-hidden pointer-events-none lg:p-0"
+                )}
+            >
+                <div className="bg-background min-h-0 relative shadow-none lg:h-full flex flex-col w-full">
+                    {/* Sticky Header */}
+                    <div className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 py-3 px-6 flex items-center justify-between w-full">
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setShowProjects(false)}
+                                className="flex p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                                title="Hide List"
+                            >
+                                <ChevronRight size={20} />
+                            </button>
+                            <span className="font-bold text-white whitespace-nowrap">All Projects</span>
+                            <span className="text-zinc-500 text-sm">({projects.length})</span>
+                        </div>
+                    </div>
+
+                    {/* Projects Grid */}
+                    <div className="px-6 pb-8 pt-4 flex-1 w-full">
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+                            {/* Create Project Card */}
+                            <Link href="/project/new">
+                                <div className="h-40 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-4 text-zinc-500 hover:text-white hover:border-zinc-600 hover:bg-zinc-900/50 transition-all cursor-pointer group">
+                                    <div className="w-12 h-12 rounded-full bg-zinc-900 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                        <Plus size={24} />
+                                    </div>
+                                    <span className="font-bold text-sm uppercase tracking-wider">Create Project</span>
+                                </div>
+                            </Link>
+
+                            {/* Project Cards */}
+                            {projects.map((project, index) => {
+                                const color = getProjectColor(index);
+                                return (
+                                    <div
+                                        key={project.id}
+                                        onClick={() => setActiveProjectIndex(index)}
+                                    >
+                                        <Link href={`/project/${project.id}`}>
+                                            <TiltCard
+                                                delay={index * 50}
+                                                noTilt
+                                                className={cn(
+                                                    color.bg,
+                                                    "p-5 h-40 flex flex-col justify-between group border-2 border-transparent hover:border-white/20 rounded-3xl shadow-lg transition-all hover:-translate-y-1 cursor-pointer",
+                                                    color.text,
+                                                    activeProjectIndex === index ? "ring-4 ring-white/20 scale-[1.02]" : "opacity-90 hover:opacity-100"
+                                                )}
+                                            >
+                                                <div className="flex justify-between items-start relative z-10">
+                                                    <div className="bg-black/10 w-10 h-10 rounded-xl flex items-center justify-center backdrop-blur-md group-hover:rotate-12 transition-transform duration-300">
+                                                        <BookOpen size={18} />
+                                                    </div>
+                                                    <div className="bg-black/10 px-2 py-1 rounded-full text-[10px] font-bold backdrop-blur-md uppercase tracking-wide">
+                                                        {project.category || 'General'}
+                                                    </div>
+                                                </div>
+                                                <div className="relative z-10">
+                                                    <h3 className="text-xl font-bold leading-tight mb-2 group-hover:scale-105 transition-transform origin-left line-clamp-1">
+                                                        {project.title}
+                                                    </h3>
+                                                    <div className="flex items-center gap-2 opacity-70">
+                                                        <Layers size={12} />
+                                                        <span className="text-[10px] font-medium">
+                                                            {formatRelativeTime(project.updated_at || project.created_at)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </TiltCard>
+                                        </Link>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             </div>

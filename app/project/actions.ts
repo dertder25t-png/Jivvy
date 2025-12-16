@@ -110,11 +110,17 @@ export async function updateProjectMetadata(
     updates: { title?: string; category?: string }
 ): Promise<{ success: boolean; error: string | null }> {
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { success: false, error: "Not authenticated" };
+    }
 
     const { error } = await supabase
         .from('projects')
         .update(updates)
-        .eq('id', projectId);
+        .eq('id', projectId)
+        .eq('user_id', user.id); // Security: Ensure ownership
 
     if (error) {
         return { success: false, error: error.message };
@@ -133,11 +139,17 @@ export async function updateProjectConstraints(
     constraints: Record<string, unknown>
 ): Promise<{ success: boolean; error: string | null }> {
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { success: false, error: "Not authenticated" };
+    }
 
     const { error } = await supabase
         .from('projects')
         .update({ extracted_constraints: constraints })
-        .eq('id', projectId);
+        .eq('id', projectId)
+        .eq('user_id', user.id); // Security: Ensure ownership
 
     if (error) {
         return { success: false, error: error.message };
@@ -152,11 +164,17 @@ export async function updateProjectConstraints(
  */
 export async function deleteProject(id: string): Promise<{ success: boolean; error: string | null }> {
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { success: false, error: "Not authenticated" };
+    }
 
     const { error } = await supabase
         .from('projects')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('user_id', user.id); // Security: Ensure ownership
 
     if (error) {
         return { success: false, error: error.message };

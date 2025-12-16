@@ -157,9 +157,9 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
     }, [localPdfUrl]);
 
     return (
-        <div className="flex h-full w-full bg-zinc-950 overflow-hidden">
-            {/* Left Pane: PDF Viewer (50%) */}
-            <div className="w-1/2 h-full p-4 border-r border-white/5">
+        <div className="flex flex-col lg:flex-row h-full w-full bg-zinc-950 overflow-hidden">
+            {/* PDF Viewer - stacked on mobile, side-by-side on desktop */}
+            <div className="w-full lg:w-1/2 h-[45%] lg:h-full p-2 lg:p-4 border-b lg:border-b-0 lg:border-r border-white/5 min-h-0">
                 {activePdfUrl ? (
                     <div className="h-full w-full relative">
                         {/* File info bar */}
@@ -257,8 +257,8 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
                 )}
             </div>
 
-            {/* Right Pane: AI Command Center (50%) */}
-            <div className="w-1/2 h-full flex flex-col overflow-hidden">
+            {/* AI Command Center - stacked on mobile, side-by-side on desktop */}
+            <div className="w-full lg:w-1/2 h-[55%] lg:h-full flex flex-col overflow-hidden pb-20 lg:pb-0">
                 {loadError && (
                     <div className="m-4 mb-0 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm flex items-center justify-between flex-shrink-0">
                         <span>{loadError}</span>
@@ -270,7 +270,7 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
                         </button>
                     </div>
                 )}
-                <div className="flex-1 min-h-0 p-4 h-full">
+                <div className="flex-1 min-h-0 p-2 lg:p-4 h-full">
                     <AICommandCenter
                         pdfBuffer={pdfBuffer}
                         onJumpToPage={(page) => {

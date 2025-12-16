@@ -12,8 +12,8 @@
   "dependencies": {
     "@excalidraw/excalidraw": "0.17.6",
     "@google/generative-ai": "^0.24.1",
-    "@supabase/ssr": "^0.4.0",
-    "@supabase/supabase-js": "^2.43.5",
+    "@supabase/ssr": "0.5.2",
+    "@supabase/supabase-js": "2.46.2",
     "@tiptap/extension-bubble-menu": "^3.13.0",
     "@tiptap/extension-highlight": "^3.13.0",
     "@tiptap/pm": "^3.13.0",

@@ -141,14 +141,14 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
             className
         )}>
             {/* Toolbar */}
-            <div className="flex items-center gap-1 p-2 border-b border-white/5 bg-zinc-900/80">
+            <div className="flex items-center gap-1 p-2 border-b border-white/5 bg-zinc-900/80 flex-wrap">
                 {/* Mode Indicator */}
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800/50 text-xs font-medium text-zinc-400 mr-2">
                     {mode === "paper" ? <FileText size={14} className="text-violet-400" /> : <PenLine size={14} className="text-lime-400" />}
                     {mode === "paper" ? "Paper" : "Notes"}
                 </div>
 
-                <div className="w-px h-4 bg-zinc-700 mx-1" />
+                <div className="w-px h-4 bg-zinc-700 mx-1 hidden sm:block" />
 
                 <button
                     onClick={() => editor.chain().focus().toggleBold().run()}
@@ -177,7 +177,7 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
                 >
                     <Heading2 size={16} />
                 </button>
-                <div className="w-px h-4 bg-zinc-700 mx-1" />
+                <div className="w-px h-4 bg-zinc-700 mx-1 hidden sm:block" />
                 <button
                     onClick={() => editor.chain().focus().toggleBulletList().run()}
                     className={cn(
@@ -211,7 +211,7 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
                         )}
                     >
                         <SquareStack size={14} />
-                        {isFlashcardMode ? "Flashcard Mode" : "Cards"}
+                        <span className="hidden sm:inline">{isFlashcardMode ? "Flashcard Mode" : "Cards"}</span>
                     </button>
                 )}
 
@@ -223,19 +223,19 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
                         className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-50"
                     >
                         {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                        {saving ? "Saving..." : "Save"}
+                        <span className="hidden sm:inline">{saving ? "Saving..." : "Save"}</span>
                     </button>
                 )}
 
                 {lastSaved && (
-                    <span className="text-xs text-zinc-600 px-2">
+                    <span className="text-xs text-zinc-600 px-2 hidden sm:inline">
                         Saved {lastSaved.toLocaleTimeString()}
                     </span>
                 )}
             </div>
 
             {/* Editor Content */}
-            <div className={cn("flex-1 overflow-auto", mode === "paper" && "flex justify-center bg-[#1a1a1d]")}>
+            <div className={cn("flex-1 overflow-auto pb-20 lg:pb-0", mode === "paper" && "flex justify-center bg-[#1a1a1d]")}>
                 <EditorContent editor={editor} className={cn("h-full", mode === "paper" && "w-full max-w-4xl bg-[#1e1e20] shadow-2xl min-h-screen my-4 rounded-xl")} />
 
                 {/* Unified Context Bar (Replaces RefHunter & ToneTuner) */}

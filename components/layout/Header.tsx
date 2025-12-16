@@ -157,7 +157,7 @@ const Header = () => {
     }, [centerMode]);
 
     return (
-        <header className="h-20 flex items-center justify-between px-6 md:px-12 border-b border-white/5 bg-background/80 backdrop-blur-xl z-50 fixed top-0 w-full transition-transform duration-500">
+        <header className="hidden md:flex h-20 items-center justify-between px-6 md:px-12 border-b border-white/5 bg-background/80 backdrop-blur-xl z-50 fixed top-0 w-full transition-transform duration-500">
             <div className="flex items-center gap-4 md:gap-8">
                 {/* Logo & Greeting - Always visible */}
                 <Link
@@ -257,7 +257,7 @@ const Header = () => {
                                                 <button
                                                     key={file.id}
                                                     onClick={() => {
-                                                            setCenterMode(file.id as "canvas" | "paper" | "notes" | "extraction");
+                                                        setCenterMode(file.id as "canvas" | "paper" | "notes" | "extraction");
                                                         setFileDropdownOpen(false);
                                                     }}
                                                     className={cn(
