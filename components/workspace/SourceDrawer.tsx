@@ -48,35 +48,16 @@ interface SourceDrawerProps {
     orientation?: 'vertical' | 'horizontal'; // Prop to force orientation if needed
 }
 
-// Mock citations for demo - in real app, fetch from database
-const MOCK_CITATIONS: Citation[] = [
-    {
-        id: "1",
-        title: "Design Principles and Problems",
-        author: "Paul Zelanski",
-        type: "book",
-        page: "42-48"
-    },
-    {
-        id: "2",
-        title: "The Elements of Typographic Style",
-        author: "Robert Bringhurst",
-        type: "book",
-        page: "23"
-    },
-    {
-        id: "3",
-        title: "Interaction of Color",
-        author: "Josef Albers",
-        type: "book",
-        page: "112-115"
-    },
-];
+import { createCitation, getCitations, updateCitation, deleteCitation } from "@/app/project/citation-actions";
+
+// Mock citations removal - now fetching from DB
+
 
 export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOrientation }: SourceDrawerProps) {
     // Default to 'sources' or previously checked? Let's default to sources.
     const [activeTab, setActiveTab] = useState<"sources" | "pdf" | "research" | "flashcards" | "notes">("sources");
-    const [citations, setCitations] = useState<Citation[]>(MOCK_CITATIONS);
+    const [citations, setCitations] = useState<Citation[]>([]);
+    const [isLoadingCitations, setIsLoadingCitations] = useState(false);
     const [isAddingCitation, setIsAddingCitation] = useState(false);
     const [editingCitation, setEditingCitation] = useState<Citation | null>(null);
     const [citationStyle, setCitationStyle] = useState<CitationStyle>('APA');
@@ -142,6 +123,25 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
         }
     }, [localPdfUrl, pdfUrl]);
 
+    // Fetch citations on load
+    useEffect(() => {
+        if (!projectId) return;
+
+        const loadCitations = async () => {
+            setIsLoadingCitations(true);
+            try {
+                const data = await getCitations(projectId);
+                setCitations(data);
+            } catch (error) {
+                console.error("Failed to load citations:", error);
+            } finally {
+                setIsLoadingCitations(false);
+            }
+        };
+
+        loadCitations();
+    }, [projectId]);
+
     // Citation form state
     const [formData, setFormData] = useState({
         title: '',
@@ -158,7 +158,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
     });
 
     // Subscribe to store setting, but allow prop override
-    const storePosition = useSettingsStore(state => state.drawerPosition);
+    const storePosition = useSettingsStore((state: any) => state.drawerPosition);
     // If prop is provided (e.g. wrapper dictates), usage that. Otherwise store.
     // 'vertical' maps to 'right' position, 'horizontal' maps to 'bottom'.
     const orientation = propOrientation ?? (storePosition === 'bottom' ? 'horizontal' : 'vertical');
@@ -179,13 +179,14 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
         e.dataTransfer.setData("application/json", JSON.stringify(citation));
     };
 
-    const handleAddCitation = () => {
-        if (!formData.title.trim() || !formData.author.trim()) {
+    const handleAddCitation = async () => {
+        if (!formData.title.trim() || !formData.author.trim() || !projectId) {
             return;
         }
 
+        const tempId = crypto.randomUUID();
         const newCitation: Citation = {
-            id: crypto.randomUUID(),
+            id: tempId,
             title: formData.title,
             author: formData.author,
             type: formData.type,
@@ -199,27 +200,60 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
             doi: formData.doi || undefined
         };
 
-        setCitations(prev => [...prev, newCitation]);
+        // Optimistic update
+        setCitations(prev => [newCitation, ...prev]);
         setIsAddingCitation(false);
         resetForm();
+
+        try {
+            // Remove 'id' for creation as DB assigns it (or we can use UUID if we want, but letting DB handle is safer usually, though here we need the ID back)
+            // Ideally we pass everything except ID, and update with real ID
+            const { id, ...rest } = newCitation;
+            const created = await createCitation(projectId, rest);
+
+            // Update with real ID
+            setCitations(prev => prev.map(c => c.id === tempId ? { ...c, id: created.id } : c));
+        } catch (error) {
+            console.error("Failed to create citation:", error);
+            // Revert on failure
+            setCitations(prev => prev.filter(c => c.id !== tempId));
+        }
     };
 
-    const handleEditCitation = () => {
-        if (!editingCitation || !formData.title.trim() || !formData.author.trim()) {
+    const handleEditCitation = async () => {
+        if (!editingCitation || !formData.title.trim() || !formData.author.trim() || !projectId) {
             return;
         }
 
+        const updatedCitation = { ...editingCitation, ...formData };
+
+        // Optimistic update
         setCitations(prev => prev.map(c =>
-            c.id === editingCitation.id
-                ? { ...c, ...formData, id: c.id }
-                : c
+            c.id === editingCitation.id ? updatedCitation : c
         ));
         setEditingCitation(null);
         resetForm();
+
+        try {
+            await updateCitation(editingCitation.id, projectId, formData);
+        } catch (error) {
+            console.error("Failed to update citation:", error);
+            // Revert? (Complex, maybe just refresh)
+        }
     };
 
-    const handleDeleteCitation = (id: string) => {
+    const handleDeleteCitation = async (id: string) => {
+        if (!projectId) return;
+
+        const prevCitations = [...citations];
         setCitations(prev => prev.filter(c => c.id !== id));
+
+        try {
+            await deleteCitation(id, projectId);
+        } catch (error) {
+            console.error("Failed to delete citation:", error);
+            setCitations(prevCitations);
+        }
     };
 
     const resetForm = () => {

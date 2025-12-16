@@ -10,6 +10,7 @@
     "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "0.17.6",
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.4.0",
     "@supabase/supabase-js": "^2.43.5",
@@ -38,7 +39,6 @@
     "react-dom": "^18",
     "react-pdf": "9.1.1",
     "tailwind-merge": "^3.4.0",
-    "tldraw": "^4.2.1",
     "zustand": "^5.0.9"
   },
   "devDependencies": {

@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    transpilePackages: ['@excalidraw/excalidraw'],
     webpack: (config, { isServer }) => {
         config.resolve.alias = {
             ...config.resolve.alias,
