@@ -26,9 +26,11 @@ interface ToolbarProps {
   setMode: (mode: CanvasMode) => void;
   showLayers: boolean;
   setShowLayers: (show: boolean) => void;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
-export function Toolbar({ canvas, mode, setMode, showLayers, setShowLayers }: ToolbarProps) {
+export function Toolbar({ canvas, mode, setMode, showLayers, setShowLayers, onUndo, onRedo }: ToolbarProps) {
   const [selectedColor, setSelectedColor] = useState("#a3e635"); // lime-400
   const [brushWidth, setBrushWidth] = useState(5);
   const [fontSize, setFontSize] = useState(24);
@@ -133,14 +135,8 @@ export function Toolbar({ canvas, mode, setMode, showLayers, setShowLayers }: To
     input.click();
   };
 
-  // History Management
-  const undo = () => {
-    document.dispatchEvent(new Event("undo"));
-  };
-
-  const redo = () => {
-    document.dispatchEvent(new Event("redo"));
-  };
+  // History Management (now using callbacks from props)
+  // onUndo and onRedo are passed from parent component
 
   // Export
   const exportCanvas = (format: "png" | "jpg" | "svg") => {
@@ -302,10 +298,10 @@ export function Toolbar({ canvas, mode, setMode, showLayers, setShowLayers }: To
 
       {/* Actions Panel */}
       <TiltCard className="bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-2 flex gap-2">
-        <GummyButton size="sm" variant="ghost" onClick={undo} title="Undo">
+        <GummyButton size="sm" variant="ghost" onClick={onUndo} title="Undo">
           <Undo className="w-4 h-4" />
         </GummyButton>
-        <GummyButton size="sm" variant="ghost" onClick={redo} title="Redo">
+        <GummyButton size="sm" variant="ghost" onClick={onRedo} title="Redo">
           <Redo className="w-4 h-4" />
         </GummyButton>
         <GummyButton size="sm" variant="ghost" onClick={deleteSelected} title="Delete">

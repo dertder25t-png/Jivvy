@@ -6,13 +6,19 @@ import { TiltCard } from "@/components/ui/TiltCard";
 import { GummyButton } from "@/components/ui/GummyButton";
 import { Eye, EyeOff, Lock, Unlock, Trash2 } from "lucide-react";
 
+// Extended Fabric object type with custom properties
+interface CustomFabricObject extends FabricObject {
+  customId?: number;
+  name?: string;
+}
+
 interface LayerItem {
   id: string;
   name: string;
   type: string;
   visible: boolean;
   locked: boolean;
-  object: FabricObject;
+  object: CustomFabricObject;
 }
 
 interface LayersPanelProps {
@@ -28,13 +34,13 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
 
     // Update layers list when canvas changes
     const updateLayers = () => {
-      const objects = canvas.getObjects();
+      const objects = canvas.getObjects() as CustomFabricObject[];
       const layerItems: LayerItem[] = objects.map((obj, index) => {
         const type = obj.type || "object";
-        const name = (obj as { name?: string }).name || `${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}`;
+        const name = obj.name || `${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}`;
         
         return {
-          id: (obj as { __uid?: number }).__uid?.toString() || `${index}`,
+          id: obj.customId?.toString() || `${index}`,
           name,
           type,
           visible: obj.visible !== false,
@@ -126,7 +132,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   };
 
   const renameLayer = (layer: LayerItem, newName: string) => {
-    (layer.object as { name?: string }).name = newName;
+    layer.object.name = newName;
     canvas?.fire("object:modified", { target: layer.object });
   };
 

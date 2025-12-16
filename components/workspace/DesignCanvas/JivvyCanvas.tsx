@@ -1,9 +1,13 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { FabricObject } from "fabric";
 import { useFabric } from "./useFabric";
 import { Toolbar, CanvasMode } from "./Toolbar";
 import { LayersPanel } from "./LayersPanel";
+
+// Custom ID counter for objects
+let objectIdCounter = 0;
 
 export default function JivvyCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,44 +63,50 @@ export default function JivvyCanvas() {
     };
   }, [fabricCanvas, history, historyIndex, isLocked]);
 
-  // Separate useEffect for Undo/Redo listeners
+  // Undo/Redo handlers
+  const handleUndo = useCallback(() => {
+    if (!fabricCanvas || historyIndex <= 0) return;
+    
+    setIsLocked(true);
+    const prevIndex = historyIndex - 1;
+    const json = history[prevIndex];
+    fabricCanvas.loadFromJSON(JSON.parse(json)).then(() => {
+      fabricCanvas.renderAll();
+      setHistoryIndex(prevIndex);
+      setIsLocked(false);
+    });
+  }, [fabricCanvas, history, historyIndex]);
+
+  const handleRedo = useCallback(() => {
+    if (!fabricCanvas || historyIndex >= history.length - 1) return;
+    
+    setIsLocked(true);
+    const nextIndex = historyIndex + 1;
+    const json = history[nextIndex];
+    fabricCanvas.loadFromJSON(JSON.parse(json)).then(() => {
+      fabricCanvas.renderAll();
+      setHistoryIndex(nextIndex);
+      setIsLocked(false);
+    });
+  }, [fabricCanvas, history, historyIndex]);
+
+  // Assign custom IDs to new objects
   useEffect(() => {
     if (!fabricCanvas) return;
 
-    const undoHandler = () => {
-        if (historyIndex > 0) {
-            setIsLocked(true);
-            const prevIndex = historyIndex - 1;
-            const json = history[prevIndex];
-            fabricCanvas.loadFromJSON(JSON.parse(json)).then(() => {
-                 fabricCanvas.renderAll();
-                 setHistoryIndex(prevIndex);
-                 setIsLocked(false);
-            });
-        }
+    const handleObjectAdded = (e: { target: FabricObject }) => {
+      const obj = e.target as { customId?: number };
+      if (!obj.customId) {
+        obj.customId = ++objectIdCounter;
+      }
     };
 
-    const redoHandler = () => {
-        if (historyIndex < history.length - 1) {
-            setIsLocked(true);
-            const nextIndex = historyIndex + 1;
-            const json = history[nextIndex];
-            fabricCanvas.loadFromJSON(JSON.parse(json)).then(() => {
-                fabricCanvas.renderAll();
-                setHistoryIndex(nextIndex);
-                setIsLocked(false);
-            });
-        }
-    };
-
-    document.addEventListener('undo', undoHandler);
-    document.addEventListener('redo', redoHandler);
+    fabricCanvas.on("object:added", handleObjectAdded);
 
     return () => {
-        document.removeEventListener('undo', undoHandler);
-        document.removeEventListener('redo', redoHandler);
+      fabricCanvas.off("object:added", handleObjectAdded);
     };
-  }, [fabricCanvas, history, historyIndex]);
+  }, [fabricCanvas]);
 
   return (
     <div className="relative w-full h-full bg-zinc-950 overflow-hidden text-white" ref={containerRef}>
@@ -106,6 +116,8 @@ export default function JivvyCanvas() {
         setMode={setMode}
         showLayers={showLayers}
         setShowLayers={setShowLayers}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
       />
 
       {/* Use the ref from the hook */}
