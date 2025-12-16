@@ -55,19 +55,19 @@ export async function scanForIndex(pdfData: ArrayBuffer): Promise<{ term: string
 
     const allText: string[] = [];
     const pagesToScan = new Set<number>();
-    
+
     // Add first 20 pages (Table of Contents typically here)
     for (let i = 1; i <= Math.min(20, numPages); i++) {
       pagesToScan.add(i);
     }
-    
+
     // Add last 50 pages (Index typically here)
     for (let i = Math.max(1, numPages - 50); i <= numPages; i++) {
       pagesToScan.add(i);
     }
 
     const sortedPages = Array.from(pagesToScan).sort((a, b) => a - b);
-    
+
     console.log(`[PDF Extraction] Smart scanning ${sortedPages.length} pages for Index/TOC...`);
 
     // Process pages with better error recovery
@@ -78,7 +78,7 @@ export async function scanForIndex(pdfData: ArrayBuffer): Promise<{ term: string
         const pageText = textContent.items
           .map((item: any) => item.str || '')
           .join(' ');
-        
+
         allText.push(pageText);
       } catch (pageError) {
         console.warn(`[PDF Extraction] Error on page ${pageNum}:`, pageError);
@@ -148,7 +148,7 @@ function findAndParseIndex(text: string): { term: string; pages: number[] }[] {
     while ((match = regex.exec(indexText)) !== null) {
       const term = match[1].trim();
       const pageStr = match[2];
-      
+
       // Extract all page numbers from the string
       const pageRefs = pageStr
         .match(/\d+/g)
@@ -157,9 +157,9 @@ function findAndParseIndex(text: string): { term: string; pages: number[] }[] {
 
       // Validate term quality
       if (
-        term.length > 2 && 
-        term.length < 60 && 
-        pageRefs.length > 0 && 
+        term.length > 2 &&
+        term.length < 60 &&
+        pageRefs.length > 0 &&
         !isCommonWord(term)
       ) {
         const existing = indexMap.get(term) || [];
@@ -229,13 +229,13 @@ function isCommonWord(word: string): boolean {
     'Their', 'Where', 'Which', 'About', 'After', 'Before', 'Between', 'Through', 'During', 'Without',
     'When', 'What', 'Who', 'Why', 'How', 'Some', 'Many', 'More', 'Most', 'Other', 'Such', 'Only',
     // Document structure words
-    'Chapter', 'Section', 'Figure', 'Table', 'Page', 'Note', 'Example', 'Examples', 'Introduction', 
+    'Chapter', 'Section', 'Figure', 'Table', 'Page', 'Note', 'Example', 'Examples', 'Introduction',
     'Conclusion', 'References', 'Appendix', 'Contents', 'Preface', 'Summary', 'Overview', 'Abstract',
     // Common filler words
     'Each', 'Every', 'Both', 'Few', 'Several', 'Since', 'While', 'Until', 'Where', 'Whether',
     'Also', 'Just', 'Very', 'Too', 'Here', 'Then', 'Now', 'Even', 'Much', 'Well', 'Back', 'Only',
   ]);
-  
+
   // Check both exact match and case-insensitive match
   return commonWords.has(word) || commonWords.has(word.toLowerCase());
 }
@@ -273,7 +273,7 @@ export async function extractAllText(pdfData: ArrayBuffer): Promise<string> {
     }
 
     const result = allText.join('\n');
-    
+
     if (result.length === 0) {
       console.warn('[PDF Extraction] No text extracted from PDF');
     }
@@ -336,7 +336,7 @@ export async function extractSpecificPages(
     });
 
     const results = await Promise.all(extractionPromises);
-    
+
     // Filter out failed extractions
     results.forEach((result) => {
       if (result) {
@@ -349,6 +349,129 @@ export async function extractSpecificPages(
     console.error('[PDF Extraction] Error extracting pages:', error);
     if (error instanceof Error) {
       throw new Error(`Page extraction failed: ${error.message}`);
+    }
+    return [];
+  }
+}
+
+/**
+ * Search pages for specific terms - returns pages containing any of the search terms
+ * IMPROVED: Scans ALL pages in parallel for comprehensive coverage
+ */
+export async function searchPagesForTerms(
+  pdfData: ArrayBuffer,
+  searchTerms: string[],
+  options: { maxResults?: number } = {}
+): Promise<{ page: number; matchCount: number; matchedTerms: string[]; uniqueTermMatches: number }[]> {
+  const { maxResults = 15 } = options;
+
+  try {
+    if (!pdfData || pdfData.byteLength === 0) {
+      throw new Error('Invalid PDF data: empty buffer');
+    }
+
+    if (!searchTerms || searchTerms.length === 0) {
+      return [];
+    }
+
+    // Normalize search terms
+    const normalizedTerms = searchTerms
+      .map(t => t.toLowerCase().trim())
+      .filter(t => t.length > 1);
+
+    if (normalizedTerms.length === 0) {
+      return [];
+    }
+
+    console.log('[PDF Search] Searching ALL pages for terms:', normalizedTerms);
+
+    const pdfjs = await getPdfJs();
+    const loadingTask = pdfjs.getDocument({ data: pdfData });
+    const doc: PDFDocumentProxy = await loadingTask.promise;
+    const numPages = doc.numPages;
+
+    console.log(`[PDF Search] Document has ${numPages} pages, scanning all...`);
+
+    const allResults: { page: number; matchCount: number; matchedTerms: string[]; uniqueTermMatches: number }[] = [];
+
+    // Process ALL pages in parallel batches
+    const batchSize = 10;
+    for (let i = 1; i <= numPages; i += batchSize) {
+      const batch: number[] = [];
+      for (let j = i; j < i + batchSize && j <= numPages; j++) {
+        batch.push(j);
+      }
+
+      const batchResults = await Promise.all(
+        batch.map(async (pageNum) => {
+          try {
+            const page: PDFPageProxy = await doc.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+              .map((item: any) => item.str || '')
+              .join(' ')
+              .toLowerCase();
+
+            if (pageText.length < 50) return null;
+
+            const matchedTerms: string[] = [];
+            let totalMatches = 0;
+
+            for (const term of normalizedTerms) {
+              const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const regex = new RegExp(`\\b${escapedTerm}|${escapedTerm}\\b`, 'gi');
+              const matches = pageText.match(regex);
+              if (matches) {
+                totalMatches += matches.length;
+                if (!matchedTerms.includes(term)) {
+                  matchedTerms.push(term);
+                }
+              }
+            }
+
+            if (totalMatches > 0) {
+              return {
+                page: pageNum,
+                matchCount: totalMatches,
+                matchedTerms,
+                uniqueTermMatches: matchedTerms.length
+              };
+            }
+            return null;
+          } catch (e) {
+            return null;
+          }
+        })
+      );
+
+      for (const result of batchResults) {
+        if (result) allResults.push(result);
+      }
+    }
+
+    // Sort by unique term matches first, then total matches
+    allResults.sort((a, b) => {
+      if (b.uniqueTermMatches !== a.uniqueTermMatches) {
+        return b.uniqueTermMatches - a.uniqueTermMatches;
+      }
+      return b.matchCount - a.matchCount;
+    });
+
+    const topResults = allResults.slice(0, maxResults);
+    console.log(`[PDF Search] Found ${allResults.length} pages with matches, returning top ${topResults.length}`);
+
+    if (topResults.length > 0) {
+      console.log('[PDF Search] Top matches:', topResults.slice(0, 5).map(r =>
+        `p.${r.page}(${r.uniqueTermMatches} terms, ${r.matchCount} hits)`
+      ).join(', '));
+    }
+
+    return topResults;
+
+  } catch (error) {
+    console.error('[PDF Search] Error:', error);
+    if (error instanceof Error) {
+      throw new Error(`PDF search failed: ${error.message}`);
     }
     return [];
   }

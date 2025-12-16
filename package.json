@@ -6,12 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.87.1",
+    "@supabase/ssr": "^0.4.0",
+    "@supabase/supabase-js": "^2.43.5",
     "@tiptap/extension-bubble-menu": "^3.13.0",
     "@tiptap/extension-highlight": "^3.13.0",
     "@tiptap/pm": "^3.13.0",
@@ -30,12 +31,12 @@
     "lucide-react": "^0.561.0",
     "next": "^14.2.35",
     "pdf-parse": "^2.4.5",
-    "pdfjs-dist": "^5.4.449",
+    "pdfjs-dist": "4.4.168",
     "react": "^18",
     "react-chartjs-2": "^5.3.1",
     "react-colorful": "^5.6.1",
     "react-dom": "^18",
-    "react-pdf": "^10.2.0",
+    "react-pdf": "9.1.1",
     "tailwind-merge": "^3.4.0",
     "tldraw": "^4.2.1",
     "zustand": "^5.0.9"
@@ -46,8 +47,13 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.14",
+    "fs-extra": "^11.2.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
+  },
+  "overrides": {
+    "pdfjs-dist": "4.4.168",
+    "@types/pdfjs-dist": "4.4.168"
   }
 }

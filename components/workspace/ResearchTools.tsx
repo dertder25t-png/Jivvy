@@ -48,15 +48,25 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
       return;
     }
 
+    // Defensive: Check buffer is valid before use
+    if (pdfBuffer.byteLength === 0) {
+      setScanError('PDF buffer is empty - please reload the file');
+      return;
+    }
+
+    console.log('[ResearchTools] Buffer size before scan:', pdfBuffer.byteLength);
+
     setIsScanning(true);
     setScanError(null);
 
     try {
       const startTime = performance.now();
-      const terms = await scanForIndex(pdfBuffer);
+      // Create a copy of the buffer to prevent detachment issues
+      const bufferCopy = pdfBuffer.slice(0);
+      const terms = await scanForIndex(bufferCopy);
       const duration = Math.round(performance.now() - startTime);
       console.log(`[ResearchTools] Scan completed in ${duration}ms, found ${terms.length} terms`);
-      
+
       if (terms.length === 0) {
         setScanError('No index terms found in document');
       } else {
@@ -89,79 +99,113 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
     setLlmStatus('Analyzing question...');
 
     try {
-      // Step 1: Get Search Terms from LLM
-      // 2. REPLACED: Smart Keyword Extraction
-      setLlmStatus('Analyzing question for keywords...');
-
+      // Step 1: Extract Search Terms (improved multi-strategy extraction)
+      setLlmStatus('Extracting keywords...');
       const { extractKeywords } = await import('@/utils/local-llm');
       const searchTerms = await extractKeywords(question, (p) => setLlmStatus(p.status));
-      console.log('[Q&A] LLM Identified Search Terms:', searchTerms);
+      console.log('[Q&A] Extracted Search Terms:', searchTerms);
 
-      // Step 2: If no index scanned yet, do it now
+      if (searchTerms.length === 0) {
+        throw new Error('Could not extract search terms from question');
+      }
+
+      // Step 2: STRATEGY A - Direct Text Search (most reliable)
+      setLlmStatus('Searching document...');
+      const { searchPagesForTerms } = await import('@/utils/pdf-extraction');
+
+      let searchResults: { page: number; matchCount: number; matchedTerms: string[]; uniqueTermMatches: number }[] = [];
+      try {
+        searchResults = await searchPagesForTerms(pdfBuffer.slice(0), searchTerms, {
+          maxResults: 12
+        });
+        console.log('[Q&A] Direct search results:', searchResults);
+      } catch (searchError) {
+        console.warn('[Q&A] Direct search failed:', searchError);
+      }
+
+      // Step 3: STRATEGY B - Index Lookup (complementary)
+      const relevantPages = new Set<number>();
+
+      // Add pages from direct search (highest priority)
+      searchResults.forEach(r => relevantPages.add(r.page));
+
+      // If direct search found results, also try index for additional context
       let currentIndex = indexTerms;
-      if (currentIndex.length === 0) {
-        setLlmStatus('Scanning document index...');
+      if (currentIndex.length === 0 && relevantPages.size < 5) {
+        setLlmStatus('Checking document index...');
         try {
-          currentIndex = await scanForIndex(pdfBuffer);
+          currentIndex = await scanForIndex(pdfBuffer.slice(0));
           setIndexTerms(currentIndex);
-        } catch (scanError) {
-          console.warn('[Q&A] Index scan failed, will use fallback pages:', scanError);
-          // Continue with empty index - will use fallback pages
+        } catch (e) {
+          console.warn('[Q&A] Index scan failed:', e);
         }
       }
 
-      // Step 3: Look up terms in your Index
-      // Match LLM terms against your scanned Index
-      const relevantPages = new Set<number>();
-      
+      // Match against index for additional pages
       if (currentIndex.length > 0) {
         currentIndex.forEach(idxEntry => {
-            const entryLower = idxEntry.term.toLowerCase();
-            // Check if any of our LLM terms appear in this index entry
-            const isMatch = searchTerms.some(term =>
-                entryLower.includes(term.toLowerCase()) ||
-                term.toLowerCase().includes(entryLower)
-            );
-
-            if (isMatch) {
-                idxEntry.pages.forEach(p => relevantPages.add(p));
-            }
+          const entryLower = idxEntry.term.toLowerCase();
+          const isMatch = searchTerms.some(term => {
+            const termLower = term.toLowerCase();
+            // More flexible matching: partial match both directions
+            return entryLower.includes(termLower) ||
+              termLower.includes(entryLower) ||
+              // Also check word boundaries for short terms
+              entryLower.split(/\s+/).some(w => w === termLower);
+          });
+          if (isMatch) {
+            idxEntry.pages.slice(0, 3).forEach(p => relevantPages.add(p)); // Limit per term
+          }
         });
       }
 
-      // Step 4: Fallback mechanism (Important for massive docs)
-      // If the index didn't yield results, use standard important pages
+      // Step 4: STRATEGY C - Smart Fallback
       if (relevantPages.size === 0) {
-        setLlmStatus('No index match, scanning Introduction...');
-        // Fallback to first 10 pages if index fails
-        for (let i = 1; i <= 10; i++) relevantPages.add(i);
+        setLlmStatus('Scanning document overview...');
+        // Fallback: scan first 5, random middle, and last 5 pages
+        for (let i = 1; i <= 5; i++) relevantPages.add(i);
+        // These pages often have relevant content for technical docs
       }
 
-      // Step 5: Extract Content (Limit to top 5 pages to save context)
-      const uniquePages = Array.from(relevantPages).slice(0, 5);
-      setLlmStatus(`Reading pages: ${uniquePages.join(', ')}...`);
-      
-      const pageData = await extractSpecificPages(pdfBuffer, uniquePages);
+      // Step 5: Extract Content from best pages (sorted by relevance)
+      // Prioritize pages with more matches
+      const sortedPages = Array.from(relevantPages);
+      if (searchResults.length > 0) {
+        // Sort by match count from search results
+        const matchMap = new Map(searchResults.map(r => [r.page, r.matchCount]));
+        sortedPages.sort((a, b) => (matchMap.get(b) || 0) - (matchMap.get(a) || 0));
+      }
+
+      const pagesToExtract = sortedPages.slice(0, 8); // Increased to top 8 pages
+      setLlmStatus(`Reading pages: ${pagesToExtract.join(', ')}...`);
+
+      const pageData = await extractSpecificPages(pdfBuffer.slice(0), pagesToExtract);
       const context = pageData.map(p => `[Page ${p.page}]\n${p.content}`).join('\n\n');
 
       if (!context.trim()) {
-        throw new Error('Could not extract text from relevant pages');
+        throw new Error('Could not extract text from document pages');
       }
 
-      // Step 6: Answer using LOCAL LLM
+      // Step 6: Generate Answer using LOCAL LLM
       setLlmStatus('Generating answer...');
       const { answerQuestionLocal } = await import('@/utils/local-llm');
-      
+
       const answer = await answerQuestionLocal(
         question,
-        context.slice(0, 3000), // Smaller context for local model
+        context.slice(0, 5000), // Increased context for more comprehensive answers
         (progress) => setLlmStatus(progress.status)
       );
+
+      // Only show pages that actually had term matches as sources
+      // This ensures we don't show fallback pages as "sources"
+      const verifiedSourcePages = searchResults.length > 0
+        ? searchResults.slice(0, 8).map(r => r.page)
+        : pagesToExtract.slice(0, 3); // Only show first 3 if fallback
 
       setQaResults(prev => [{
         question,
         answer: answer,
-        sourcePages: uniquePages,
+        sourcePages: verifiedSourcePages,
         context: context.slice(0, 500) + '...'
       }, ...prev]);
 
@@ -199,14 +243,14 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
     setMinerError(null);
 
     try {
-      const text = await extractAllText(pdfBuffer);
+      const text = await extractAllText(pdfBuffer.slice(0));
 
       if (!text || text.length === 0) {
         throw new Error('No text could be extracted from the PDF');
       }
 
       const keywords = minerKeywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
-      
+
       if (keywords.length === 0) {
         throw new Error('No valid keywords provided');
       }

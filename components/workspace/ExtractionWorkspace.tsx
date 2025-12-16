@@ -31,7 +31,7 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
         if (activePdfUrl) {
             setLoading(true);
             setLoadError(null);
-            
+
             fetch(activePdfUrl)
                 .then(res => {
                     if (!res.ok) {
@@ -76,12 +76,7 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
             return;
         }
 
-        // Validate file size (limit to 50MB for browser processing)
-        const maxSize = 50 * 1024 * 1024; // 50MB
-        if (file.size > maxSize) {
-            setLoadError('PDF file is too large (max 50MB)');
-            return;
-        }
+
 
         setLoading(true);
         setLoadError(null);
