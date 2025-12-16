@@ -25,6 +25,30 @@
     scrollbar-width: none;
   }
 
+  /* Custom scrollbar for layers panel */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #27272a;
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #52525b;
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #71717a;
+  }
+
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #52525b #27272a;
+  }
+
   /* Grain Animation Overlay */
   .grain-overlay::before {
     content: "";
