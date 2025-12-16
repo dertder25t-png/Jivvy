@@ -247,7 +247,7 @@ export default function ProjectPage() {
     }
 
     return (
-        <div className="flex h-screen w-full overflow-hidden bg-background fixed inset-0 top-20">
+        <div className="flex h-[calc(100vh-5rem)] w-full overflow-hidden bg-background fixed top-20 left-0 right-0 bottom-0">
 
             {/* LEFT PANEL - Mode-specific */}
             {centerMode === 'canvas' && (
@@ -331,7 +331,6 @@ export default function ProjectPage() {
             {centerMode === 'extraction' ? (
                 <ExtractionWorkspace
                     pdfUrl={project?.pdf_url ?? null}
-                    projectId={projectId}
                     onPdfUploaded={(url) => setProject(prev => prev ? { ...prev, pdf_url: url } : null)}
                 />
             ) : (

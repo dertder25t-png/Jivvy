@@ -211,6 +211,148 @@ export async function summarizeLocal(
 }
 
 /**
+ * Chart data structure for visualization
+ */
+export interface ChartData {
+    type: 'bar' | 'line' | 'pie';
+    title: string;
+    summary: string;
+    labels: string[];
+    datasets: { label: string; data: number[]; backgroundColor?: string[] }[];
+    sourcePages: number[];
+}
+
+/**
+ * Analyze text to extract data for visualization
+ * Uses pattern matching to find numerical data since small models struggle with JSON
+ */
+export async function analyzeDataset(
+    text: string,
+    query: string,
+    sourcePages: number[],
+    onProgress?: ProgressCallback
+): Promise<ChartData | null> {
+    if (!text || text.trim().length === 0) {
+        return null;
+    }
+
+    onProgress?.({ status: 'Analyzing data patterns...' });
+
+    // Extract numerical data using pattern matching
+    // This is more reliable than asking the small LLM for JSON
+    const dataPoints = extractNumericalData(text);
+
+    if (dataPoints.length === 0) {
+        onProgress?.({ status: 'No numerical data found' });
+        return null;
+    }
+
+    // Generate a summary using the LLM
+    let summary = 'Data extracted from document.';
+    try {
+        if (!textGenerationPipeline) {
+            await initLocalLLM(onProgress);
+        }
+
+        if (textGenerationPipeline) {
+            const prompt = `Summarize this data briefly: ${dataPoints.slice(0, 5).map(d => `${d.label}: ${d.value}`).join(', ')}\n\nSummary:`;
+            const result = await textGenerationPipeline(prompt, {
+                max_new_tokens: 50,
+                temperature: 0.3,
+            });
+            summary = result[0]?.generated_text?.trim() || summary;
+        }
+    } catch (e) {
+        console.warn('[LocalLLM] Summary generation failed:', e);
+    }
+
+    // Determine chart type based on data characteristics
+    const chartType = dataPoints.length <= 6 ? 'pie' : dataPoints.length <= 12 ? 'bar' : 'line';
+
+    // Generate colors for pie/bar charts
+    const colors = generateChartColors(dataPoints.length);
+
+    onProgress?.({ status: 'Data analysis complete!' });
+
+    return {
+        type: chartType,
+        title: query || 'Extracted Data',
+        summary,
+        labels: dataPoints.map(d => d.label),
+        datasets: [{
+            label: 'Values',
+            data: dataPoints.map(d => d.value),
+            backgroundColor: colors
+        }],
+        sourcePages
+    };
+}
+
+/**
+ * Extract numerical data from text using pattern matching
+ */
+function extractNumericalData(text: string): { label: string; value: number }[] {
+    const results: { label: string; value: number }[] = [];
+
+    // Pattern 1: "Label: $123" or "Label: 123%" or "Label: 123"
+    const colonPattern = /([A-Za-z][A-Za-z\s]{2,30}):\s*\$?([\d,]+(?:\.\d+)?)\s*%?/g;
+    let match;
+    while ((match = colonPattern.exec(text)) !== null) {
+        const label = match[1].trim();
+        const value = parseFloat(match[2].replace(/,/g, ''));
+        if (!isNaN(value) && value > 0) {
+            results.push({ label, value });
+        }
+    }
+
+    // Pattern 2: "123 Label" (e.g., "150 employees", "50% increase")
+    const prefixPattern = /\b([\d,]+(?:\.\d+)?)\s*%?\s+((?:[A-Z][a-z]+\s?){1,4})/g;
+    while ((match = prefixPattern.exec(text)) !== null) {
+        const value = parseFloat(match[1].replace(/,/g, ''));
+        const label = match[2].trim();
+        if (!isNaN(value) && value > 0 && !results.some(r => r.label === label)) {
+            results.push({ label, value });
+        }
+    }
+
+    // Pattern 3: Table-like data "Item | Value" or tab-separated
+    const tablePattern = /^([A-Za-z][A-Za-z\s]{2,25})\s*[\t|]\s*\$?([\d,]+(?:\.\d+)?)/gm;
+    while ((match = tablePattern.exec(text)) !== null) {
+        const label = match[1].trim();
+        const value = parseFloat(match[2].replace(/,/g, ''));
+        if (!isNaN(value) && value > 0 && !results.some(r => r.label === label)) {
+            results.push({ label, value });
+        }
+    }
+
+    // Limit to top 12 results and sort by value
+    return results
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 12);
+}
+
+/**
+ * Generate chart colors
+ */
+function generateChartColors(count: number): string[] {
+    const baseColors = [
+        'rgba(163, 230, 53, 0.8)',  // lime
+        'rgba(34, 197, 94, 0.8)',   // green
+        'rgba(59, 130, 246, 0.8)', // blue
+        'rgba(168, 85, 247, 0.8)', // purple
+        'rgba(236, 72, 153, 0.8)', // pink
+        'rgba(251, 146, 60, 0.8)', // orange
+        'rgba(250, 204, 21, 0.8)', // yellow
+        'rgba(20, 184, 166, 0.8)', // teal
+        'rgba(239, 68, 68, 0.8)',  // red
+        'rgba(99, 102, 241, 0.8)', // indigo
+        'rgba(156, 163, 175, 0.8)', // gray
+        'rgba(217, 119, 6, 0.8)',  // amber
+    ];
+    return Array.from({ length: count }, (_, i) => baseColors[i % baseColors.length]);
+}
+
+/**
  * Extract search keywords from a user question
  * Uses multiple strategies for better coverage:
  * 1. LLM extraction for semantic understanding

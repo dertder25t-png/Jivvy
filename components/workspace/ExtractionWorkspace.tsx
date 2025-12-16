@@ -3,7 +3,7 @@
 
 import { useProjectStore } from "@/lib/store";
 import { PDFViewer } from "./PDFViewer";
-import { ResearchTools } from "./ResearchTools";
+import { AICommandCenter } from "./AICommandCenter";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { FileText, Upload, Loader2, Cloud, CheckCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
+    const [highlightPage, setHighlightPage] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Use either local or initial PDF URL
@@ -256,23 +257,26 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
                 )}
             </div>
 
-            {/* Right Pane: Extraction Tools (50%) */}
-            <div className="w-1/2 h-full bg-surface">
-                <div className="h-full w-full p-4">
-                    {loadError && (
-                        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm flex items-center justify-between">
-                            <span>{loadError}</span>
-                            <button
-                                onClick={() => setLoadError(null)}
-                                className="text-red-400 hover:text-red-300"
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
-                    )}
-                    <ResearchTools
+            {/* Right Pane: AI Command Center (50%) */}
+            <div className="w-1/2 h-full flex flex-col overflow-hidden">
+                {loadError && (
+                    <div className="m-4 mb-0 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm flex items-center justify-between flex-shrink-0">
+                        <span>{loadError}</span>
+                        <button
+                            onClick={() => setLoadError(null)}
+                            className="text-red-400 hover:text-red-300"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                )}
+                <div className="flex-1 min-h-0 p-4 h-full">
+                    <AICommandCenter
                         pdfBuffer={pdfBuffer}
-                        onJumpToPage={(page) => setPdfPage(page)}
+                        onJumpToPage={(page) => {
+                            setPdfPage(page);
+                            setHighlightPage(page);
+                        }}
                     />
                 </div>
             </div>

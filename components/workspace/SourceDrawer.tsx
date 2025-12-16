@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
     BookOpen,
     Link2,
@@ -19,21 +19,24 @@ import {
     Copy,
     Edit2,
     Trash2,
-    Check
+    Check,
+    Upload,
+    Eye,
+    EyeOff,
+    Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ResearchTools } from './ResearchTools';
+import { AICommandCenter } from './AICommandCenter';
 import { useProjectStore } from "@/lib/store";
-import { FlashcardSidebar } from "./FlashcardSidebar"; // Ensure this matches import path
-// Identifying SyllabusTracker as the "Notes" component
+import { FlashcardSidebar } from "./FlashcardSidebar";
 import { SyllabusTracker } from "./SyllabusTracker";
 import { useSettingsStore } from "@/lib/store/settings";
-import { 
-    type Citation, 
-    type CitationStyle, 
-    formatInlineCitation, 
-    exportBibliography, 
-    copyToClipboard, 
+import {
+    type Citation,
+    type CitationStyle,
+    formatInlineCitation,
+    exportBibliography,
+    copyToClipboard,
     downloadAsFile,
     formatCitation
 } from "@/utils/citation-formatter";
@@ -80,9 +83,65 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
     const [showStyleMenu, setShowStyleMenu] = useState(false);
     const [copySuccess, setCopySuccess] = useState<string | null>(null);
     const [collapsed, setCollapsed] = useState(false);
+    const [pdfCollapsed, setPdfCollapsed] = useState(false); // Separate state for PDF section in Tools tab
     const [pdfBuffer, setPdfBuffer] = useState<ArrayBuffer | null>(null);
     const { setPdfPage } = useProjectStore();
-    
+
+    // Local PDF upload state for Tools tab
+    const [localPdfUrl, setLocalPdfUrl] = useState<string | null>(null);
+    const [localFileName, setLocalFileName] = useState<string | null>(null);
+    const [dragOver, setDragOver] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Combined PDF URL for display
+    const activePdfUrl = localPdfUrl || pdfUrl;
+
+    // Handle local PDF file upload
+    const handleLocalFile = useCallback((file: File) => {
+        if (!file.type.includes('pdf')) {
+            return;
+        }
+        setUploading(true);
+
+        // Create blob URL for display
+        const blobUrl = URL.createObjectURL(file);
+        setLocalPdfUrl(blobUrl);
+        setLocalFileName(file.name);
+
+        // Read as ArrayBuffer for processing
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            if (e.target?.result instanceof ArrayBuffer) {
+                setPdfBuffer(e.target.result);
+            }
+            setUploading(false);
+        };
+        reader.onerror = () => {
+            setUploading(false);
+        };
+        reader.readAsArrayBuffer(file);
+    }, []);
+
+    const handleLocalDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        setDragOver(false);
+        const file = e.dataTransfer.files[0];
+        if (file) handleLocalFile(file);
+    }, [handleLocalFile]);
+
+    const handleClearLocalPdf = useCallback(() => {
+        if (localPdfUrl) {
+            URL.revokeObjectURL(localPdfUrl);
+        }
+        setLocalPdfUrl(null);
+        setLocalFileName(null);
+        // Only clear buffer if there's no project PDF
+        if (!pdfUrl) {
+            setPdfBuffer(null);
+        }
+    }, [localPdfUrl, pdfUrl]);
+
     // Citation form state
     const [formData, setFormData] = useState({
         title: '',
@@ -119,12 +178,12 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
         e.dataTransfer.setData("text/plain", citationText);
         e.dataTransfer.setData("application/json", JSON.stringify(citation));
     };
-    
+
     const handleAddCitation = () => {
         if (!formData.title.trim() || !formData.author.trim()) {
             return;
         }
-        
+
         const newCitation: Citation = {
             id: crypto.randomUUID(),
             title: formData.title,
@@ -139,30 +198,30 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
             issue: formData.issue || undefined,
             doi: formData.doi || undefined
         };
-        
+
         setCitations(prev => [...prev, newCitation]);
         setIsAddingCitation(false);
         resetForm();
     };
-    
+
     const handleEditCitation = () => {
         if (!editingCitation || !formData.title.trim() || !formData.author.trim()) {
             return;
         }
-        
-        setCitations(prev => prev.map(c => 
-            c.id === editingCitation.id 
+
+        setCitations(prev => prev.map(c =>
+            c.id === editingCitation.id
                 ? { ...c, ...formData, id: c.id }
                 : c
         ));
         setEditingCitation(null);
         resetForm();
     };
-    
+
     const handleDeleteCitation = (id: string) => {
         setCitations(prev => prev.filter(c => c.id !== id));
     };
-    
+
     const resetForm = () => {
         setFormData({
             title: '',
@@ -178,7 +237,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
             doi: ''
         });
     };
-    
+
     const startEdit = (citation: Citation) => {
         setEditingCitation(citation);
         setFormData({
@@ -195,7 +254,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
             doi: citation.doi || ''
         });
     };
-    
+
     const handleCopyCitation = async (citation: Citation) => {
         const formatted = formatCitation(citation, citationStyle);
         const success = await copyToClipboard(formatted);
@@ -204,7 +263,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
             setTimeout(() => setCopySuccess(null), 2000);
         }
     };
-    
+
     const handleExportBibliography = async () => {
         const bibliography = exportBibliography(citations, citationStyle);
         const success = await copyToClipboard(bibliography);
@@ -213,7 +272,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
             setTimeout(() => setCopySuccess(null), 2000);
         }
     };
-    
+
     const handleDownloadBibliography = () => {
         const bibliography = exportBibliography(citations, citationStyle);
         downloadAsFile(bibliography, `bibliography-${citationStyle.toLowerCase()}.txt`);
@@ -310,14 +369,92 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
             </div>
 
             {/* Tab Content */}
-            <div className="flex-1 overflow-hidden relative">
+            <div className="flex-1 overflow-hidden relative flex flex-col">
                 {activeTab === "research" ? (
-                    <ResearchTools
-                        pdfBuffer={pdfBuffer}
-                        onJumpToPage={(page) => {
-                            setPdfPage(page);
-                        }}
-                    />
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                        {/* PDF Section: Show preview or drag-drop zone */}
+                        {activePdfUrl ? (
+                            <div className={cn(
+                                "flex-shrink-0 border-b border-zinc-800 transition-all duration-300",
+                                pdfCollapsed ? "h-0 overflow-hidden" : "h-36"
+                            )}>
+                                <div className="h-full flex flex-col">
+                                    <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900/50">
+                                        <span className="text-xs text-zinc-400 flex items-center gap-1.5 truncate">
+                                            <FileText size={12} />
+                                            {localFileName || 'PDF'}
+                                            {localFileName && <span className="text-zinc-600 text-[10px]">(Local)</span>}
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                            {localFileName && (
+                                                <button
+                                                    onClick={handleClearLocalPdf}
+                                                    className="p-1 hover:bg-zinc-800 rounded text-zinc-500 hover:text-red-400 transition-colors"
+                                                    title="Remove PDF"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => setPdfCollapsed(!pdfCollapsed)}
+                                                className="p-1 hover:bg-zinc-800 rounded text-zinc-500 hover:text-white transition-colors"
+                                                title={pdfCollapsed ? "Show PDF" : "Hide PDF"}
+                                            >
+                                                {pdfCollapsed ? <Eye size={12} /> : <EyeOff size={12} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 overflow-hidden">
+                                        <iframe
+                                            src={activePdfUrl}
+                                            className="w-full h-full border-0"
+                                            title="PDF Preview"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div
+                                className={cn(
+                                    "flex-shrink-0 h-24 m-2 border-2 border-dashed rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer",
+                                    dragOver ? "border-lime-400 bg-lime-400/10" : "border-zinc-700 hover:border-zinc-600"
+                                )}
+                                onDrop={handleLocalDrop}
+                                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                onDragLeave={() => setDragOver(false)}
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".pdf"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleLocalFile(file);
+                                    }}
+                                />
+                                {uploading ? (
+                                    <Loader2 size={18} className="animate-spin text-lime-400" />
+                                ) : (
+                                    <>
+                                        <Upload size={16} className="text-zinc-500 mb-1" />
+                                        <span className="text-xs text-zinc-500">Drop PDF here</span>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {/* AI Command Center Chat */}
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                            <AICommandCenter
+                                pdfBuffer={pdfBuffer}
+                                onJumpToPage={(page: number) => {
+                                    setPdfPage(page);
+                                }}
+                            />
+                        </div>
+                    </div>
                 ) : activeTab === "flashcards" ? (
                     <div className="h-full overflow-hidden">
                         <FlashcardSidebar projectId={projectId} />
@@ -362,7 +499,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                     )}
                                 </div>
                             </div>
-                            
+
                             {/* Action Buttons */}
                             <div className="flex gap-2">
                                 <button
@@ -509,7 +646,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
 
             {/* Add/Edit Citation Modal */}
             {(isAddingCitation || editingCitation) && (
-                <div 
+                <div
                     className="absolute inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto"
                     role="dialog"
                     aria-modal="true"
@@ -566,7 +703,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                     <option value="pdf">PDF</option>
                                 </select>
                             </div>
-                            
+
                             {/* Optional Fields */}
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -590,7 +727,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                     />
                                 </div>
                             </div>
-                            
+
                             {(formData.type === 'article' || formData.type === 'pdf') && (
                                 <>
                                     <div>
@@ -627,7 +764,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                     </div>
                                 </>
                             )}
-                            
+
                             {formData.type === 'book' && (
                                 <div>
                                     <label className="block text-xs text-zinc-400 mb-1">Publisher</label>
@@ -640,7 +777,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                     />
                                 </div>
                             )}
-                            
+
                             <div>
                                 <label className="block text-xs text-zinc-400 mb-1">URL</label>
                                 <input
@@ -651,7 +788,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                     className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-violet-500"
                                 />
                             </div>
-                            
+
                             <div>
                                 <label className="block text-xs text-zinc-400 mb-1">DOI</label>
                                 <input
@@ -663,7 +800,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                 />
                             </div>
                         </div>
-                        
+
                         <div className="mt-4 flex gap-2">
                             <button
                                 onClick={() => {

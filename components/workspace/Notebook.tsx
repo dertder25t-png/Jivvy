@@ -81,6 +81,26 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
         }
     }, [grammarEnabled, editor]);
 
+    // Listen for chart data insertion from DataVisualizer
+    useEffect(() => {
+        const handleInsertToNotebook = (e: CustomEvent<{ html: string }>) => {
+            if (editor && e.detail?.html) {
+                // Insert the HTML at the end of the document
+                editor.chain()
+                    .focus('end')
+                    .insertContent(`<p></p>`) // Add spacing
+                    .insertContent(e.detail.html)
+                    .insertContent(`<p></p>`)
+                    .run();
+
+                console.log('[Notebook] Inserted chart data from AI Command Center');
+            }
+        };
+
+        window.addEventListener('jivvy:insert-to-notebook', handleInsertToNotebook as EventListener);
+        return () => window.removeEventListener('jivvy:insert-to-notebook', handleInsertToNotebook as EventListener);
+    }, [editor]);
+
     // Auto-save every 30 seconds
     useEffect(() => {
         if (!editor || !onSave) return;
