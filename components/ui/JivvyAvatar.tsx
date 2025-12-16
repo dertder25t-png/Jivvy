@@ -1,7 +1,12 @@
 import React from "react";
+import { cn } from "@/lib/utils";
 
-const JivvyAvatar = () => (
-    <div className="relative w-10 h-10 md:w-12 md:h-12 flex-shrink-0 group cursor-pointer">
+interface JivvyAvatarProps {
+    className?: string;
+}
+
+const JivvyAvatar = ({ className }: JivvyAvatarProps) => (
+    <div className={cn("relative w-10 h-10 md:w-12 md:h-12 flex-shrink-0 group cursor-pointer", className)}>
         <div className="absolute inset-0 bg-lime-400 rounded-full blur-md opacity-50 group-hover:opacity-80 transition-opacity" />
         <div className="absolute inset-0.5 bg-gradient-to-tr from-lime-300 to-emerald-400 rounded-full flex items-center justify-center overflow-hidden border border-white/20">
             <div className="flex gap-1 relative top-[-1px]">
