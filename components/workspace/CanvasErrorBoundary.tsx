@@ -27,8 +27,7 @@ export class CanvasErrorBoundary extends Component<Props, State> {
     }
 
     private handleReset = () => {
-        // Clear all localStorage to remove potentially corrupted Excalidraw state
-        // Excalidraw persists state in localStorage keys like 'excalidraw', 'excalidraw-state'
+        // Clear all localStorage to remove potentially corrupted canvas state
         try {
             localStorage.clear();
             sessionStorage.clear();
