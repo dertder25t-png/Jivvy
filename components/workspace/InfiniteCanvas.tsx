@@ -1,19 +1,18 @@
 "use client";
 
-import { ExcalidrawCanvas } from "./ExcalidrawCanvas";
+import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
+
+const JivvyCanvas = dynamic(() => import("./DesignCanvas/JivvyCanvas"), { ssr: false });
 
 interface InfiniteCanvasProps {
     className?: string;
     projectId?: string;
-    userId?: string;
     blurAmount?: number;
 }
 
 export function InfiniteCanvas({
     className,
-    projectId = "new",
-    userId,
     blurAmount = 0
 }: InfiniteCanvasProps) {
     return (
@@ -22,7 +21,7 @@ export function InfiniteCanvas({
                 className="w-full h-full transition-all duration-300"
                 style={{ filter: `blur(${blurAmount}px)` }}
             >
-                <ExcalidrawCanvas projectId={projectId} />
+                <JivvyCanvas />
             </div>
 
             {/* Overlay for blur effect interactions if needed */}

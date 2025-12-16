@@ -42,7 +42,7 @@ export default function JivvyCanvas() {
         saveState();
     };
 
-    const handleObjectAdded = (e: any) => {
+    const handleObjectAdded = (e: { target?: { excludeFromExport?: boolean } }) => {
          // Prevent saving history on loading from history or if flagged
          if(!e.target?.excludeFromExport) saveState();
     };
