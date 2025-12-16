@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-    Send, Loader2, MessageSquare, BarChart3, BookOpen,
+    Send, Loader2, MessageSquare, BarChart3,
     ExternalLink, Cpu, AlertCircle, Sparkles, Wrench
 } from 'lucide-react';
 import { GummyButton } from '@/components/ui/GummyButton';
@@ -31,7 +31,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [status, setStatus] = useState('');
+    const [, setStatus] = useState('');
     const [toolMode, setToolMode] = useState<ToolMode>('chat');
     const [showToolMenu, setShowToolMenu] = useState(false);
     const [indexTerms, setIndexTerms] = useState<{ term: string; pages: number[] }[]>([]);
@@ -45,7 +45,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
     /**
      * Scout Phase: Find relevant pages using searchPagesForTerms
      */
-    const scoutPages = async (query: string): Promise<{ pages: number[]; context: string }> => {
+    const scoutPages = useCallback(async (query: string): Promise<{ pages: number[]; context: string }> => {
         if (!pdfBuffer) return { pages: [], context: '' };
 
         setStatus('Searching document...');
@@ -82,7 +82,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
         const context = pageData.map(p => `[Page ${p.page}]\n${p.content}`).join('\n\n');
 
         return { pages, context };
-    };
+    }, [pdfBuffer, indexTerms]);
 
     /**
      * Analyst Phase: Generate answer or chart from context
@@ -178,7 +178,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
             setIsProcessing(false);
             setStatus('');
         }
-    }, [input, pdfBuffer, isProcessing, toolMode, indexTerms]);
+    }, [input, pdfBuffer, isProcessing, toolMode, scoutPages]);
 
     return (
         <div className="flex flex-col h-full bg-zinc-900/50 rounded-2xl border border-white/10 overflow-hidden">

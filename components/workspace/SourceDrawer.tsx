@@ -57,7 +57,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
     // Default to 'sources' or previously checked? Let's default to sources.
     const [activeTab, setActiveTab] = useState<"sources" | "pdf" | "research" | "flashcards" | "notes">("sources");
     const [citations, setCitations] = useState<Citation[]>([]);
-    const [isLoadingCitations, setIsLoadingCitations] = useState(false);
+    const [, setIsLoadingCitations] = useState(false);
     const [isAddingCitation, setIsAddingCitation] = useState(false);
     const [editingCitation, setEditingCitation] = useState<Citation | null>(null);
     const [citationStyle, setCitationStyle] = useState<CitationStyle>('APA');
@@ -158,6 +158,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
     });
 
     // Subscribe to store setting, but allow prop override
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const storePosition = useSettingsStore((state: any) => state.drawerPosition);
     // If prop is provided (e.g. wrapper dictates), usage that. Otherwise store.
     // 'vertical' maps to 'right' position, 'horizontal' maps to 'bottom'.
@@ -208,6 +209,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
         try {
             // Remove 'id' for creation as DB assigns it (or we can use UUID if we want, but letting DB handle is safer usually, though here we need the ID back)
             // Ideally we pass everything except ID, and update with real ID
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { id, ...rest } = newCitation;
             const created = await createCitation(projectId, rest);
 

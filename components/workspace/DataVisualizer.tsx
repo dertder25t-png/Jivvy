@@ -14,7 +14,7 @@ import {
     Tooltip,
     Legend,
 } from 'chart.js';
-import { BookOpen, Table, ExternalLink, Copy, Check, BarChart3, PieChart } from 'lucide-react';
+import { BookOpen, Table, ExternalLink, Check, BarChart3, PieChart } from 'lucide-react';
 import { GummyButton } from '@/components/ui/GummyButton';
 import type { ChartData } from '@/utils/local-llm';
 

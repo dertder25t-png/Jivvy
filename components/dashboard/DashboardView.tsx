@@ -6,11 +6,9 @@ import {
     LayoutGrid,
     Layers,
     BookOpen,
-    ChevronDown,
     ChevronRight,
     Plus,
-    Loader2,
-    Sparkles
+    Loader2
 } from "lucide-react";
 import { TiltCard } from "@/components/ui/TiltCard";
 import { cn } from "@/lib/utils";
