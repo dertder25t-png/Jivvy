@@ -6,6 +6,7 @@ const nextConfig = {
             ...config.resolve.alias,
             "sharp$": false,
             "onnxruntime-node$": false,
+            "canvas$": false,
             // Fix for Supabase ESM/CJS build error
             "@supabase/supabase-js": "@supabase/supabase-js/dist/main/index.js",
         };

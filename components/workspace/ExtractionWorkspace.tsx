@@ -21,7 +21,7 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
-    const [highlightPage, setHighlightPage] = useState<number | null>(null);
+    const [, setHighlightPage] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Use either local or initial PDF URL

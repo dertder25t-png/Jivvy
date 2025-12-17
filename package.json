@@ -10,11 +10,11 @@
     "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
-    "@excalidraw/excalidraw": "0.17.6",
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "0.5.2",
     "@supabase/supabase-js": "2.46.2",
     "@tiptap/extension-bubble-menu": "^3.13.0",
+    "@tiptap/extension-floating-menu": "^3.13.0",
     "@tiptap/extension-highlight": "^3.13.0",
     "@tiptap/pm": "^3.13.0",
     "@tiptap/react": "^3.13.0",
@@ -25,6 +25,7 @@
     "autoprefixer": "^10.4.22",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
+    "fabric": "^6.9.1",
     "fast-myers-diff": "^3.2.0",
     "file-type": "^21.1.1",
     "isomorphic-dompurify": "^2.34.0",
@@ -54,6 +55,7 @@
   },
   "overrides": {
     "pdfjs-dist": "4.4.168",
-    "@types/pdfjs-dist": "4.4.168"
+    "@types/pdfjs-dist": "4.4.168",
+    "sharp": "0.33.5"
   }
 }

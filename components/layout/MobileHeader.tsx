@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
 import { Search, Bell } from "lucide-react";
 import { JivvyAvatar } from "@/components/ui/JivvyAvatar";
 import { getCurrentUser, type UserInfo } from "@/app/user/actions";
