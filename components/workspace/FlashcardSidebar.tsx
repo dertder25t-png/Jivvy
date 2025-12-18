@@ -8,7 +8,9 @@ import {
     Shuffle,
     CheckCircle2,
     XCircle,
-    Sparkles
+    Sparkles,
+    Plus,
+    Library
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +68,6 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
         if (currentCardIndex < cards.length - 1) {
             setTimeout(() => setCurrentCardIndex(prev => prev + 1), 200);
         } else {
-            // End of deck
             setIsReviewing(false);
             setCurrentCardIndex(0);
         }
@@ -87,11 +88,11 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
 
     const getCardColor = (color?: string) => {
         switch (color) {
-            case "lime": return "border-lime-500/30 bg-lime-500/5";
-            case "violet": return "border-violet-500/30 bg-violet-500/5";
-            case "amber": return "border-amber-500/30 bg-amber-500/5";
-            case "rose": return "border-rose-500/30 bg-rose-500/5";
-            default: return "border-zinc-700 bg-zinc-800/50";
+            case "lime": return "border-lime-500/30 bg-lime-500/5 hover:border-lime-500/50";
+            case "violet": return "border-violet-500/30 bg-violet-500/5 hover:border-violet-500/50";
+            case "amber": return "border-amber-500/30 bg-amber-500/5 hover:border-amber-500/50";
+            case "rose": return "border-rose-500/30 bg-rose-500/5 hover:border-rose-500/50";
+            default: return "border-zinc-700 bg-zinc-800/30 hover:border-zinc-500";
         }
     };
 
@@ -99,30 +100,34 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
         return (
             <button
                 onClick={() => setCollapsed(false)}
-                className="h-full w-10 flex items-center justify-center bg-background border-r border-zinc-800 hover:bg-zinc-900 transition-colors group"
+                className="h-full w-12 flex items-center justify-center bg-zinc-950/50 backdrop-blur border-r border-zinc-800 hover:bg-zinc-900 transition-colors group"
             >
-                <ChevronRight size={16} className="text-zinc-500 group-hover:text-lime-400" />
+                <ChevronRight size={18} className="text-zinc-500 group-hover:text-lime-400" />
             </button>
         );
     }
 
     return (
         <div className={cn(
-            "w-80 h-full flex flex-col bg-background border-r border-lime-500/20",
+            "w-80 h-full flex flex-col bg-zinc-950/80 backdrop-blur border-r border-zinc-800",
             className
         )}>
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-                <div className="flex items-center gap-2">
-                    <SquareStack size={16} className="text-lime-400" />
-                    <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">
-                        Flashcards
-                    </span>
-                    <span className="text-xs text-zinc-600">({cards.length})</span>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800/50">
+                <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-lime-400/10 rounded-lg">
+                        <Library size={16} className="text-lime-400" />
+                    </div>
+                    <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 block">
+                            Flashcards
+                        </span>
+                        <span className="text-[10px] text-zinc-600 font-medium">{cards.length} items</span>
+                    </div>
                 </div>
                 <button
                     onClick={() => setCollapsed(true)}
-                    className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors"
+                    className="p-2 rounded-xl hover:bg-zinc-800 text-zinc-500 hover:text-white transition-all active:scale-95"
                 >
                     <ChevronLeft size={16} />
                 </button>
@@ -130,22 +135,22 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
 
             {isReviewing ? (
                 /* Review Mode */
-                <div className="flex-1 flex flex-col p-4">
+                <div className="flex-1 flex flex-col p-5 animate-in fade-in slide-in-from-right-4">
                     {/* Progress */}
-                    <div className="flex items-center justify-between mb-4">
-                        <span className="text-xs text-zinc-500">
-                            {currentCardIndex + 1} / {cards.length}
+                    <div className="flex items-center justify-between mb-4 px-1">
+                        <span className="text-xs font-medium text-zinc-500">
+                            Card {currentCardIndex + 1} <span className="text-zinc-700">/</span> {cards.length}
                         </span>
-                        <div className="flex items-center gap-2 text-xs">
-                            <span className="text-lime-400">{stats.correct} ✓</span>
-                            <span className="text-rose-400">{stats.incorrect} ✗</span>
+                        <div className="flex items-center gap-3 text-xs font-bold">
+                            <span className="text-lime-400 flex items-center gap-1"><CheckCircle2 size={12}/> {stats.correct}</span>
+                            <span className="text-rose-400 flex items-center gap-1"><XCircle size={12}/> {stats.incorrect}</span>
                         </div>
                     </div>
 
                     {/* Progress Bar */}
-                    <div className="h-1 bg-zinc-800 rounded-full mb-4 overflow-hidden">
+                    <div className="h-1.5 bg-zinc-900 rounded-full mb-6 overflow-hidden border border-zinc-800">
                         <div
-                            className="h-full bg-lime-400 transition-all duration-300"
+                            className="h-full bg-lime-400 transition-all duration-300 ease-out"
                             style={{ width: `${((currentCardIndex + 1) / cards.length) * 100}%` }}
                         />
                     </div>
@@ -154,37 +159,46 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
                     <div
                         onClick={() => setIsFlipped(!isFlipped)}
                         className={cn(
-                            "flex-1 flex items-center justify-center p-6 rounded-2xl border-2 cursor-pointer transition-all duration-300",
+                            "flex-1 flex flex-col items-center justify-center p-8 rounded-3xl border cursor-pointer transition-all duration-300 shadow-xl",
                             getCardColor(currentCard?.color),
-                            "hover:scale-[1.02]"
+                            "hover:scale-[1.02] active:scale-[0.98]"
                         )}
                     >
-                        <div className="text-center">
-                            <p className="text-white font-medium">
+                        <div className="text-center space-y-4">
+                            <span className={cn(
+                                "inline-block px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                                isFlipped ? "bg-zinc-800 text-zinc-400" : "bg-lime-400/10 text-lime-400"
+                            )}>
+                                {isFlipped ? "Back" : "Front"}
+                            </span>
+                            <p className={cn(
+                                "text-white font-medium leading-relaxed transition-all",
+                                isFlipped ? "text-sm text-zinc-300" : "text-lg"
+                            )}>
                                 {isFlipped ? currentCard?.back : currentCard?.front}
                             </p>
-                            <p className="text-xs text-zinc-500 mt-4">
-                                {isFlipped ? "Answer" : "Click to flip"}
+                            <p className="text-xs text-zinc-500 pt-4 opacity-50">
+                                {isFlipped ? "Tap to flip back" : "Tap to reveal answer"}
                             </p>
                         </div>
                     </div>
 
                     {/* Actions */}
                     {isFlipped && (
-                        <div className="flex items-center gap-3 mt-4">
+                        <div className="flex items-center gap-3 mt-6 animate-in slide-in-from-bottom-2 fade-in">
                             <button
                                 onClick={() => handleNextCard(false)}
-                                className="flex-1 flex items-center justify-center gap-2 py-3 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-xl transition-colors"
+                                className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-2xl transition-all active:scale-95 font-medium text-sm"
                             >
                                 <XCircle size={18} />
                                 Missed
                             </button>
                             <button
                                 onClick={() => handleNextCard(true)}
-                                className="flex-1 flex items-center justify-center gap-2 py-3 bg-lime-500/20 hover:bg-lime-500/30 text-lime-400 rounded-xl transition-colors"
+                                className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-lime-400/10 hover:bg-lime-400/20 text-lime-400 border border-lime-400/20 rounded-2xl transition-all active:scale-95 font-medium text-sm"
                             >
                                 <CheckCircle2 size={18} />
-                                Got it!
+                                Got it
                             </button>
                         </div>
                     )}
@@ -195,20 +209,20 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
                             setIsReviewing(false);
                             resetReview();
                         }}
-                        className="mt-3 text-xs text-zinc-500 hover:text-white transition-colors"
+                        className="mt-4 py-2 text-xs font-medium text-zinc-600 hover:text-zinc-400 transition-colors"
                     >
-                        Exit Review
+                        End Review Session
                     </button>
                 </div>
             ) : (
                 /* Card List Mode */
                 <>
                     {/* Actions */}
-                    <div className="p-3 border-b border-zinc-800 flex items-center gap-2">
+                    <div className="p-4 border-b border-zinc-800/50 flex items-center gap-2">
                         <button
                             onClick={() => setIsReviewing(true)}
                             disabled={cards.length === 0}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-lime-400 hover:bg-lime-300 text-black rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-lime-400 hover:bg-lime-500 text-zinc-950 rounded-2xl font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(163,230,53,0.2)]"
                         >
                             <Sparkles size={16} />
                             Start Review
@@ -216,35 +230,47 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
                         <button
                             onClick={shuffleCards}
                             disabled={cards.length === 0}
-                            className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-xl transition-colors disabled:opacity-50"
+                            className="p-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 rounded-2xl transition-all active:scale-95 disabled:opacity-50"
+                            title="Shuffle Deck"
                         >
                             <Shuffle size={16} />
                         </button>
                     </div>
 
                     {/* Cards List */}
-                    <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         {cards.length === 0 ? (
-                            <div className="text-center py-8">
-                                <SquareStack className="mx-auto text-zinc-700 mb-3" size={32} />
-                                <p className="text-zinc-500 text-sm">No flashcards yet</p>
-                                <p className="text-zinc-600 text-xs mt-1">
-                                    Highlight text and click &quot;Make Card&quot; in your notes
-                                </p>
+                            <div className="flex flex-col items-center justify-center h-64 text-center space-y-4 opacity-50 border-2 border-dashed border-zinc-800 rounded-3xl mx-2">
+                                <div className="p-4 bg-zinc-900 rounded-full">
+                                    <SquareStack className="text-zinc-600" size={24} />
+                                </div>
+                                <div>
+                                    <p className="text-zinc-300 text-sm font-medium">No cards yet</p>
+                                    <p className="text-zinc-500 text-xs mt-1 px-8">
+                                        Highlight text in your notes and select "Create Card"
+                                    </p>
+                                </div>
                             </div>
                         ) : (
                             cards.map((card) => (
                                 <div
                                     key={card.id}
                                     className={cn(
-                                        "p-3 rounded-xl border transition-all hover:scale-[1.01] cursor-pointer",
+                                        "p-4 rounded-2xl border transition-all hover:scale-[1.01] cursor-pointer group shadow-sm",
                                         getCardColor(card.color)
                                     )}
                                 >
-                                    <p className="text-sm text-white font-medium line-clamp-2">
-                                        {card.front}
-                                    </p>
-                                    <p className="text-xs text-zinc-500 mt-1 line-clamp-1">
+                                    <div className="flex justify-between items-start gap-2 mb-2">
+                                        <p className="text-sm text-white font-medium line-clamp-2 leading-relaxed">
+                                            {card.front}
+                                        </p>
+                                        <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0",
+                                            card.color === 'lime' ? 'bg-lime-400' :
+                                            card.color === 'violet' ? 'bg-violet-400' : 'bg-zinc-600'
+                                        )} />
+                                    </div>
+                                    <div className="h-px bg-white/5 my-2 group-hover:bg-white/10 transition-colors" />
+                                    <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
                                         {card.back}
                                     </p>
                                 </div>
@@ -252,14 +278,12 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
                         )}
                     </div>
 
-                    {/* Stats */}
+                    {/* Footer */}
                     {cards.length > 0 && (
-                        <div className="p-3 border-t border-zinc-800 bg-zinc-900/50">
-                            <div className="text-center">
-                                <p className="text-xs text-zinc-500">
-                                    {cards.length} cards in deck
-                                </p>
-                            </div>
+                        <div className="p-3 border-t border-zinc-800 bg-zinc-950/50 backdrop-blur text-center">
+                            <button className="text-xs font-bold text-zinc-500 hover:text-lime-400 transition-colors uppercase tracking-wider flex items-center justify-center gap-1 w-full py-2">
+                                <Plus size={12} /> Add New Card manually
+                            </button>
                         </div>
                     )}
                 </>

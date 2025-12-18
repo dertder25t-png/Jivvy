@@ -77,8 +77,6 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
             return;
         }
 
-
-
         setLoading(true);
         setLoadError(null);
         setFileName(file.name);
@@ -271,6 +269,7 @@ export function ExtractionWorkspace({ pdfUrl: initialPdfUrl, onPdfUploaded }: Ex
                     </div>
                 )}
                 <div className="flex-1 min-h-0 p-2 lg:p-4 h-full">
+                    {/* Changed: Passing activePdfUrl to handle empty state in ResearchTools */}
                     <AICommandCenter
                         pdfBuffer={pdfBuffer}
                         onJumpToPage={(page) => {

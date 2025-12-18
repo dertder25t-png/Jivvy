@@ -1,67 +1,55 @@
+
 "use client";
 
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface Props {
-    children: ReactNode;
+  children: ReactNode;
 }
 
 interface State {
-    hasError: boolean;
-    error: Error | null;
+  hasError: boolean;
+  error: Error | null;
 }
 
 export class CanvasErrorBoundary extends Component<Props, State> {
-    public state: State = {
-        hasError: false,
-        error: null,
-    };
+  public state: State = {
+    hasError: false,
+    error: null,
+  };
 
-    public static getDerivedStateFromError(error: Error): State {
-        return { hasError: true, error };
+  public static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Canvas Error:", error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-zinc-950 p-6">
+          <div className="text-center max-w-md space-y-4">
+            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+               <AlertTriangle className="text-red-500" size={32} />
+            </div>
+            <h2 className="text-xl font-bold text-white">Canvas crashed</h2>
+            <p className="text-zinc-400 text-sm">
+              Something went wrong with the infinite canvas. This might be due to a WebGL context loss or a rendering error.
+            </p>
+            <button
+              onClick={() => this.setState({ hasError: false })}
+              className="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-full font-medium transition-colors flex items-center gap-2 mx-auto"
+            >
+              <RefreshCw size={16} /> Reload Canvas
+            </button>
+          </div>
+        </div>
+      );
     }
 
-    public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        console.error("Canvas Error Boundary caught an error:", error, errorInfo);
-    }
-
-    private handleReset = () => {
-        // Clear all localStorage to remove potentially corrupted canvas state
-        try {
-            localStorage.clear();
-            sessionStorage.clear();
-        } catch (e) {
-            console.error("Failed to clear storage", e);
-        }
-        window.location.reload();
-    };
-
-    public render() {
-        if (this.state.hasError) {
-            return (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 text-zinc-400 p-6 text-center">
-                    <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mb-4 text-red-500">
-                        <AlertTriangle size={32} />
-                    </div>
-                    <h2 className="text-xl font-bold text-white mb-2">Canvas Encountered an Error</h2>
-                    <p className="text-sm max-w-md mb-6 text-zinc-500">
-                        {this.state.error?.message.includes("exceeds max size")
-                            ? "The canvas drawing became too large for the browser to render."
-                            : "Something went wrong while loading the canvas."}
-                    </p>
-
-                    <button
-                        onClick={this.handleReset}
-                        className="flex items-center gap-2 px-4 py-2 bg-white text-black hover:bg-zinc-200 rounded-lg transition-colors font-medium text-sm"
-                    >
-                        <RefreshCw size={16} />
-                        Reload Canvas
-                    </button>
-                </div>
-            );
-        }
-
-        return this.props.children;
-    }
+    return this.props.children;
+  }
 }
