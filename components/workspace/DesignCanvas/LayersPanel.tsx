@@ -1,10 +1,31 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { Canvas, FabricObject } from "fabric";
-import { TiltCard } from "@/components/ui/TiltCard";
-import { GummyButton } from "@/components/ui/GummyButton";
-import { Eye, EyeOff, Lock, Unlock, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Lock, Unlock, Trash2, GripVertical } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// Throttle utility for performance
+function throttle(fn: () => void, limit: number): () => void {
+  let inThrottle = false;
+  let pending = false;
+
+  return () => {
+    if (!inThrottle) {
+      fn();
+      inThrottle = true;
+      setTimeout(() => {
+        inThrottle = false;
+        if (pending) {
+          fn();
+          pending = false;
+        }
+      }, limit);
+    } else {
+      pending = true;
+    }
+  };
+}
 
 // Extended Fabric object type with custom properties
 interface CustomFabricObject extends FabricObject {
@@ -28,44 +49,55 @@ interface LayersPanelProps {
 export function LayersPanel({ canvas }: LayersPanelProps) {
   const [layers, setLayers] = useState<LayerItem[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const updateTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Memoized layer update function
+  const updateLayersFromCanvas = useCallback(() => {
+    if (!canvas) return;
+
+    const objects = canvas.getObjects() as CustomFabricObject[];
+    const layerItems: LayerItem[] = objects.map((obj, index) => {
+      const type = obj.type || "object";
+      const name = obj.name || `${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}`;
+
+      return {
+        id: obj.customId?.toString() || `${index}`,
+        name,
+        type,
+        visible: obj.visible !== false,
+        locked: obj.selectable === false,
+        object: obj,
+      };
+    }).reverse(); // Reverse to show top layer first
+
+    setLayers(layerItems);
+  }, [canvas]);
 
   useEffect(() => {
     if (!canvas) return;
 
-    // Update layers list when canvas changes
-    const updateLayers = () => {
-      const objects = canvas.getObjects() as CustomFabricObject[];
-      const layerItems: LayerItem[] = objects.map((obj, index) => {
-        const type = obj.type || "object";
-        const name = obj.name || `${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}`;
-        
-        return {
-          id: obj.customId?.toString() || `${index}`,
-          name,
-          type,
-          visible: obj.visible !== false,
-          locked: obj.selectable === false,
-          object: obj,
-        };
-      }).reverse(); // Reverse to show top layer first
-
-      setLayers(layerItems);
-    };
+    // Throttled update handler (100ms)
+    const throttledUpdate = throttle(() => {
+      updateLayersFromCanvas();
+    }, 100);
 
     // Initial update
-    updateLayers();
+    updateLayersFromCanvas();
 
     // Listen to canvas events
-    canvas.on("object:added", updateLayers);
-    canvas.on("object:removed", updateLayers);
-    canvas.on("object:modified", updateLayers);
+    canvas.on("object:added", throttledUpdate);
+    canvas.on("object:removed", throttledUpdate);
+    canvas.on("object:modified", throttledUpdate);
 
     return () => {
-      canvas.off("object:added", updateLayers);
-      canvas.off("object:removed", updateLayers);
-      canvas.off("object:modified", updateLayers);
+      canvas.off("object:added", throttledUpdate);
+      canvas.off("object:removed", throttledUpdate);
+      canvas.off("object:modified", throttledUpdate);
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
     };
-  }, [canvas]);
+  }, [canvas, updateLayersFromCanvas]);
 
   const selectLayer = (layer: LayerItem) => {
     if (!canvas) return;
@@ -77,7 +109,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   const toggleVisibility = (layer: LayerItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canvas) return;
-    
+
     layer.object.visible = !layer.object.visible;
     canvas.renderAll();
     canvas.fire("object:modified", { target: layer.object });
@@ -86,7 +118,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   const toggleLock = (layer: LayerItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canvas) return;
-    
+
     layer.object.selectable = !layer.object.selectable;
     layer.object.evented = !layer.object.evented;
     canvas.renderAll();
@@ -96,39 +128,9 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   const deleteLayer = (layer: LayerItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canvas) return;
-    
+
     canvas.remove(layer.object);
     canvas.renderAll();
-  };
-
-  const moveLayerUp = (layer: LayerItem, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!canvas) return;
-    
-    const objects = canvas.getObjects();
-    const currentIndex = objects.indexOf(layer.object);
-    if (currentIndex < objects.length - 1) {
-      // Remove and re-add at new position
-      canvas.remove(layer.object);
-      canvas.insertAt(currentIndex + 1, layer.object);
-      canvas.renderAll();
-      canvas.fire("object:modified", { target: layer.object });
-    }
-  };
-
-  const moveLayerDown = (layer: LayerItem, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!canvas) return;
-    
-    const objects = canvas.getObjects();
-    const currentIndex = objects.indexOf(layer.object);
-    if (currentIndex > 0) {
-      // Remove and re-add at new position
-      canvas.remove(layer.object);
-      canvas.insertAt(currentIndex - 1, layer.object);
-      canvas.renderAll();
-      canvas.fire("object:modified", { target: layer.object });
-    }
   };
 
   const renameLayer = (layer: LayerItem, newName: string) => {
@@ -137,106 +139,74 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   };
 
   return (
-    <TiltCard className="w-80 h-full bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-4 flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-white">Layers</h3>
-        <span className="text-sm text-zinc-400">{layers.length} objects</span>
+    <div className="w-56 md:w-64 h-full bg-zinc-950/80 backdrop-blur-xl border border-white/5 rounded-2xl p-3 flex flex-col shadow-2xl">
+      <div className="flex items-center justify-between mb-4 px-1">
+        <h3 className="text-sm font-semibold text-white">Layers</h3>
+        <span className="text-xs text-zinc-500 bg-white/5 px-2 py-0.5 rounded-full">{layers.length}</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-1">
         {layers.length === 0 ? (
-          <div className="text-center text-zinc-500 py-8">
-            <p className="text-sm">No objects on canvas</p>
-            <p className="text-xs mt-2">Add shapes, text, or images to see layers</p>
+          <div className="text-center text-zinc-600 py-12 flex flex-col items-center">
+            <Layers className="w-8 h-8 mb-2 opacity-20" />
+            <p className="text-xs">Empty Canvas</p>
           </div>
         ) : (
           layers.map((layer) => (
             <div
               key={layer.id}
               onClick={() => selectLayer(layer)}
-              className={`
-                group p-3 rounded-xl border-2 cursor-pointer transition-all
-                ${
-                  selectedLayerId === layer.id
-                    ? "bg-lime-400/10 border-lime-400"
-                    : "bg-zinc-800 border-zinc-700 hover:border-zinc-600"
-                }
-              `}
+              className={cn(
+                "group flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all",
+                selectedLayerId === layer.id
+                  ? "bg-lime-400/10 border-lime-400/30 ring-1 ring-lime-400/20"
+                  : "bg-zinc-900/50 border-white/5 hover:border-white/10 hover:bg-white/5"
+              )}
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="text-zinc-600 cursor-grab active:cursor-grabbing">
+                <GripVertical className="w-3 h-3" />
+              </div>
+
+              <div className="flex-1 min-w-0">
                 <input
                   type="text"
                   value={layer.name}
                   onChange={(e) => renameLayer(layer, e.target.value)}
                   onClick={(e) => e.stopPropagation()}
-                  className="flex-1 bg-transparent text-sm text-white font-medium focus:outline-none"
+                  className="w-full bg-transparent text-xs text-zinc-300 font-medium focus:outline-none focus:text-white"
                 />
-                <span className="text-xs text-zinc-500 uppercase ml-2">{layer.type}</span>
+                <p className="text-[10px] text-zinc-500 truncate">{layer.type}</p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
                   onClick={(e) => toggleVisibility(layer, e)}
+                  className="p-1 rounded hover:bg-white/10 text-zinc-500 hover:text-zinc-300"
                   title={layer.visible ? "Hide" : "Show"}
-                  className="h-6 px-2"
                 >
-                  {layer.visible ? (
-                    <Eye className="w-3 h-3" />
-                  ) : (
-                    <EyeOff className="w-3 h-3 text-zinc-500" />
-                  )}
-                </GummyButton>
+                  {layer.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                </button>
 
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
+                <button
                   onClick={(e) => toggleLock(layer, e)}
+                  className="p-1 rounded hover:bg-white/10 text-zinc-500 hover:text-zinc-300"
                   title={layer.locked ? "Unlock" : "Lock"}
-                  className="h-6 px-2"
                 >
-                  {layer.locked ? (
-                    <Lock className="w-3 h-3 text-zinc-500" />
-                  ) : (
-                    <Unlock className="w-3 h-3" />
-                  )}
-                </GummyButton>
+                  {layer.locked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                </button>
 
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
-                  onClick={(e) => moveLayerUp(layer, e)}
-                  title="Move Up"
-                  className="h-6 px-2"
-                >
-                  <span className="text-xs">↑</span>
-                </GummyButton>
-
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
-                  onClick={(e) => moveLayerDown(layer, e)}
-                  title="Move Down"
-                  className="h-6 px-2"
-                >
-                  <span className="text-xs">↓</span>
-                </GummyButton>
-
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
+                <button
                   onClick={(e) => deleteLayer(layer, e)}
+                  className="p-1 rounded hover:bg-red-400/10 text-zinc-500 hover:text-red-400"
                   title="Delete"
-                  className="h-6 px-2 hover:text-red-400"
                 >
                   <Trash2 className="w-3 h-3" />
-                </GummyButton>
+                </button>
               </div>
             </div>
           ))
         )}
       </div>
-    </TiltCard>
+    </div>
   );
 }

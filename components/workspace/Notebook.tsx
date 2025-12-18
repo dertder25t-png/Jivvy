@@ -4,7 +4,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Bold, Italic, List, ListOrdered, Heading2, Save, Loader2, SquareStack, FileText, PenLine } from "lucide-react";
+import { Bold, Italic, List, ListOrdered, Heading2, Save, Loader2, SquareStack, FileText, PenLine, BookOpen, Quote } from "lucide-react";
 import { FlashcardMenu } from "./FlashcardMenu";
 import { SmartContextBar } from "./SmartContextBar";
 import Highlight from "@tiptap/extension-highlight";
@@ -17,9 +17,11 @@ interface NotebookProps {
     initialContent?: string;
     onSave?: (content: string) => Promise<void>;
     mode?: "paper" | "notes";
+    onToggleSources?: () => void;
+    isSourcesOpen?: boolean;
 }
 
-export function Notebook({ className, projectId, initialContent = "", onSave, mode = "notes" }: NotebookProps) {
+export function Notebook({ className, projectId, initialContent = "", onSave, mode = "notes", onToggleSources, isSourcesOpen }: NotebookProps) {
     // Sanitize initial content to prevent XSS
     const sanitizedInitialContent = useMemo(() => {
         return DOMPurify.sanitize(initialContent);
@@ -198,6 +200,22 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
                 </button>
 
                 <div className="flex-1" />
+
+                {/* Sources Toggle - For Paper Mode */}
+                {mode === 'paper' && onToggleSources && (
+                    <button
+                        onClick={onToggleSources}
+                        className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors mr-2",
+                            isSourcesOpen
+                                ? "bg-violet-500/20 text-violet-400 hover:bg-violet-500/30"
+                                : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                        )}
+                    >
+                        <Quote size={14} />
+                        <span className="hidden sm:inline">Sources</span>
+                    </button>
+                )}
 
                 {/* Flashcard Mode Toggle - Only in Notes mode */}
                 {mode === 'notes' && (

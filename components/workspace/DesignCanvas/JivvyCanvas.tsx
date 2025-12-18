@@ -22,51 +22,61 @@ export default function JivvyCanvas() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isLocked, setIsLocked] = useState(false);
 
+  // Debounce utility for saveState
+  const saveStateTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const debouncedSaveState = useCallback(() => {
+    if (saveStateTimeoutRef.current) {
+      clearTimeout(saveStateTimeoutRef.current);
+    }
+    saveStateTimeoutRef.current = setTimeout(() => {
+      if (!fabricCanvas || isLocked) return;
+      const json = JSON.stringify(fabricCanvas.toJSON());
+      setHistory(prev => {
+        const newHistory = prev.slice(0, historyIndex + 1);
+        newHistory.push(json);
+        return newHistory;
+      });
+      setHistoryIndex(prev => prev + 1);
+    }, 300); // 300ms debounce
+  }, [fabricCanvas, historyIndex, isLocked]);
+
   useEffect(() => {
     if (!fabricCanvas) return;
 
-    // Initial State
-    const saveState = () => {
-        if(isLocked) return;
-        const json = JSON.stringify(fabricCanvas.toJSON());
-        setHistory(prev => {
-            const newHistory = prev.slice(0, historyIndex + 1);
-            newHistory.push(json);
-            return newHistory;
-        });
-        setHistoryIndex(prev => prev + 1);
-    };
-
-    // Save initial state
+    // Save initial state once after mount
     const timer = setTimeout(() => {
-       if (history.length === 0) saveState();
+      if (history.length === 0) debouncedSaveState();
     }, 100);
 
     const handleObjectModified = () => {
-        saveState();
+      debouncedSaveState();
     };
 
     const handleObjectAdded = (e: { target?: { excludeFromExport?: boolean } }) => {
-         // Prevent saving history on loading from history or if flagged
-         if(!e.target?.excludeFromExport) saveState();
+      // Prevent saving history on loading from history or if flagged
+      if (!e.target?.excludeFromExport) debouncedSaveState();
     };
 
     fabricCanvas.on("object:modified", handleObjectModified);
     fabricCanvas.on("object:added", handleObjectAdded);
-    fabricCanvas.on("object:removed", handleObjectModified); // Remove is also a mod
+    fabricCanvas.on("object:removed", handleObjectModified);
 
     return () => {
-        clearTimeout(timer);
-        fabricCanvas.off("object:modified", handleObjectModified);
-        fabricCanvas.off("object:added", handleObjectAdded);
-        fabricCanvas.off("object:removed", handleObjectModified);
+      clearTimeout(timer);
+      if (saveStateTimeoutRef.current) {
+        clearTimeout(saveStateTimeoutRef.current);
+      }
+      fabricCanvas.off("object:modified", handleObjectModified);
+      fabricCanvas.off("object:added", handleObjectAdded);
+      fabricCanvas.off("object:removed", handleObjectModified);
     };
-  }, [fabricCanvas, history, historyIndex, isLocked]);
+  }, [fabricCanvas, history.length, debouncedSaveState]);
 
   // Undo/Redo handlers
   const handleUndo = useCallback(() => {
     if (!fabricCanvas || historyIndex <= 0) return;
-    
+
     setIsLocked(true);
     const prevIndex = historyIndex - 1;
     const json = history[prevIndex];
@@ -79,7 +89,7 @@ export default function JivvyCanvas() {
 
   const handleRedo = useCallback(() => {
     if (!fabricCanvas || historyIndex >= history.length - 1) return;
-    
+
     setIsLocked(true);
     const nextIndex = historyIndex + 1;
     const json = history[nextIndex];
@@ -126,9 +136,9 @@ export default function JivvyCanvas() {
       {/* Layers Panel - Right Side */}
       {showLayers && (mode === "professional") && (
         <div className="absolute top-20 right-4 bottom-4 z-40 pointer-events-none">
-           <div className="pointer-events-auto h-full">
-              <LayersPanel canvas={fabricCanvas} />
-           </div>
+          <div className="pointer-events-auto h-full">
+            <LayersPanel canvas={fabricCanvas} />
+          </div>
         </div>
       )}
     </div>
