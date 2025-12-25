@@ -6,64 +6,45 @@ const config: Config = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
-        background: "#121212",
-        surface: "#18181b",
-        surfaceHighlight: "#27272a",
-        foreground: "#ffffff",
-        accent: {
-          DEFAULT: "#a3e635", // lime-400
-          foreground: "#000000",
+        background: {
+          DEFAULT: "#FAFAFA", // zinc-50
+          dark: "#09090b",    // zinc-950
         },
-        card: {
-          DEFAULT: "#18181b", // zinc-900
+        surface: {
+          DEFAULT: "#FFFFFF",
+          dark: "#18181b",    // zinc-900
+        },
+        primary: {
+          DEFAULT: "#2563eb", // Focus Blue
           foreground: "#ffffff",
         },
-        violet: { // Explicitly adding for consistent usage if not using default palette extension
-          500: "#8b5cf6",
+        text: {
+          primary: {
+            DEFAULT: "#18181b", // zinc-900
+            dark: "#f4f4f5",    // zinc-100
+          },
+          secondary: {
+            DEFAULT: "#71717a", // zinc-500
+            dark: "#a1a1aa",    // zinc-400
+          },
         },
+        border: {
+          DEFAULT: "#e4e4e7", // zinc-200
+          dark: "#27272a",    // zinc-800
+        }
       },
       borderRadius: {
-        "2xl": "1rem",
-        "3xl": "1.5rem",
-        "4xl": "2rem",
+        lg: "0.5rem",
+        md: "0.375rem",
+        sm: "0.25rem",
       },
-      keyframes: {
-        blob: {
-          "0%": { transform: "translate(0px, 0px) scale(1)" },
-          "33%": { transform: "translate(30px, -50px) scale(1.1)" },
-          "66%": { transform: "translate(-20px, 20px) scale(0.9)" },
-          "100%": { transform: "translate(0px, 0px) scale(1)" },
-        },
-        float: {
-          "0%": { transform: "translateY(0px)" },
-          "50%": { transform: "translateY(-10px)" },
-          "100%": { transform: "translateY(0px)" },
-        },
-        grain: {
-          "0%, 100%": { transform: "translate(0, 0)" },
-          "10%": { transform: "translate(-5%, -10%)" },
-          "20%": { transform: "translate(-15%, 5%)" },
-          "30%": { transform: "translate(7%, -25%)" },
-          "40%": { transform: "translate(-5%, 25%)" },
-          "50%": { transform: "translate(-15%, 10%)" },
-          "60%": { transform: "translate(15%, 0%)" },
-          "70%": { transform: "translate(0%, 15%)" },
-          "80%": { transform: "translate(3%, 35%)" },
-          "90%": { transform: "translate(-10%, 10%)" },
-        },
-      },
-      animation: {
-        blob: "blob 10s infinite alternate",
-        float: "float 6s ease-in-out infinite",
-        grain: "grain 8s steps(10) infinite",
-      },
-      backgroundImage: {
-        "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
-        "gradient-conic":
-          "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
+      fontFamily: {
+        sans: ["var(--font-geist-sans)"],
+        mono: ["var(--font-geist-mono)"],
       },
     },
   },
