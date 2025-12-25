@@ -1,148 +1,157 @@
-
 'use client';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useProjectStore } from '@/lib/store';
+import { db, Block } from '@/lib/db';
+import { SmartTaskInput } from '@/components/SmartTaskInput';
+import { QuickAdd } from '@/components/QuickAdd';
+import { Loader2, Circle, Inbox, Calendar, Trash } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-import React from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import { AgGridReact } from 'ag-grid-react';
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
+export const Dashboard = () => {
+    const { dashboardView, deleteBlock } = useProjectStore();
+    const [tasks, setTasks] = useState<Block[]>([]);
+    const [loading, setLoading] = useState(true);
 
-// Register modules
-ModuleRegistry.registerModules([AllCommunityModule]);
+    const fetchTasks = useCallback(async () => {
+        setLoading(true);
+        try {
+            let result: Block[] = [];
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
+            // Dexie filtering
+            // Note: For large datasets, we should use indexes. For now, filter in memory.
+            const allTasks = await db.blocks.where('type').equals('task').toArray();
 
-interface DashboardProps {
-  metrics: {
-    label: string;
-    value: string | number;
-    trend?: number; // percentage change
-  }[];
-  trendData?: {
-    labels: string[]; // Dates/Files
-    datasets: {
-      label: string;
-      data: number[];
-      borderColor: string;
-      backgroundColor: string;
-    }[];
-  };
-  gridData: Record<string, unknown>[];
-  onVerifyRow?: (row: Record<string, unknown>) => void;
-}
+            if (dashboardView === 'inbox') {
+                // Inbox: todo status + no scheduled date
+                result = allTasks.filter(b =>
+                    (b.metadata?.status === 'todo' || !b.metadata?.status) &&
+                    !b.metadata?.scheduled_date
+                );
+            } else if (dashboardView === 'today') {
+                const now = new Date();
+                const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                const endOfDay = startOfDay + 24 * 60 * 60 * 1000;
 
-export const Dashboard = ({ metrics, trendData, gridData, onVerifyRow }: DashboardProps) => {
-  // Grid Column Definitions
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const colDefs: any[] = [
-      { field: "file", headerName: "Source File", flex: 1 },
-      { field: "metric", headerName: "Metric", flex: 1 },
-      { field: "value", headerName: "Value", flex: 1 },
-      { field: "page", headerName: "Page", width: 80 },
-      {
-          field: "verify",
-          headerName: "Verify",
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          cellRenderer: (params: any) => {
-              return (
-                  <button
-                      onClick={() => onVerifyRow && onVerifyRow(params.data)}
-                      className="px-3 py-1 bg-lime-400 text-black text-xs rounded-full hover:bg-lime-500 transition-colors"
-                  >
-                      Check
-                  </button>
-              );
-          },
-          width: 100
-      }
-  ];
+                result = allTasks.filter(b => {
+                    const date = b.metadata?.scheduled_date;
+                    return (b.metadata?.status === 'todo' || !b.metadata?.status) && date && date >= startOfDay && date < endOfDay;
+                });
+            } else if (dashboardView === 'upcoming') {
+                const now = new Date();
+                const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
 
-  return (
-    <div className="flex flex-col gap-8 p-6 bg-surface text-white min-h-screen">
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {metrics.map((m, i) => (
-          <div key={i} className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 hover:scale-[1.01] transition-transform duration-300">
-            <h3 className="text-zinc-400 text-sm font-medium uppercase tracking-wider">{m.label}</h3>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-4xl font-bold text-white">{m.value}</span>
-              {m.trend !== undefined && (
-                <span className={`text-sm font-medium ${m.trend >= 0 ? 'text-lime-400' : 'text-red-400'}`}>
-                  {m.trend > 0 ? '+' : ''}{m.trend}%
-                </span>
-              )}
+                result = allTasks.filter(b => {
+                    const date = b.metadata?.scheduled_date;
+                    return (b.metadata?.status === 'todo' || !b.metadata?.status) && date && date >= startOfTomorrow;
+                });
+            }
+            // Sort by order (recently created first)
+            result.sort((a, b) => (b.order || 0) - (a.order || 0));
+            setTasks(result);
+        } catch (e) {
+            console.error("Failed to fetch tasks", e);
+        } finally {
+            setLoading(false);
+        }
+    }, [dashboardView]);
+
+    useEffect(() => {
+        fetchTasks();
+    }, [fetchTasks]);
+
+    const toggleTask = async (id: string, currentStatus: string) => {
+        // Optimistic Removal
+        setTasks(prev => prev.filter(t => t.id !== id));
+
+        try {
+            const newStatus = currentStatus === 'done' ? 'todo' : 'done';
+            // We use a safe wrapper or direct dexie
+            await db.blocks.update(id, {
+                'metadata.status': newStatus,
+                'metadata.updated_at': Date.now()
+            });
+            // Don't refetch, as we wanted it removed from view
+        } catch (e) {
+            console.error("Failed to toggle task", e);
+            fetchTasks(); // Revert on error
+        }
+    };
+
+    const handleDeleteTask = async (id: string) => {
+        if (confirm("Delete this task permanently?")) {
+            setTasks(prev => prev.filter(t => t.id !== id));
+            try {
+                await deleteBlock(id);
+            } catch (e) {
+                console.error("Failed to delete task", e);
+                fetchTasks();
+            }
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full bg-surface">
+            <header className="mb-6">
+                <h1 className="text-3xl font-bold text-text-primary capitalize tracking-tight">{dashboardView}</h1>
+                <p className="text-text-secondary text-sm mt-1">
+                    {dashboardView === 'inbox' && "Capture your thoughts and tasks."}
+                    {dashboardView === 'today' && "Focus on what matters today."}
+                    {dashboardView === 'upcoming' && "Plan ahead for the future."}
+                </p>
+            </header>
+
+            <div className="flex-1 overflow-y-auto mb-6">
+                {loading ? (
+                    <div className="flex justify-center p-10"><Loader2 className="animate-spin text-zinc-400" /></div>
+                ) : tasks.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-40 text-text-secondary">
+                        <Inbox className="w-8 h-8 opacity-20 mb-2" />
+                        <p className="text-sm">No tasks in {dashboardView}</p>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {tasks.map(task => (
+                            <div key={task.id} className="group flex items-start gap-3 p-3 bg-white dark:bg-zinc-900 border border-border/50 hover:border-primary/20 rounded-xl transition-all hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                                <button
+                                    onClick={() => toggleTask(task.id, task.metadata?.status || 'todo')}
+                                    className="mt-0.5 text-zinc-400 hover:text-primary transition-colors"
+                                    title="Complete Task"
+                                >
+                                    <Circle size={20} className="stroke-[1.5]" />
+                                </button>
+                                <div className="flex-1">
+                                    <p className="text-sm text-text-primary font-medium">{task.content}</p>
+                                    <div className="flex gap-2 mt-1.5">
+                                        {task.metadata?.project_tag && (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-text-secondary font-medium border border-border">
+                                                {task.metadata.project_tag}
+                                            </span>
+                                        )}
+                                        {task.metadata?.scheduled_date && (
+                                            <span className="flex items-center gap-1 text-[10px] text-zinc-500">
+                                                <Calendar size={10} />
+                                                {new Date(task.metadata.scheduled_date).toLocaleDateString()}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleDeleteTask(task.id)}
+                                    className="opacity-0 group-hover:opacity-100 p-1.5 text-zinc-400 hover:text-red-500 transition-all"
+                                    title="Delete Task"
+                                >
+                                    <Trash size={14} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
-          </div>
-        ))}
-      </div>
 
-      {/* Trend View */}
-      {trendData && (
-        <div className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 h-96">
-          <h3 className="text-zinc-400 text-sm font-medium uppercase tracking-wider mb-4">Trend Analysis</h3>
-          <div className="h-full w-full">
-            <Line options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'top' as const,
-                        labels: { color: '#e4e4e7' } // Zinc-200
-                    },
-                },
-                scales: {
-                    x: {
-                        grid: { color: '#27272a' }, // Zinc-800
-                        ticks: { color: '#a1a1aa' } // Zinc-400
-                    },
-                    y: {
-                        grid: { color: '#27272a' },
-                        ticks: { color: '#a1a1aa' }
-                    }
-                }
-            }} data={trendData} />
-          </div>
+            {/* Quick Add */}
+            <div className="pt-4 border-t border-border mt-auto sticky bottom-0 bg-surface">
+                <QuickAdd onTaskAdded={fetchTasks} />
+            </div>
         </div>
-      )}
-
-      {/* Source Table */}
-      <div className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 h-[500px] flex flex-col">
-        <h3 className="text-zinc-400 text-sm font-medium uppercase tracking-wider mb-4">Source Data</h3>
-        <div className="ag-theme-alpine-dark flex-1" style={{ width: '100%', height: '100%' }}>
-            {/* Note: In a real app with 'ag-theme-alpine-dark', we need to import the css.
-                Since we only installed community modules, we might need to rely on basic styles or custom CSS.
-                Ag-Grid v32+ uses a different theming approach (Quartz).
-                I'll assume basic styling for now or try to import Quartz if available.
-            */}
-             <AgGridReact
-                rowData={gridData}
-                columnDefs={colDefs}
-                defaultColDef={{
-                    sortable: true,
-                    filter: true,
-                    resizable: true
-                }}
-                theme="legacy" // or "ag-theme-quartz-dark" if imported
-             />
-        </div>
-      </div>
-    </div>
-  );
-};
+    )
+}

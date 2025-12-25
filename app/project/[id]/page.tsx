@@ -46,10 +46,12 @@ const FlashcardSidebar = dynamic(() => import("@/components/workspace/FlashcardS
     loading: () => null
 });
 
-const ExtractionWorkspace = dynamic(() => import("@/components/workspace/ExtractionWorkspace").then(mod => mod.ExtractionWorkspace), {
+const BlockEditor = dynamic(() => import("@/components/BlockEditor").then(mod => mod.BlockEditor), {
     ssr: false,
-    loading: () => null
+    loading: () => <div className="h-full w-full flex items-center justify-center text-zinc-500">Loading Editor...</div>
 });
+
+import { AppShell } from "@/components/layout/AppShell";
 
 // Mock spec items for the properties panel
 export default function ProjectPage() {
@@ -90,12 +92,13 @@ export default function ProjectPage() {
         return () => setActiveProjectId(null); // Cleanup
     }, [projectId, setActiveProjectId]);
 
-    // Collapse left panel if no PDF
+    // Sync PDF URL to Store for Context Panel
+    const { setPdfUrl } = useProjectStore();
     useEffect(() => {
-        if (!project?.pdf_url) {
-            setLeftPanelCollapsed(true);
+        if (project?.pdf_url) {
+            setPdfUrl(project.pdf_url);
         }
-    }, [project]);
+    }, [project?.pdf_url, setPdfUrl]);
 
     // Fetch project data and notes
     useEffect(() => {
@@ -248,327 +251,51 @@ export default function ProjectPage() {
     }
 
     return (
-        <div className="flex h-[calc(100vh-4rem)] lg:h-[calc(100vh-5rem)] w-full overflow-hidden bg-background fixed top-16 lg:top-20 left-0 right-0 bottom-0">
-
-            {/* LEFT PANEL - Mode-specific */}
-            {centerMode === 'canvas' && (
-                <>
-                    <div className={cn(
-                        "h-full flex-col border-r border-zinc-800 bg-background transition-all duration-300",
-                        "hidden lg:flex", // Hide on mobile
-                        leftPanelCollapsed ? "w-0" : "w-[320px] min-w-[320px]"
-                    )}>
-                        {!leftPanelCollapsed && (
-                            <>
-                                {/* Panel Header */}
-                                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-                                    <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Design Brief</span>
-                                    <button
-                                        onClick={() => setLeftPanelCollapsed(true)}
-                                        className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors"
-                                    >
-                                        <ChevronLeft size={16} />
-                                    </button>
-                                </div>
-
-                                {/* PDF Content or Empty State */}
-                                <div className="flex-1 overflow-hidden p-3">
-                                    {project?.pdf_url ? (
-                                        <PDFViewer url={project.pdf_url} className="h-full w-full rounded-xl" />
-                                    ) : (
-                                        <div
-                                            className={cn(
-                                                "h-full w-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all",
-                                                dragOver ? 'border-lime-400 bg-lime-400/10' : 'border-zinc-700 hover:border-zinc-600'
-                                            )}
-                                            onDrop={handleDrop}
-                                            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                                            onDragLeave={() => setDragOver(false)}
-                                        >
-                                            {uploading ? (
-                                                <>
-                                                    <Loader2 className="animate-spin text-lime-400 mb-3" size={32} />
-                                                    <p className="text-zinc-400 text-sm">Uploading...</p>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <div className="w-16 h-16 rounded-2xl bg-zinc-800/80 flex items-center justify-center mb-4">
-                                                        <FileText className="text-lime-400" size={24} />
-                                                    </div>
-                                                    <p className="text-zinc-400 text-sm mb-3">Drop PDF here</p>
-                                                    <label className="cursor-pointer">
-                                                        <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
-                                                            const file = e.target.files?.[0];
-                                                            if (file) handleFileUpload(file);
-                                                        }} />
-                                                        <span className="text-xs text-lime-400 hover:underline">or browse</span>
-                                                    </label>
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </>
-                        )}
-                    </div>
-
-                    {/* Collapsed Left Toggle - Canvas Only */}
-                    {leftPanelCollapsed && (
-                        <button
-                            onClick={() => setLeftPanelCollapsed(false)}
-                            className="hidden lg:flex h-full w-10 items-center justify-center bg-background border-r border-zinc-800 hover:bg-zinc-900 transition-colors group"
-                        >
-                            <ChevronRight size={16} className="text-zinc-500 group-hover:text-lime-400" />
-                        </button>
-                    )}
-                </>
-            )}
-
-            {/* LEFT PANEL - Notes Mode: Flashcard Sidebar (hidden on mobile) */}
-            {centerMode === 'notes' && (
-                <div className="hidden lg:block">
-                    <FlashcardSidebar projectId={projectId} />
+        <AppShell>
+            <div className="h-full w-full relative flex flex-col">
+                {/* Mode Switcher (Tab Bar) */}
+                <div className="flex items-center gap-2 p-4 border-b border-zinc-200 dark:border-zinc-800">
+                    <button
+                        onClick={() => setCenterMode('canvas')}
+                        className={cn("px-3 py-1.5 rounded-md text-sm font-medium transition-colors", centerMode === 'canvas' ? "bg-zinc-100 dark:bg-zinc-800 text-primary" : "text-text-secondary hover:text-text-primary")}
+                    >
+                        Canvas
+                    </button>
+                    <button
+                        onClick={() => setCenterMode('paper')}
+                        className={cn("px-3 py-1.5 rounded-md text-sm font-medium transition-colors", centerMode === 'paper' ? "bg-zinc-100 dark:bg-zinc-800 text-primary" : "text-text-secondary hover:text-text-primary")}
+                    >
+                        Editor
+                    </button>
                 </div>
-            )}
 
-            {/* Extraction mode handles its own layout */}
-            {centerMode === 'extraction' ? (
-                <ExtractionWorkspace
-                    pdfUrl={project?.pdf_url ?? null}
-                    onPdfUploaded={(url) => setProject(prev => prev ? { ...prev, pdf_url: url } : null)}
-                />
-            ) : (
-                /* CENTER PANEL - Canvas or Notebook */
-                <div className="flex-1 h-full flex flex-col overflow-hidden relative">
+                {/* Main Content Area */}
+                <div className="flex-1 overflow-hidden relative">
+                    {centerMode === 'canvas' && (
+                        <div className="h-full w-full relative">
+                            <InfiniteCanvas blurAmount={squintAmount} className="h-full" projectId={projectId} />
 
-                    {/* The Main Content Area (Canvas/Notes) */}
-                    <div className="flex-1 flex overflow-hidden relative">
-                        {/* Squint Slider (Floating - only on Canvas) */}
-                        {centerMode === 'canvas' && (
+                            {/* Squint Slider (Floating) */}
                             <div className="absolute bottom-6 left-6 z-20 flex items-center gap-3 bg-zinc-900/90 backdrop-blur-xl p-3 rounded-2xl border border-zinc-800 shadow-xl">
                                 <Eye size={16} className="text-zinc-400" />
-                                <div className="flex flex-col gap-1">
-                                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Squint Test</span>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        value={squintAmount}
-                                        onChange={(e) => setSquintAmount(Number(e.target.value))}
-                                        className="w-32 h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-lime-400"
-                                    />
-                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    value={squintAmount}
+                                    onChange={(e) => setSquintAmount(Number(e.target.value))}
+                                    className="w-32 h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer"
+                                />
                                 <span className="text-xs font-mono text-lime-400 w-8 text-right">{squintAmount}%</span>
                             </div>
-                        )}
-
-                        {/* CANVAS AREA - Mid-Grey Background with Breathing Room */}
-                        <div
-                            className="flex-1 overflow-hidden p-6 bg-surface relative"
-                            onDrop={handleDrop}
-                            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                            onDragLeave={() => setDragOver(false)}
-                        >
-                            {/* Design Doctor Floating Tool (Canvas mode only) */}
-                            {centerMode === 'canvas' && <DesignDoctorTool />}
-                            {/* Full-Screen Onboarding Overlay - Only for new projects */}
-                            {projectId === 'new' && !project?.pdf_url && leftPanelCollapsed && !onboardingComplete && (
-                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
-                                    <div
-                                        className={cn(
-                                            "bg-zinc-900 rounded-3xl border border-zinc-800 p-8 text-center max-w-md shadow-2xl",
-                                            dragOver && "border-lime-400 bg-lime-400/5"
-                                        )}
-                                        onDrop={handleDrop}
-                                        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                                        onDragLeave={() => setDragOver(false)}
-                                    >
-                                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-400/20 to-violet-500/20 flex items-center justify-center mx-auto mb-4">
-                                            <Sparkles className="text-lime-400" size={28} />
-                                        </div>
-                                        <h2 className="text-xl font-bold text-white mb-2">What are you creating?</h2>
-                                        <p className="text-zinc-400 text-sm mb-6">Choose your workspace to get started</p>
-
-                                        {/* Project Type Cards */}
-                                        <div className="grid grid-cols-3 gap-3 mb-6">
-                                            <button
-                                                onClick={() => handleStartProject('canvas')}
-                                                disabled={isCreatingProject}
-                                                className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-lime-400 hover:bg-lime-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-lime-400/20 flex items-center justify-center transition-colors">
-                                                    {isCreatingProject ? (
-                                                        <Loader2 size={18} className="text-zinc-400 animate-spin" />
-                                                    ) : (
-                                                        <PenTool size={18} className="text-zinc-400 group-hover:text-lime-400" />
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <p className="font-bold text-white text-xs">Canvas</p>
-                                                </div>
-                                            </button>
-                                            <button
-                                                onClick={() => handleStartProject('paper')}
-                                                disabled={isCreatingProject}
-                                                className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-violet-400 hover:bg-violet-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-violet-400/20 flex items-center justify-center transition-colors">
-                                                    {isCreatingProject ? (
-                                                        <Loader2 size={18} className="text-zinc-400 animate-spin" />
-                                                    ) : (
-                                                        <FileText size={18} className="text-zinc-400 group-hover:text-violet-400" />
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <p className="font-bold text-white text-xs">Paper</p>
-                                                </div>
-                                            </button>
-                                            <button
-                                                onClick={() => handleStartProject('notes')}
-                                                disabled={isCreatingProject}
-                                                className="flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-amber-400 hover:bg-amber-400/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                <div className="w-10 h-10 rounded-xl bg-zinc-800 group-hover:bg-amber-400/20 flex items-center justify-center transition-colors">
-                                                    {isCreatingProject ? (
-                                                        <Loader2 size={18} className="text-zinc-400 animate-spin" />
-                                                    ) : (
-                                                        <StickyNote size={18} className="text-zinc-400 group-hover:text-amber-400" />
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <p className="font-bold text-white text-xs">Notes</p>
-                                                </div>
-                                            </button>
-                                        </div>
-
-                                        {/* Divider */}
-                                        <div className="flex items-center gap-3 mb-4">
-                                            <div className="flex-1 h-px bg-zinc-800" />
-                                            <span className="text-xs text-zinc-600 uppercase">or</span>
-                                            <div className="flex-1 h-px bg-zinc-800" />
-                                        </div>
-
-                                        {/* Upload PDF */}
-                                        <label className="cursor-pointer inline-block">
-                                            <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
-                                                const file = e.target.files?.[0];
-                                                if (file) handleFileUpload(file);
-                                            }} />
-                                            <span className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-lime-400 transition-colors">
-                                                <Upload size={14} />
-                                                Upload a Design Brief (PDF)
-                                            </span>
-                                        </label>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Canvas, Paper, or Notes Content */}
-                            {(onboardingComplete || !leftPanelCollapsed || project?.pdf_url) && (
-                                <div className="h-full w-full rounded-3xl overflow-hidden shadow-2xl bg-white/5 pb-16 lg:pb-0">
-                                    {centerMode === 'canvas' && (
-                                        <InfiniteCanvas blurAmount={squintAmount} className="h-full" projectId={projectId} />
-                                    )}
-
-                                    {centerMode === 'paper' && notesLoaded && (
-                                        <Notebook
-                                            className="h-full"
-                                            projectId={projectId}
-                                            initialContent={paperContent}
-                                            onSave={handleSavePaper}
-                                            mode="paper"
-                                        />
-                                    )}
-
-                                    {centerMode === 'notes' && notesLoaded && (
-                                        <Notebook
-                                            className="h-full"
-                                            projectId={projectId}
-                                            initialContent={notesContent}
-                                            onSave={handleSaveNotes}
-                                            mode="notes"
-                                        />
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Desktop only: Bottom drawer for paper/notes mode */}
-                    {centerMode !== 'canvas' && drawerPosition === 'bottom' && (
-                        <div className="hidden lg:block">
-                            <SourceDrawer
-                                pdfUrl={project?.pdf_url ?? undefined}
-                                projectId={projectId}
-                                className="bg-surface border-t shadow-[0_-5px_15px_rgba(0,0,0,0.3)]"
-                            />
                         </div>
                     )}
-                </div>
-            )}
 
-            {/* RIGHT PANEL - Mode-specific sidebar - Desktop only */}
-            {centerMode === 'canvas' && (
-                <div className="hidden lg:block">
-                    <SpecSidebar pdfUrl={project?.pdf_url ?? undefined} className="bg-surface border-l border-white/5" />
-                </div>
-            )}
-
-            {/* PAPER & NOTES MODE: RIGHT Position - Desktop only */}
-            {(centerMode === 'paper' || centerMode === 'notes') && drawerPosition === 'right' && (
-                <div className="hidden lg:block">
-                    <SourceDrawer pdfUrl={project?.pdf_url ?? undefined} projectId={projectId} className="bg-surface" />
-                </div>
-            )}
-
-            {/* MOBILE TOOL SWITCHER - floating bar with toggle */}
-            <div className="lg:hidden fixed bottom-4 left-0 right-0 z-40 flex flex-col items-center pointer-events-none">
-                {/* Toggle Button */}
-                <button
-                    onClick={() => setToolSwitcherOpen(!toolSwitcherOpen)}
-                    className="mb-2 w-10 h-6 bg-zinc-800/90 backdrop-blur-sm rounded-full flex items-center justify-center pointer-events-auto border border-zinc-700 shadow-lg"
-                >
-                    <ChevronRight
-                        size={14}
-                        className={cn(
-                            "text-zinc-400 transition-transform duration-300",
-                            toolSwitcherOpen ? "rotate-90" : "-rotate-90"
-                        )}
-                    />
-                </button>
-
-                {/* Tool Switcher Bar */}
-                <div className={cn(
-                    "bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 rounded-2xl p-1.5 flex justify-around pointer-events-auto shadow-xl mx-4 transition-all duration-300 ease-out",
-                    toolSwitcherOpen
-                        ? "opacity-100 translate-y-0 max-w-sm"
-                        : "opacity-0 translate-y-4 pointer-events-none max-w-sm"
-                )}>
-                    {[
-                        { id: 'canvas', label: 'Canvas', icon: PenTool, color: 'text-lime-400' },
-                        { id: 'paper', label: 'Paper', icon: FileText, color: 'text-violet-400' },
-                        { id: 'notes', label: 'Notes', icon: StickyNote, color: 'text-amber-400' },
-                        { id: 'extraction', label: 'Extract', icon: Sparkles, color: 'text-cyan-400' },
-                    ].map((mode) => (
-                        <button
-                            key={mode.id}
-                            onClick={() => setCenterMode(mode.id as 'canvas' | 'paper' | 'notes' | 'extraction')}
-                            className={cn(
-                                "flex flex-col items-center gap-0.5 px-4 py-2 rounded-xl transition-all",
-                                centerMode === mode.id
-                                    ? "bg-zinc-800"
-                                    : "active:bg-zinc-800/50"
-                            )}
-                        >
-                            <mode.icon size={20} className={centerMode === mode.id ? mode.color : "text-zinc-500"} />
-                            <span className={cn(
-                                "text-[9px] font-medium",
-                                centerMode === mode.id ? "text-white" : "text-zinc-500"
-                            )}>{mode.label}</span>
-                        </button>
-                    ))}
+                    {(centerMode === 'paper' || centerMode === 'notes' || centerMode === 'extraction') && (
+                        <BlockEditor projectId={projectId} />
+                    )}
                 </div>
             </div>
-        </div>
+        </AppShell>
     );
 }

@@ -1,53 +1,39 @@
+/* eslint-disable no-restricted-globals */
 
-import { scanForIndex, extractSpecificPages } from '../utils/pdf-extraction';
-import { mineMetric } from '../utils/miner-logic';
+// This is a web worker that handles "heavy" AI tasks off the main thread.
+// In a real implementation, this would call an API or run a local model (Transformers.js).
+// For now, it mocks the latency and response of an LLM.
 
 const ctx: Worker = self as any;
 
-ctx.onmessage = async (event) => {
-  const { type, payload } = event.data;
+ctx.onmessage = async (event: MessageEvent) => {
+  const { type, content, command } = event.data;
 
   try {
-    switch (type) {
-      case 'SCAN_INDEX':
-        console.log('[Worker] Starting index scan...');
-        const startTime = performance.now();
-        const indexData = await scanForIndex(payload.pdfBuffer);
-        const duration = Math.round(performance.now() - startTime);
-        console.log(`[Worker] Index scan completed in ${duration}ms, found ${indexData.length} terms`);
-        ctx.postMessage({ type: 'INDEX_RESULT', data: indexData });
+    // Simulate "Thinking" Latency (1-3 seconds)
+    await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 2000));
+
+    let responseText = "";
+
+    switch (command) {
+      case 'summarize':
+        responseText = `## Summary\n\nBased on your input, here is a concise summary:\n\n> ${content.substring(0, 100)}...\n\nKey points extracted from the text.`;
         break;
-
-      case 'EXTRACT_PAGES':
-        const pageData = await extractSpecificPages(payload.pdfBuffer, payload.pages);
-        ctx.postMessage({ type: 'PAGES_RESULT', data: pageData });
+      case 'critique':
+        responseText = `## Critique\n\nHere are some thoughts on your draft:\n- The argument is clear but could use more evidence.\n- Consider expanding on the second point.\n- Tone is appropriate for the audience.`;
         break;
-
-      case 'MINE_METRIC':
-        console.log('[Worker] Starting metric mining...');
-        const mineStart = performance.now();
-        const { pdfBuffer, chunks, metric, keywords } = payload;
-
-        // Use pdfBuffer if provided, otherwise use chunks
-        const dataToProcess = pdfBuffer || chunks || [];
-        const result = await mineMetric(dataToProcess, metric, keywords);
-
-        const mineDuration = Math.round(performance.now() - mineStart);
-        console.log(`[Worker] Metric mining completed in ${mineDuration}ms`);
-        ctx.postMessage({ type: 'METRIC_RESULT', metric, data: result });
+      case 'generate':
+        responseText = `## Generated Content\n\nHere is a draft based on the topic:\n\nInterstellar travel requires overcoming the vast distances between stars. Concepts like the Alcubierre drive or generational ships offer theoretical solutions, but practical challenges remain immense.`;
         break;
-
       default:
-        console.warn('[Worker] Unknown command:', type);
+        responseText = "Unknown command.";
     }
-  } catch (error) {
-    console.error('[Worker] Error processing:', error);
-    ctx.postMessage({
-      type: 'ERROR',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
+
+    ctx.postMessage({ status: 'success', result: responseText });
+
+  } catch (error: any) {
+    ctx.postMessage({ status: 'error', error: error.message });
   }
 };
 
-// Signal that worker is ready
-console.log('[Worker] Miner worker initialized');
+export { };
