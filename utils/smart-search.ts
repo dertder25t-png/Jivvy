@@ -1,13 +1,12 @@
 /**
- * Smart Search V3 - Large Document Optimized
- * "Focus and Verify" Algorithm for 100% Quiz Accuracy
+ * Smart Search V4 - Page-Targeted Search Engine
  * 
- * Key improvements:
- * 1. Chunking: Split text into overlapping windows
- * 2. Hotspot Detection: Filter to top 20 relevant chunks
- * 3. Sliding Window Scoring: Deep context analysis
- * 4. Enhanced Stemming: Better word matching
- * 5. Negative Logic: NOT/EXCEPT question handling
+ * Key Features:
+ * 1. PAGE TARGETING: Extracts [Page X] markers and prioritizes relevant pages
+ * 2. SYNONYM MATCHING: Technical term synonyms for paraphrased questions  
+ * 3. GLOSSARY DETECTION: Uses index/glossary pages to find content locations
+ * 4. CONFIDENCE-DRIVEN RETRY: Keeps searching until 80%+ confidence
+ * 5. FUZZY MATCHING: Handles questions that don't match exact phrasing
  */
 
 // ================================
@@ -22,11 +21,18 @@ interface QuizQuestion {
 }
 
 export interface SmartSearchResult {
-    answer: string;           // "A"
-    confidence: number;       // 0.0 to 1.0
-    evidence: string;         // Specific sentence/paragraph
-    explanation: string;      // "I chose A because..."
+    answer: string;
+    confidence: number;
+    evidence: string;
+    explanation: string;
     method: 'quiz' | 'direct' | 'ai';
+    pageNumber?: number;
+}
+
+interface PageContent {
+    pageNum: number;
+    text: string;
+    relevanceScore: number;
 }
 
 interface OptionScore {
@@ -34,30 +40,77 @@ interface OptionScore {
     text: string;
     totalScore: number;
     evidence: string;
+    pageNum?: number;
     breakdown: string[];
 }
 
-interface Chunk {
-    text: string;
-    keywordDensity: number;
-}
-
 // ================================
-// CONSTANTS - Tuned for high accuracy
+// CONSTANTS
 // ================================
 
+const MIN_CONFIDENCE = 0.80;
+const TARGET_CONFIDENCE = 0.90;
+
+// Scoring weights
 const SCORING = {
-    QUESTION_KEYWORD: 12,           // Slightly increased
-    OPTION_KEYWORD: 18,             // Increased - option matches are critical
-    BOTH_SAME_SENTENCE: 75,         // Significantly increased - co-occurrence is key
-    EXACT_PHRASE_MATCH: 150,        // Heavily weighted - exact matches are definitive
-    HIGH_COVERAGE_BONUS: 40,        // Increased
-    PERFECT_COVERAGE_BONUS: 60      // Increased
+    EXACT_PHRASE: 200,          // Exact phrase match - definitive
+    SYNONYM_MATCH: 80,          // Matched via synonym
+    BOTH_COLOCATED: 100,        // Question + option in same sentence
+    OPTION_KEYWORD: 25,         // Option keyword found
+    QUESTION_KEYWORD: 15,       // Question keyword found
+    PHRASE_2GRAM: 50,           // 2-word phrase match
+    PHRASE_3GRAM: 75,           // 3-word phrase match
+    HIGH_COVERAGE: 40,          // >80% of option words found
+    PERFECT_COVERAGE: 60,       // 100% of option words found
 };
 
-const CHUNK_SIZE = 600;             // Larger chunks for more context
-const CHUNK_OVERLAP = 150;          // More overlap to avoid missing matches at boundaries
-const TOP_HOTSPOTS = 30;            // Analyze more chunks for better coverage
+// ================================
+// SYNONYM DICTIONARY
+// Technical terms with their synonyms/paraphrases
+// ================================
+
+const SYNONYMS: Record<string, string[]> = {
+    // Wire lacing terminology
+    'lacing': ['lace', 'laced', 'tie', 'tying', 'bind', 'binding', 'wrap', 'wrapping'],
+    'tying': ['tie', 'tied', 'lacing', 'lace', 'bind', 'binding', 'secure', 'securing'],
+    'cord': ['string', 'thread', 'twine', 'tape', 'line'],
+    'knot': ['hitch', 'loop', 'tie', 'bind'],
+    'clove': ['clove hitch', 'clove-hitch'],
+    'hitch': ['knot', 'tie', 'loop'],
+    'square': ['reef', 'flat'],
+    'bundle': ['group', 'bunch', 'harness', 'assembly', 'wires'],
+    'wire': ['cable', 'conductor', 'lead', 'wiring'],
+    'continuous': ['single', 'one piece', 'unbroken'],
+    'individual': ['separate', 'discrete', 'single'],
+    'cotton': ['fabric', 'cloth', 'textile'],
+    'nylon': ['synthetic', 'plastic'],
+    'waxed': ['coated', 'treated', 'impregnated'],
+    'moisture': ['water', 'wet', 'humidity', 'damp'],
+    'fungus': ['mold', 'mildew', 'fungal'],
+    'thick': ['large', 'heavy', 'big'],
+    'thin': ['small', 'light', 'narrow'],
+    'trimmed': ['cut', 'clipped', 'shortened'],
+    'branch': ['split', 'fork', 'divide', 'separate'],
+    'support': ['hold', 'mount', 'bracket', 'clamp'],
+    'deform': ['distort', 'crush', 'squeeze', 'damage'],
+    'insulation': ['insulator', 'covering', 'sheath', 'jacket'],
+    'coaxial': ['coax', 'shielded cable', 'rf cable'],
+    'conduit': ['tube', 'pipe', 'duct', 'channel'],
+    'junction': ['connection', 'joint', 'box', 'splice'],
+    'approximately': ['about', 'around', 'roughly', 'nearly'],
+    'temporary': ['temp', 'short-term', 'provisional'],
+    'permanent': ['perm', 'long-term', 'fixed'],
+    // General technical terms
+    'start': ['begin', 'commence', 'initiate'],
+    'end': ['finish', 'complete', 'terminate'],
+    'use': ['utilize', 'employ', 'apply'],
+    'purpose': ['reason', 'function', 'goal', 'objective'],
+    'type': ['kind', 'sort', 'variety', 'form'],
+    'material': ['substance', 'matter', 'fabric'],
+    'inch': ['in', '"', 'inches'],
+    'located': ['placed', 'positioned', 'situated', 'found'],
+    'require': ['need', 'must', 'necessary', 'essential'],
+};
 
 // ================================
 // STOP WORDS
@@ -80,9 +133,6 @@ const STOP_WORDS = new Set([
 
 const NEGATIVE_KEYWORDS = ['NOT', 'EXCEPT', 'FALSE', 'INCORRECT', 'LEAST LIKELY', 'UNTRUE', 'WRONG'];
 
-// Antonym pairs for semantic contrast detection
-// If question contains key, finding the value near an option means that option
-// is explicitly contrasted with the question's concept
 const CONTRAST_ANTONYMS: Record<string, string[]> = {
     'primary': ['secondary', 'tertiary'],
     'true': ['false', 'untrue', 'incorrect'],
@@ -92,9 +142,6 @@ const CONTRAST_ANTONYMS: Record<string, string[]> = {
     'all': ['none', 'some', 'few'],
     'major': ['minor'],
     'positive': ['negative'],
-    'increase': ['decrease', 'reduce'],
-    'advantage': ['disadvantage'],
-    'benefit': ['drawback', 'harm'],
     'include': ['exclude'],
     'maximum': ['minimum'],
     'best': ['worst'],
@@ -111,54 +158,507 @@ export class SmartSearchEngine {
     // PUBLIC API
     // ================================
 
-    /**
-     * Main search entry point
-     */
     public static async search(question: string, pdfText: string): Promise<SmartSearchResult> {
-        // 1. Detect if it's a quiz question
-        const quiz = this.detectQuizQuestion(question);
+        console.log(`[SmartSearch] Analyzing question: "${question.slice(0, 100)}..."`);
 
-        if (quiz.isQuiz) {
-            return this.solveQuiz(quiz, pdfText);
+        const quiz = this.detectQuizQuestion(question);
+        console.log(`[SmartSearch] Quiz detected: ${quiz.isQuiz}, Options: ${quiz.options.length}, Negative: ${quiz.isNegative}`);
+
+        if (quiz.isQuiz && quiz.options.length >= 2) {
+            console.log(`[SmartSearch] Processing as QUIZ question`);
+            return this.solveQuizWithRetry(quiz, pdfText);
         }
 
-        // 2. Direct answer fallback
+        // For non-quiz questions, try to find relevant content
+        console.log(`[SmartSearch] Processing as DIRECT question (not a quiz)`);
         return this.findDirectAnswer(question, pdfText);
     }
 
-    /**
-     * Extract keywords for page-level search
-     */
     public static extractKeywords(text: string): string[] {
-        // Technical terms (hyphenated)
         const hyphenated = text.match(/\b\w+-\w+(?:-\w+)*\b/g) || [];
-
-        // Numbers with context
         const numbers = text.match(/\d+(?:[:.]\d+)?(?:\s*[%°]|\s*to\s*\d+)?/g) || [];
-
-        // Significant words (stemmed, no stop words)
         const tokens = this.tokenize(text);
         const words = Array.from(tokens).filter(t => t.length >= 4);
-
-        // Combine and dedup
         const all = new Set([...hyphenated, ...numbers, ...words]);
         return Array.from(all).slice(0, 15);
     }
 
-    /**
-     * Detect quiz question with robust option parsing
-     * Supports: A), A., (A), [A], or just A followed by text
-     * Handles 2-5 options (A-E)
-     */
+    // ================================
+    // CONFIDENCE-DRIVEN RETRY LOOP (with safeguards)
+    // ================================
+
+    private static solveQuizWithRetry(quiz: QuizQuestion, fullText: string): SmartSearchResult {
+        const MAX_ATTEMPTS = 3;
+        const MAX_PAGES_TO_ANALYZE = 15;  // Analyze up to 15 most relevant pages
+        const MAX_TEXT_PER_SEARCH = 25000;  // 25KB per search iteration
+
+        // Step 1: Extract ALL pages from the FULL document (no truncation here!)
+        const allPages = this.extractPages(fullText);
+        console.log(`[SmartSearch] Document has ${allPages.length} pages total`);
+
+        // Step 2: Score ALL pages for relevance to this question
+        // This is fast - just keyword matching, no deep analysis
+        const relevantPages = this.findRelevantPages(quiz, allPages);
+        console.log(`[SmartSearch] Scored ${relevantPages.length} pages, top ${Math.min(MAX_PAGES_TO_ANALYZE, relevantPages.length)} will be analyzed`);
+
+        // Get top N most relevant pages
+        const topPages = relevantPages.slice(0, MAX_PAGES_TO_ANALYZE);
+
+        if (topPages.length === 0) {
+            console.log(`[SmartSearch] No relevant pages found!`);
+            return {
+                answer: quiz.options[0]?.letter || 'A',
+                confidence: 0.3,
+                evidence: '',
+                explanation: 'No relevant content found in document.',
+                method: 'quiz'
+            };
+        }
+
+        // Log top pages for debugging
+        console.log(`[SmartSearch] Top pages: ${topPages.slice(0, 5).map(p => `p.${p.pageNum}(${p.relevanceScore})`).join(', ')}`);
+
+        let bestResult: SmartSearchResult | null = null;
+
+        // Search levels - analyze progressively more pages
+        const searchLevels = [
+            { pageCount: 3, name: 'focused' },
+            { pageCount: 8, name: 'expanded' },
+            { pageCount: MAX_PAGES_TO_ANALYZE, name: 'deep' },
+        ];
+
+        for (let attempt = 0; attempt < Math.min(searchLevels.length, MAX_ATTEMPTS); attempt++) {
+            const level = searchLevels[attempt];
+            const pagesToSearch = topPages.slice(0, level.pageCount);
+
+            console.log(`[SmartSearch] Attempt ${attempt + 1}/${MAX_ATTEMPTS}: ${level.name} (${pagesToSearch.length} pages)`);
+
+            // Combine page content for deep analysis
+            let searchText = pagesToSearch.map(p => `[Page ${p.pageNum}]\n${p.text}`).join('\n\n');
+
+            // Safety truncation only if still too long
+            if (searchText.length > MAX_TEXT_PER_SEARCH) {
+                searchText = searchText.slice(0, MAX_TEXT_PER_SEARCH);
+                console.log(`[SmartSearch] Truncated search text to ${MAX_TEXT_PER_SEARCH} chars`);
+            }
+
+            const result = this.solveQuizInContext(quiz, searchText, pagesToSearch);
+
+            // Track best result
+            if (!bestResult || result.confidence > bestResult.confidence) {
+                bestResult = result;
+            }
+
+            // Exit early if confidence is good enough
+            if (result.confidence >= MIN_CONFIDENCE) {
+                console.log(`[SmartSearch] ✓ ${(result.confidence * 100).toFixed(0)}% confidence on attempt ${attempt + 1}`);
+                return { ...result, explanation: result.explanation + ` (${level.name})` };
+            }
+
+            console.log(`[SmartSearch] ${(result.confidence * 100).toFixed(0)}% - continuing...`);
+        }
+
+        // Return best result found
+        console.log(`[SmartSearch] Done. Best: ${((bestResult?.confidence || 0) * 100).toFixed(0)}%`);
+        return bestResult || {
+            answer: quiz.options[0]?.letter || 'A',
+            confidence: 0.5,
+            evidence: '',
+            explanation: 'Could not find confident answer.',
+            method: 'quiz'
+        };
+    }
+
+    // ================================
+    // PAGE EXTRACTION & TARGETING
+    // ================================
+
+    private static extractPages(fullText: string): PageContent[] {
+        const pages: PageContent[] = [];
+
+        // Split by [Page X] markers
+        const pageRegex = /\[Page (\d+)\]/g;
+        const parts = fullText.split(pageRegex);
+
+        // Parts alternate: [content before first page], pageNum1, content1, pageNum2, content2, ...
+        for (let i = 1; i < parts.length; i += 2) {
+            const pageNum = parseInt(parts[i]);
+            const text = parts[i + 1] || '';
+            if (text.trim().length > 0) {
+                pages.push({ pageNum, text: text.trim(), relevanceScore: 0 });
+            }
+        }
+
+        // If no page markers, treat entire text as one "page"
+        if (pages.length === 0 && fullText.trim().length > 0) {
+            pages.push({ pageNum: 1, text: fullText.trim(), relevanceScore: 0 });
+        }
+
+        return pages;
+    }
+
+    private static findRelevantPages(quiz: QuizQuestion, pages: PageContent[]): PageContent[] {
+        // Extract keywords from question + all options
+        const questionKeywords = this.getExpandedKeywords(quiz.question);
+        const optionKeywords = quiz.options.flatMap(o => this.getExpandedKeywords(o.text));
+        const allKeywords = new Set([...questionKeywords, ...optionKeywords]);
+
+        // Score each page by keyword density
+        for (const page of pages) {
+            const pageLower = page.text.toLowerCase();
+            let score = 0;
+
+            const keywordArr = Array.from(allKeywords);
+            for (let k = 0; k < keywordArr.length; k++) {
+                const keyword = keywordArr[k];
+                // Count occurrences (with word boundaries for accuracy)
+                const regex = new RegExp(`\\b${this.escapeRegex(keyword)}\\b`, 'gi');
+                const matches = pageLower.match(regex);
+                if (matches) {
+                    score += matches.length * 2;
+                }
+            }
+
+            // Bonus for glossary/index pages
+            if (this.isGlossaryPage(page.text)) {
+                score += 50;
+            }
+
+            page.relevanceScore = score;
+        }
+
+        // Sort by relevance (highest first)
+        return pages
+            .filter(p => p.relevanceScore > 0)
+            .sort((a, b) => b.relevanceScore - a.relevanceScore);
+    }
+
+    private static isGlossaryPage(text: string): boolean {
+        const lower = text.toLowerCase();
+        const glossaryIndicators = ['glossary', 'index', 'definitions', 'terminology', 'terms', 'table of contents'];
+        return glossaryIndicators.some(ind => lower.includes(ind));
+    }
+
+    private static escapeRegex(str: string): string {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // ================================
+    // EXPANDED KEYWORD EXTRACTION (with synonyms)
+    // ================================
+
+    private static getExpandedKeywords(text: string): string[] {
+        const baseTokens = this.tokenize(text);
+        const expanded = new Set<string>();
+
+        const tokenArr = Array.from(baseTokens);
+        for (let t = 0; t < tokenArr.length; t++) {
+            const token = tokenArr[t];
+            expanded.add(token);
+
+            // Add synonyms
+            for (const [key, synonyms] of Object.entries(SYNONYMS)) {
+                if (token.includes(key) || key.includes(token)) {
+                    synonyms.forEach(s => expanded.add(s.toLowerCase()));
+                }
+            }
+        }
+
+        // Also add 2-word phrases from original text
+        const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+        for (let i = 0; i < words.length - 1; i++) {
+            expanded.add(`${words[i]} ${words[i + 1]}`);
+        }
+
+        return Array.from(expanded);
+    }
+
+    // ================================
+    // QUIZ SOLVING IN CONTEXT
+    // ================================
+
+    private static solveQuizInContext(
+        quiz: QuizQuestion,
+        context: string,
+        pages: PageContent[]
+    ): SmartSearchResult {
+        const MAX_SENTENCES = 150;  // Limit sentences to prevent slowdown
+
+        let sentences = this.splitIntoSentences(context);
+        if (sentences.length > MAX_SENTENCES) {
+            sentences = sentences.slice(0, MAX_SENTENCES);
+        }
+
+        const qTokens = this.tokenize(quiz.question);
+        const qExpanded = this.getExpandedKeywords(quiz.question);
+
+        // Score each option
+        const optionScores: OptionScore[] = quiz.options.map(opt =>
+            this.scoreOptionAdvanced(opt, qTokens, qExpanded, sentences, quiz.isNegative, quiz.question)
+        );
+
+        // Decision logic
+        return this.makeDecision(quiz, optionScores, pages);
+    }
+
+    private static scoreOptionAdvanced(
+        option: { letter: string; text: string },
+        qTokens: Set<string>,
+        qExpanded: string[],
+        sentences: string[],
+        isNegative: boolean,
+        questionText: string
+    ): OptionScore {
+        const optTokens = this.tokenize(option.text);
+        const optExpanded = this.getExpandedKeywords(option.text);
+        const optLower = option.text.toLowerCase();
+
+        let bestScore = 0;
+        let bestSentence = '';
+        const breakdown: string[] = [];
+
+        // Check for contrast evidence in negative questions
+        let hasContrastEvidence = false;
+        let contrastSentence = '';
+
+        const questionLower = questionText.toLowerCase();
+        const contrastTerms: string[] = [];
+        for (const [key, antonyms] of Object.entries(CONTRAST_ANTONYMS)) {
+            if (questionLower.includes(key)) {
+                contrastTerms.push(...antonyms);
+            }
+        }
+
+        for (const sentence of sentences) {
+            const sentLower = sentence.toLowerCase();
+            const sentTokens = this.tokenize(sentence);
+            let score = 0;
+
+            // === SCORING ===
+
+            // 1. Exact phrase match (highest priority)
+            if (this.containsPhrase(sentLower, optLower)) {
+                score += SCORING.EXACT_PHRASE;
+                breakdown.push('exact phrase');
+            }
+
+            // 2. Synonym matching
+            let synonymMatches = 0;
+            for (const keyword of optExpanded) {
+                if (sentLower.includes(keyword)) {
+                    synonymMatches++;
+                }
+            }
+            if (synonymMatches > 0) {
+                score += synonymMatches * SCORING.SYNONYM_MATCH / optExpanded.length;
+                breakdown.push(`${synonymMatches} synonym matches`);
+            }
+
+            // 3. Co-location: question AND option keywords in same sentence
+            const qOverlap = this.countOverlap(qTokens, sentTokens);
+            const oOverlap = this.countOverlap(optTokens, sentTokens);
+
+            if (qOverlap > 0 && oOverlap > 0) {
+                score += SCORING.BOTH_COLOCATED;
+                breakdown.push('co-located');
+            }
+
+            score += qOverlap * SCORING.QUESTION_KEYWORD;
+            score += oOverlap * SCORING.OPTION_KEYWORD;
+
+            // 4. N-gram matching (2-word and 3-word phrases)
+            const optWords = option.text.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+            for (let i = 0; i < optWords.length - 1; i++) {
+                const bigram = `${optWords[i]} ${optWords[i + 1]}`;
+                if (sentLower.includes(bigram)) {
+                    score += SCORING.PHRASE_2GRAM;
+                }
+            }
+            for (let i = 0; i < optWords.length - 2; i++) {
+                const trigram = `${optWords[i]} ${optWords[i + 1]} ${optWords[i + 2]}`;
+                if (sentLower.includes(trigram)) {
+                    score += SCORING.PHRASE_3GRAM;
+                }
+            }
+
+            // 5. Coverage bonus
+            if (optTokens.size > 0) {
+                const coverage = oOverlap / optTokens.size;
+                if (coverage > 0.8) score += SCORING.HIGH_COVERAGE;
+                if (coverage >= 1.0) score += SCORING.PERFECT_COVERAGE;
+            }
+
+            // 6. Contrast detection for negative questions
+            if (isNegative && contrastTerms.length > 0) {
+                const optIndex = sentLower.indexOf(optLower.split(' ')[0]);
+                if (optIndex !== -1) {
+                    for (const term of contrastTerms) {
+                        const termIndex = sentLower.indexOf(term);
+                        if (termIndex !== -1 && termIndex > optIndex) {
+                            hasContrastEvidence = true;
+                            contrastSentence = sentence;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestSentence = sentence;
+            }
+        }
+
+        // For negative questions with contrast evidence, mark specially
+        const finalScore = hasContrastEvidence ? -1 : bestScore;
+        const finalEvidence = hasContrastEvidence ? contrastSentence : bestSentence;
+
+        return {
+            letter: option.letter,
+            text: option.text,
+            totalScore: finalScore,
+            evidence: finalEvidence,
+            breakdown
+        };
+    }
+
+    // ================================
+    // SYNONYM-EXPANDED SEARCH (fallback)
+    // ================================
+
+    private static solveWithSynonymExpansion(quiz: QuizQuestion, pages: PageContent[]): SmartSearchResult {
+        // Expand all keywords with synonyms and search again
+        const expandedQuestion: QuizQuestion = {
+            ...quiz,
+            // Expand question text with synonyms
+            question: this.expandTextWithSynonyms(quiz.question),
+            options: quiz.options.map(o => ({
+                ...o,
+                text: this.expandTextWithSynonyms(o.text)
+            }))
+        };
+
+        const allText = pages.map(p => p.text).join('\n\n');
+        return this.solveQuizInContext(expandedQuestion, allText, pages);
+    }
+
+    private static expandTextWithSynonyms(text: string): string {
+        let expanded = text.toLowerCase();
+        for (const [key, synonyms] of Object.entries(SYNONYMS)) {
+            if (expanded.includes(key)) {
+                // Add first synonym as alternative phrasing
+                expanded += ' ' + synonyms[0];
+            }
+        }
+        return expanded;
+    }
+
+    // ================================
+    // DECISION LOGIC
+    // ================================
+
+    private static makeDecision(
+        quiz: QuizQuestion,
+        optionScores: OptionScore[],
+        pages: PageContent[]
+    ): SmartSearchResult {
+        let winner: OptionScore;
+        let confidence = 0.5;
+        let explanation = '';
+
+        if (quiz.isNegative) {
+            // Check for contrast evidence first
+            const contrastMatch = optionScores.find(o => o.totalScore === -1);
+
+            if (contrastMatch) {
+                winner = contrastMatch;
+                confidence = 0.98;
+                explanation = `Negative question: ${contrastMatch.letter} is explicitly contrasted in the text.`;
+            } else {
+                // Sort and pick lowest scored (least supported = correct for "NOT" questions)
+                optionScores.sort((a, b) => b.totalScore - a.totalScore);
+                const worst = optionScores[optionScores.length - 1];
+                const best = optionScores[0];
+                const highScoreCount = optionScores.filter(o => o.totalScore > 50).length;
+
+                if (highScoreCount >= 2 && worst.totalScore < 20) {
+                    winner = worst;
+                    confidence = 0.95;
+                    explanation = `Negative question: ${worst.letter} has least textual support while others are well-supported.`;
+                } else if (worst.totalScore < best.totalScore * 0.3) {
+                    winner = worst;
+                    confidence = 0.80;
+                    explanation = `Negative question: ${worst.letter} has significantly less support.`;
+                } else {
+                    winner = worst;
+                    confidence = 0.60;
+                    explanation = `Negative question: ${worst.letter} had lowest match (uncertain).`;
+                }
+            }
+        } else {
+            // Normal question: pick highest scored
+            optionScores.sort((a, b) => b.totalScore - a.totalScore);
+            winner = optionScores[0];
+            const second = optionScores[1];
+
+            if (winner.totalScore > 0) {
+                const margin = second ? winner.totalScore / Math.max(second.totalScore, 1) : 10;
+
+                if (margin >= 3 || winner.totalScore >= 200) {
+                    confidence = 0.98;
+                    explanation = `${winner.letter} has definitive textual evidence.`;
+                } else if (margin >= 2) {
+                    confidence = 0.92;
+                    explanation = `${winner.letter} is clearly the best match.`;
+                } else if (margin >= 1.5) {
+                    confidence = 0.85;
+                    explanation = `${winner.letter} has significantly more support.`;
+                } else if (margin >= 1.2) {
+                    confidence = 0.75;
+                    explanation = `${winner.letter} has moderately more support.`;
+                } else if (margin >= 1.1) {
+                    confidence = 0.65;
+                    explanation = `${winner.letter} has slightly more support.`;
+                } else {
+                    confidence = 0.55;
+                    explanation = `${winner.letter} marginally matches better.`;
+                }
+            } else {
+                confidence = 0.30;
+                explanation = `No strong evidence found. ${winner.letter} is best guess.`;
+            }
+        }
+
+        // Find page number from evidence
+        let pageNum: number | undefined;
+        if (winner.evidence) {
+            for (const page of pages) {
+                if (page.text.includes(winner.evidence.slice(0, 50))) {
+                    pageNum = page.pageNum;
+                    break;
+                }
+            }
+        }
+
+        return {
+            answer: winner.letter,
+            confidence,
+            evidence: winner.evidence || 'No direct evidence found.',
+            explanation,
+            method: 'quiz',
+            pageNumber: pageNum
+        };
+    }
+
+    // ================================
+    // QUIZ DETECTION
+    // ================================
+
     public static detectQuizQuestion(input: string): QuizQuestion {
-        // A) Detect Negative Logic
         const questionBody = this.extractQuestionBody(input);
         const isNegative = this.detectNegative(questionBody);
-
-        // B) Parse options with multiple strategies
         const options = this.parseOptions(input);
 
-        // C) Extract question text
         let questionText = input.trim();
         if (options.length > 0) {
             questionText = this.extractQuestionText(input, options[0].letter);
@@ -172,307 +672,10 @@ export class SmartSearchEngine {
         };
     }
 
-    /**
-     * Solve a quiz question using Focus and Verify algorithm
-     */
-    public static solveQuiz(quiz: QuizQuestion, context: string): SmartSearchResult {
-        const qTokens = this.tokenize(quiz.question);
-
-        // === PHASE 1: CHUNK THE TEXT ===
-        const chunks = this.chunkText(context, CHUNK_SIZE, CHUNK_OVERLAP);
-
-        // === PHASE 2: FIND HOTSPOTS ===
-        const hotspots = this.findHotspots(chunks, qTokens, TOP_HOTSPOTS);
-
-        // Combine hotspots for deep analysis
-        const focusedText = hotspots.join('\n\n');
-        const sentences = this.splitIntoSentences(focusedText);
-
-        // === PHASE 3: SCORE EACH OPTION ===
-        const optionScores: OptionScore[] = quiz.options.map(opt =>
-            this.scoreOption(opt, qTokens, sentences, quiz.isNegative, quiz.question)
-        );
-
-        // === PHASE 4: DECISION LOGIC ===
-        let winner: OptionScore;
-        let confidence = 0.5;
-        let explanation = '';
-
-        if (quiz.isNegative) {
-            // First check for contrast match (score -1 indicates definitive contrast evidence)
-            const contrastMatch = optionScores.find(o => o.totalScore === -1);
-
-            if (contrastMatch) {
-                // We found explicit contrast evidence (e.g., "Green is secondary" for "NOT primary")
-                winner = contrastMatch;
-                confidence = 0.98;
-                explanation = `This is a negative question. ${contrastMatch.letter} is explicitly contrasted in the text: "${contrastMatch.evidence.substring(0, 100)}..."`;
-            } else {
-                // Fall back to logic inversion
-                // Sort by score descending (ignoring -1 which shouldn't exist here)
-                optionScores.sort((a, b) => b.totalScore - a.totalScore);
-
-                const worst = optionScores[optionScores.length - 1];
-                const best = optionScores[0];
-
-                const highScoreCount = optionScores.filter(o => o.totalScore > 30).length;
-
-                if (highScoreCount >= 2 && worst.totalScore < 15) {
-                    winner = worst;
-                    confidence = 0.95;
-                    explanation = `This is a negative question (NOT/EXCEPT). ${worst.letter} has the least textual support while others are well-supported.`;
-                } else if (worst.totalScore < best.totalScore * 0.3) {
-                    winner = worst;
-                    confidence = 0.75;
-                    explanation = `This is a negative question. ${worst.letter} has significantly less textual support.`;
-                } else {
-                    winner = worst;
-                    confidence = 0.6;
-                    explanation = `Negative question inversion applied. ${worst.letter} had lowest match.`;
-                }
-            }
-        } else {
-            // Normal Logic: Sort by score descending and pick highest
-            optionScores.sort((a, b) => b.totalScore - a.totalScore);
-            winner = optionScores[0];
-            const second = optionScores[1];
-
-            if (winner.totalScore > 0) {
-                if (!second || winner.totalScore > second.totalScore * 2) {
-                    confidence = 0.95;
-                    explanation = `${winner.letter} is clearly the best match with strong textual evidence.`;
-                } else if (winner.totalScore > second.totalScore * 1.5) {
-                    confidence = 0.85;
-                    explanation = `${winner.letter} has significantly more support than other options.`;
-                } else if (winner.totalScore > second.totalScore * 1.1) {
-                    confidence = 0.70;
-                    explanation = `${winner.letter} has slightly more textual support.`;
-                } else {
-                    confidence = 0.55;
-                    explanation = `${winner.letter} marginally matches better, but evidence is weak.`;
-                }
-            } else {
-                explanation = `No strong evidence found. ${winner.letter} selected as best guess.`;
-            }
-        }
-
-        // Build evidence string
-        const evidenceStr = winner.evidence || 'No direct textual evidence found.';
-
-        return {
-            answer: winner.letter,
-            confidence: confidence,
-            evidence: evidenceStr,
-            explanation: explanation,
-            method: 'quiz'
-        };
-    }
-
-    // ================================
-    // TEXT CHUNKING
-    // ================================
-
-    /**
-     * Split text into overlapping chunks for better context preservation
-     */
-    private static chunkText(text: string, chunkSize: number = 500, overlap: number = 100): string[] {
-        const chunks: string[] = [];
-
-        if (text.length <= chunkSize) {
-            return [text];
-        }
-
-        let start = 0;
-        while (start < text.length) {
-            const end = Math.min(start + chunkSize, text.length);
-            chunks.push(text.slice(start, end));
-            start += chunkSize - overlap;
-        }
-
-        return chunks;
-    }
-
-    /**
-     * Find hotspots - chunks with highest keyword density
-     */
-    private static findHotspots(chunks: string[], questionTokens: Set<string>, topK: number = 20): string[] {
-        if (chunks.length <= topK) {
-            return chunks;
-        }
-
-        // Score each chunk by keyword density
-        const scoredChunks: Chunk[] = chunks.map(chunk => {
-            const chunkTokens = this.tokenize(chunk);
-            const overlap = this.calculateOverlap(questionTokens, chunkTokens);
-            return {
-                text: chunk,
-                keywordDensity: overlap.count / Math.max(chunkTokens.size, 1)
-            };
-        });
-
-        // Sort by density descending
-        scoredChunks.sort((a, b) => b.keywordDensity - a.keywordDensity);
-
-        // Return top K
-        return scoredChunks.slice(0, topK).map(c => c.text);
-    }
-
-    /**
-     * Score an option using sliding window analysis
-     */
-    private static scoreOption(
-        option: { letter: string; text: string },
-        qTokens: Set<string>,
-        sentences: string[],
-        isNegative: boolean,
-        questionText: string = ''
-    ): OptionScore {
-        const optTokens = this.tokenize(option.text);
-
-        let bestSentenceScore = 0;
-        let bestSentence = '';
-        let hasContrastEvidence = false;
-        let contrastSentence = '';
-        const breakdown: string[] = [];
-
-        // For negative questions, look for contrast antonyms in the question
-        const questionLower = questionText.toLowerCase();
-        const contrastTerms: string[] = [];
-        for (const [key, antonyms] of Object.entries(CONTRAST_ANTONYMS)) {
-            if (questionLower.includes(key)) {
-                contrastTerms.push(...antonyms);
-            }
-        }
-
-        // Sliding window: prev + current + next sentence
-        for (let i = 0; i < sentences.length; i++) {
-            // Build context window
-            const prevSent = i > 0 ? sentences[i - 1] : '';
-            const currSent = sentences[i];
-            const nextSent = i < sentences.length - 1 ? sentences[i + 1] : '';
-
-            const windowText = [prevSent, currSent, nextSent].join(' ');
-            const windowTokens = this.tokenize(windowText);
-            const currTokens = this.tokenize(currSent);
-            const currLower = currSent.toLowerCase();
-
-            // Calculate overlaps
-            const qOverlap = this.calculateOverlap(qTokens, windowTokens);
-            const oOverlap = this.calculateOverlap(optTokens, windowTokens);
-
-            // Check for contrast evidence: option appears with a contrast antonym
-            // The option should appear BEFORE the contrast word (pattern: "Green is a secondary")
-            if (isNegative && contrastTerms.length > 0) {
-                const optLower = option.text.toLowerCase();
-                const optIndex = currLower.indexOf(optLower);
-
-                if (optIndex !== -1) {
-                    // Check if any contrast term appears AFTER the option
-                    for (const term of contrastTerms) {
-                        const contrastIndex = currLower.indexOf(term);
-                        if (contrastIndex !== -1 && contrastIndex > optIndex) {
-                            // Option appears before contrast term - this is the pattern we want
-                            // e.g., "Green is a secondary color" - Green before secondary
-                            hasContrastEvidence = true;
-                            contrastSentence = currSent;
-                            break;
-                        }
-                    }
-                }
-            }
-
-
-            if (qOverlap.count > 0 || oOverlap.count > 0) {
-                let score = 0;
-
-                // Base scoring
-                score += qOverlap.count * SCORING.QUESTION_KEYWORD;
-                score += oOverlap.count * SCORING.OPTION_KEYWORD;
-
-                // Bonus: Both question and option keywords in same sentence
-                const currQOverlap = this.calculateOverlap(qTokens, currTokens);
-                const currOOverlap = this.calculateOverlap(optTokens, currTokens);
-
-                if (currQOverlap.count > 0 && currOOverlap.count > 0) {
-                    score += SCORING.BOTH_SAME_SENTENCE;
-                }
-
-                // Bonus: Exact phrase match
-                if (this.containsExactPhrase(currSent, option.text)) {
-                    score += SCORING.EXACT_PHRASE_MATCH;
-                }
-
-                // Bonus: Partial phrase match (2-word and 3-word terms)
-                // Critical for technical terms like "single-cord lacing", "clove hitch"
-                const optionWords = option.text.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-                const sentLower = currSent.toLowerCase();
-
-                // Check for 2-word phrases from option appearing in sentence
-                for (let w = 0; w < optionWords.length - 1; w++) {
-                    const twoGram = optionWords[w] + ' ' + optionWords[w + 1];
-                    if (sentLower.includes(twoGram)) {
-                        score += 35; // Significant bonus for phrase match
-                    }
-                }
-
-                // Check for 3-word phrases
-                for (let w = 0; w < optionWords.length - 2; w++) {
-                    const threeGram = optionWords[w] + ' ' + optionWords[w + 1] + ' ' + optionWords[w + 2];
-                    if (sentLower.includes(threeGram)) {
-                        score += 50; // Even bigger bonus for 3-word match
-                    }
-                }
-
-                // Bonus: High option coverage
-                if (optTokens.size > 0) {
-                    const coverage = oOverlap.count / optTokens.size;
-                    if (coverage > 0.8) score += SCORING.HIGH_COVERAGE_BONUS;
-                    if (coverage === 1.0) score += SCORING.PERFECT_COVERAGE_BONUS;
-                }
-
-                if (score > bestSentenceScore) {
-                    bestSentenceScore = score;
-                    bestSentence = currSent;
-                }
-            }
-        }
-
-        // For negative questions, if we have contrast evidence, this is the definitive answer
-        // Give it a special marker score of -1 to indicate "contrast match" for the solver
-        const finalScore = hasContrastEvidence ? -1 : bestSentenceScore;
-        const finalEvidence = hasContrastEvidence ? contrastSentence : bestSentence;
-
-        return {
-            letter: option.letter,
-            text: option.text,
-            totalScore: finalScore,
-            evidence: finalEvidence,
-            breakdown
-        };
-    }
-
-
-    /**
-     * Check for exact phrase match (case insensitive)
-     */
-    private static containsExactPhrase(text: string, phrase: string): boolean {
-        const normalizedText = text.toLowerCase().replace(/[^a-z0-9\s]/g, '');
-        const normalizedPhrase = phrase.toLowerCase().replace(/[^a-z0-9\s]/g, '');
-        return normalizedText.includes(normalizedPhrase);
-    }
-
-    // ================================
-    // OPTION PARSING
-    // ================================
-
-    /**
-     * Extract the question body (before options) for negative detection
-     */
     private static extractQuestionBody(input: string): string {
-        // Try to find where options start
         const patterns = [
-            /(?:^|\n)\s*[A-Ea-e][\.\)\]]/,
-            /\s{2,}[A-Ea-e][\.\)\]]/
+            /(?:^|\n)\s*[A-Ea-e][.\)\]]/,
+            /\s{2,}[A-Ea-e][.\)\]]/
         ];
 
         for (const pattern of patterns) {
@@ -485,57 +688,79 @@ export class SmartSearchEngine {
         return input.toUpperCase();
     }
 
-    /**
-     * Detect negative question keywords
-     */
     private static detectNegative(questionBody: string): boolean {
         return NEGATIVE_KEYWORDS.some(kw =>
             new RegExp(`\\b${kw}\\b`, 'i').test(questionBody)
         );
     }
 
-    /**
-     * Parse options with multiple format support
-     */
     private static parseOptions(input: string): { letter: string; text: string }[] {
         const options: { letter: string; text: string }[] = [];
 
-        // Normalize: add newlines before potential options stuck together
-        let normalized = input.replace(/([^a-zA-Z])([A-Ea-e])[\.\)\]]/g, '$1\n$2)');
+        // Simple approach: find all occurrences of option patterns
+        // Pattern 1: "A. text" or "A) text" or "(A) text"
+        // Use very simple matching
 
-        // Strategy 1: Standard patterns like "A)", "A.", "(A)", "[A]"
-        // Using 'g' flag only (no 's' for ES5 compat) - since we normalized newlines
-        const patterns = [
-            // A) text or A. text - match until next option or end
-            /(?:^|\n|\s{2,})([A-Ea-e])[.\)]\s*([^\n]+?)(?=(?:\n|\s{2,})[A-Ea-e][.\)]|$)/g,
-            // (A) text or [A] text
-            /(?:^|\n|\s{2,})[\(\[]([A-Ea-e])[\)\]]\s*([^\n]+?)(?=(?:\n|\s{2,})[\(\[][A-Ea-e][\)\]]|$)/g
-        ];
+        const text = input.replace(/\r\n/g, '\n');
 
-        for (const regex of patterns) {
-            let match;
-            while ((match = regex.exec(normalized)) !== null) {
-                const letter = match[1].toUpperCase();
-                const text = match[2].trim().replace(/\s+/g, ' ');
+        // Try to find options in various formats
+        // Format: A. text  B. text  C. text  D. text
+        // Format: A) text  B) text
+        // Format: (A) text (B) text
 
-                if (text.length > 0 && !options.find(o => o.letter === letter)) {
-                    options.push({ letter, text });
+        // First, try to split by common option markers
+        const optionMatches: { letter: string; text: string; index: number }[] = [];
+
+        // Pattern 1: A. or A) or (A) at start of line or after spaces
+        const pattern1 = /(?:^|\s)([A-Ea-e])[.\)]\s*(.+?)(?=(?:\s[A-Ea-e][.\)])|$)/gi;
+        let match;
+
+        // Reset lastIndex to start from beginning
+        const testText = text + ' '; // Add space to help capture last option
+
+        // Simple line-by-line or split approach
+        // Split by option markers
+        const parts = text.split(/(?=\s[A-Ea-e][.\)])/);
+
+        for (const part of parts) {
+            // Try to extract option from this part
+            const optMatch = part.match(/^\s*([A-Ea-e])[.\)]\s*(.+)/);
+            if (optMatch) {
+                const letter = optMatch[1].toUpperCase();
+                let optText = optMatch[2].trim();
+
+                // Clean up: remove next option if captured
+                optText = optText.replace(/\s+[A-Ea-e][.\)].*$/i, '').trim();
+
+                if (optText.length > 0 && !options.find(o => o.letter === letter)) {
+                    options.push({ letter, text: optText });
                 }
             }
         }
 
-        // Sort by letter
-        options.sort((a, b) => a.letter.localeCompare(b.letter));
+        // If no options found, try alternative: look for A through D/E markers
+        if (options.length < 2) {
+            const altPattern = /([A-Ea-e])[.\)]\s*([^A-Ea-e]+?)(?=[A-Ea-e][.\)]|$)/g;
+            while ((match = altPattern.exec(text)) !== null) {
+                const letter = match[1].toUpperCase();
+                const optText = match[2].trim().replace(/\s+/g, ' ');
 
+                if (optText.length > 1 && !options.find(o => o.letter === letter)) {
+                    options.push({ letter, text: optText });
+                }
+            }
+        }
+
+        // Log for debugging
+        console.log(`[SmartSearch] Parsed ${options.length} options:`, options.map(o => `${o.letter}: "${o.text.slice(0, 30)}..."`));
+
+        options.sort((a, b) => a.letter.localeCompare(b.letter));
         return options;
     }
 
-    /**
-     * Extract question text before options
-     */
     private static extractQuestionText(input: string, firstLetter: string): string {
         const patterns = [
-            new RegExp(`(?:^|\\n|\\s{2,})${firstLetter}[\\.\\)\\]]`, 'i'),
+            new RegExp(`(?:^|\\n|\\s{2,})${firstLetter}[.\\)\\]]`, 'i'),
             new RegExp(`[\\(\\[]${firstLetter}[\\)\\]]`, 'i')
         ];
 
@@ -550,11 +775,10 @@ export class SmartSearchEngine {
     }
 
     // ================================
-    // DIRECT ANSWER FALLBACK
+    // FALLBACK
     // ================================
 
     private static findDirectAnswer(question: string, text: string): SmartSearchResult {
-        // Simple fallback - no quiz detected
         return {
             answer: '',
             confidence: 0,
@@ -565,33 +789,25 @@ export class SmartSearchEngine {
     }
 
     // ================================
-    // TOKENIZERS & HELPERS
+    // UTILITY FUNCTIONS
     // ================================
 
-    /**
-     * Tokenize text with stemming and stop word removal
-     */
     private static tokenize(text: string): Set<string> {
-        let clean = text.toLowerCase();
-        clean = clean.replace(/[^a-z0-9\s-]/g, '');
+        const clean = text.toLowerCase().replace(/[^a-z0-9\s-]/g, '');
         const tokens = clean.split(/\s+/);
 
         const validTokens = new Set<string>();
         for (const t of tokens) {
-            if (this.isStopWord(t)) continue;
+            if (STOP_WORDS.has(t)) continue;
             const stem = this.stem(t);
             if (stem.length > 2) validTokens.add(stem);
         }
         return validTokens;
     }
 
-    /**
-     * Enhanced Porter-like stemmer
-     */
     private static stem(word: string): string {
         if (word.length < 4) return word;
 
-        // Order matters - check longer suffixes first
         const suffixes = [
             { suffix: 'ization', replace: 'ize' },
             { suffix: 'ational', replace: 'ate' },
@@ -620,7 +836,6 @@ export class SmartSearchEngine {
         for (const { suffix, replace } of suffixes) {
             if (word.endsWith(suffix) && word.length > suffix.length + 2) {
                 const stem = word.slice(0, -suffix.length) + replace;
-                // Avoid too short stems
                 if (stem.length >= 3) return stem;
             }
         }
@@ -628,39 +843,30 @@ export class SmartSearchEngine {
         return word;
     }
 
-    /**
-     * Check if word is a stop word
-     */
-    private static isStopWord(word: string): boolean {
-        return STOP_WORDS.has(word);
+    private static containsPhrase(text: string, phrase: string): boolean {
+        const normText = text.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ');
+        const normPhrase = phrase.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ');
+        return normText.includes(normPhrase);
     }
 
-    /**
-     * Calculate overlap between two token sets
-     */
-    private static calculateOverlap(setA: Set<string>, setB: Set<string>): { count: number; tokens: string[] } {
+    private static countOverlap(setA: Set<string>, setB: Set<string>): number {
         let count = 0;
-        const tokens: string[] = [];
-        const aArray = Array.from(setA);
-        for (let i = 0; i < aArray.length; i++) {
-            const elem = aArray[i];
-            if (setB.has(elem)) {
-                count++;
-                tokens.push(elem);
-            }
+        const arrA = Array.from(setA);
+        for (let i = 0; i < arrA.length; i++) {
+            if (setB.has(arrA[i])) count++;
         }
-        return { count, tokens };
+        return count;
     }
 
-    /**
-     * Split text into sentences
-     */
     private static splitIntoSentences(text: string): string[] {
-        // Split by sentence-ending punctuation followed by space or newline
-        // Use replace + split pattern for ES5/ES2015 compatibility
         const normalized = text.replace(/([.!?])\s+/g, '$1|||');
         return normalized
             .split('|||')
             .filter(s => s.trim().length > 10);
+    }
+
+    // Public method for backward compatibility
+    public static solveQuiz(quiz: QuizQuestion, context: string): SmartSearchResult {
+        return this.solveQuizWithRetry(quiz, context);
     }
 }

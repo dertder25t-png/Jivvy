@@ -284,12 +284,15 @@ function parseQuizOutput(output: string): QuizQuestionResult | null {
 
 /**
  * Answer a question using local LLM with Qwen chat template
+ * Includes timeout to prevent infinite hangs
  */
 export async function answerQuestionLocal(
     question: string,
     context: string,
     onProgress?: ProgressCallback
 ): Promise<string> {
+    const TIMEOUT_MS = 30000;  // 30 second timeout
+
     // Validate inputs
     if (!question || question.trim().length === 0) {
         throw new Error('Question cannot be empty');
@@ -303,33 +306,47 @@ export async function answerQuestionLocal(
     if (!textGenerationPipeline) {
         const success = await initLocalLLM(onProgress);
         if (!success) {
-            throw new Error('Failed to load local LLM model. Please check your internet connection and try again.');
+            throw new Error('Failed to load local LLM model.');
         }
     }
 
     onProgress?.({ status: 'Generating answer...' });
 
-    // Truncate context for sub-second performance
-    const truncatedContext = truncateInput(context);
+    // Truncate context aggressively for fast response
+    const truncatedContext = context.slice(0, MAX_INPUT_CHARS);
+    console.log(`[LocalLLM] Generating answer for question: "${question.slice(0, 50)}..." with ${truncatedContext.length} chars context`);
 
-    const systemPrompt = 'You are a helpful assistant. Answer questions accurately and concisely based on the provided context.';
-    const userPrompt = `Context: ${truncatedContext}\n\nQuestion: ${question}`;
+    const systemPrompt = 'You are a helpful assistant. Answer briefly based on context.';
+    const userPrompt = `Context: ${truncatedContext}\n\nQuestion: ${question}\n\nAnswer:`;
     const prompt = formatQwenPrompt(systemPrompt, userPrompt);
 
+    console.log(`[LocalLLM] Prompt length: ${prompt.length} chars`);
+
     try {
-        const result = await textGenerationPipeline(prompt, {
-            max_new_tokens: MAX_NEW_TOKENS,
-            temperature: DEFAULT_TEMPERATURE,
+        // Create timeout promise
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('LLM generation timed out after 30 seconds')), TIMEOUT_MS);
+        });
+
+        // Race between generation and timeout
+        const generatePromise = textGenerationPipeline(prompt, {
+            max_new_tokens: 100,  // Reduced for faster response
+            temperature: 0.3,
             do_sample: true,
-            top_k: 50,
+            top_k: 40,
             repetition_penalty: 1.2,
             return_full_text: false,
         });
+
+        console.log('[LocalLLM] Starting generation...');
+        const result = await Promise.race([generatePromise, timeoutPromise]);
+        console.log('[LocalLLM] Generation complete');
 
         const answer = result[0]?.generated_text || 'Could not generate an answer.';
         onProgress?.({ status: 'Done!' });
 
         const trimmedAnswer = answer.trim();
+        console.log(`[LocalLLM] Answer: "${trimmedAnswer.slice(0, 100)}..."`);
 
         if (trimmedAnswer.length === 0) {
             return 'No answer could be generated from the provided context.';
