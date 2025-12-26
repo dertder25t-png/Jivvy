@@ -5,9 +5,8 @@ import {
     Send, Loader2, MessageSquare, BarChart3,
     ExternalLink, Cpu, AlertCircle, Sparkles, Wrench
 } from 'lucide-react';
-import { GummyButton } from '@/components/ui/GummyButton';
 import { DataVisualizer } from './DataVisualizer';
-import { searchPagesForTerms, extractSpecificPages, scanForIndex } from '@/utils/pdf-extraction';
+import { searchPagesForTerms, extractSpecificPages, pdfWorker } from '@/utils/pdf-extraction';
 import type { ChartData } from '@/utils/local-llm';
 
 interface AICommandCenterProps {
@@ -34,8 +33,39 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
     const [, setStatus] = useState('');
     const [toolMode, setToolMode] = useState<ToolMode>('chat');
     const [showToolMenu, setShowToolMenu] = useState(false);
-    const [indexTerms, setIndexTerms] = useState<{ term: string; pages: number[] }[]>([]);
+    const [subjectFocus, setSubjectFocus] = useState('');
+    const [workerStatus, setWorkerStatus] = useState({ message: '', percent: 0 });
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Initialize Worker and Listeners
+    useEffect(() => {
+        if (!pdfBuffer) return;
+
+        // Init Worker
+        pdfWorker.init(pdfBuffer, subjectFocus);
+
+        // Listen for progress
+        const onProgress = (data: { message: string, percent: number }) => {
+            setWorkerStatus({ message: data.message, percent: data.percent });
+            // Optional: Auto-clear status after completion? 
+            if (data.percent === 100) {
+                setTimeout(() => setWorkerStatus(prev => ({ ...prev, message: 'Ready' })), 2000);
+            }
+        };
+
+        const onInfo = (data: { message: string }) => {
+            // Transient info
+            setWorkerStatus(prev => ({ ...prev, message: data.message }));
+        };
+
+        pdfWorker.on('progress', onProgress);
+        pdfWorker.on('info', onInfo);
+
+        return () => {
+            pdfWorker.off('progress', onProgress);
+            pdfWorker.off('info', onInfo);
+        };
+    }, [pdfBuffer, subjectFocus]); // Re-init if subject changes
 
     // Auto-scroll to bottom
     useEffect(() => {
@@ -60,17 +90,11 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
         const searchResults = await searchPagesForTerms(pdfBuffer.slice(0), keywords, { maxResults: 8 });
 
         if (searchResults.length === 0) {
-            // Fallback: scan index if no direct matches
-            setStatus('Checking document index...');
-            try {
-                if (indexTerms.length === 0) {
-                    const terms = await scanForIndex(pdfBuffer.slice(0));
-                    setIndexTerms(terms);
-                }
-            } catch (e) {
-                console.warn('[AICommandCenter] Index scan failed:', e);
-            }
-            // Use first few pages as fallback
+            // Fallback: If no results, try broader search or just first pages
+            setStatus('No direct matches, checking priority pages...');
+
+            // If worker already indexed, we might just not have matches.
+            // Return first 5 pages as context
             return { pages: [1, 2, 3, 4, 5], context: '' };
         }
 
@@ -82,7 +106,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
         const context = pageData.map(p => `[Page ${p.page}]\n${p.content}`).join('\n\n');
 
         return { pages, context };
-    }, [pdfBuffer, indexTerms]);
+    }, [pdfBuffer]);
 
     /**
      * Analyst Phase: Generate answer or chart from context
@@ -197,6 +221,25 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
                 </div>
             </div>
 
+            {/* Subject Focus Input */}
+            {pdfBuffer && (
+                <div className="px-4 py-2 border-b border-white/5 bg-zinc-900/50 flex items-center gap-2">
+                    <span className="text-xs text-zinc-500 whitespace-nowrap">Subject Focus:</span>
+                    <input
+                        type="text"
+                        value={subjectFocus}
+                        onChange={(e) => setSubjectFocus(e.target.value)}
+                        placeholder="e.g. Induction Systems"
+                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-lime-500/50"
+                    />
+                    {workerStatus.message && (
+                        <div className="text-[10px] text-lime-400 animate-pulse whitespace-nowrap overflow-hidden max-w-[150px] text-right">
+                            {workerStatus.message}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
                 {messages.length === 0 && (
@@ -282,15 +325,14 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
 
                 <div className="flex items-center gap-2">
                     {/* Tool Selector */}
+                    {/* Tool Selector */}
                     <div className="relative">
-                        <GummyButton
-                            variant="ghost"
-                            size="sm"
+                        <button
                             onClick={() => setShowToolMenu(!showToolMenu)}
-                            className="!p-2"
+                            className="p-2 rounded-lg hover:bg-white/5 text-zinc-400 transition-colors"
                         >
                             <Wrench size={16} className={toolMode === 'analyze' ? 'text-purple-400' : 'text-zinc-400'} />
-                        </GummyButton>
+                        </button>
 
                         {showToolMenu && (
                             <div className="absolute bottom-full left-0 mb-2 bg-zinc-800 border border-white/10 rounded-lg overflow-hidden shadow-xl z-10">
@@ -324,19 +366,19 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
                     />
 
                     {/* Send Button */}
-                    <GummyButton
+                    <button
                         onClick={handleSubmit}
                         disabled={!pdfBuffer || isProcessing || !input.trim()}
-                        className="!p-2.5"
+                        className="p-2.5 rounded-lg bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         {isProcessing ? (
                             <Loader2 size={18} className="animate-spin" />
                         ) : (
                             <Send size={18} />
                         )}
-                    </GummyButton>
+                    </button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

@@ -15,7 +15,6 @@ import {
     Legend,
 } from 'chart.js';
 import { BookOpen, Table, ExternalLink, Check, BarChart3, PieChart } from 'lucide-react';
-import { GummyButton } from '@/components/ui/GummyButton';
 import type { ChartData } from '@/utils/local-llm';
 
 // Register Chart.js components
@@ -147,22 +146,21 @@ export function DataVisualizer({ data, onViewSource }: DataVisualizerProps) {
                         </button>
                     </div>
 
-                    <GummyButton
-                        size="sm"
-                        variant="ghost"
+
+                    <button
                         onClick={() => setShowTable(!showTable)}
                         title={showTable ? 'Show Chart' : 'Show Table'}
+                        className="p-1 px-2 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white transition-colors"
                     >
                         <Table size={14} />
-                    </GummyButton>
-                    <GummyButton
-                        size="sm"
-                        variant="ghost"
+                    </button>
+                    <button
                         onClick={handleAddToNotebook}
                         title="Add to Notebook"
+                        className="p-1 px-2 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white transition-colors"
                     >
                         {copied ? <Check size={14} className="text-lime-400" /> : <BookOpen size={14} />}
-                    </GummyButton>
+                    </button>
                 </div>
             </div>
 
@@ -216,6 +214,6 @@ export function DataVisualizer({ data, onViewSource }: DataVisualizerProps) {
                     ))}
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

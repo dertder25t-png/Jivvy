@@ -2,8 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { Canvas, FabricObject } from "fabric";
-import { TiltCard } from "@/components/ui/TiltCard";
-import { GummyButton } from "@/components/ui/GummyButton";
 import { Eye, EyeOff, Lock, Unlock, Trash2 } from "lucide-react";
 
 // Extended Fabric object type with custom properties
@@ -38,7 +36,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
       const layerItems: LayerItem[] = objects.map((obj, index) => {
         const type = obj.type || "object";
         const name = obj.name || `${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}`;
-        
+
         return {
           id: obj.customId?.toString() || `${index}`,
           name,
@@ -77,7 +75,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   const toggleVisibility = (layer: LayerItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canvas) return;
-    
+
     layer.object.visible = !layer.object.visible;
     canvas.renderAll();
     canvas.fire("object:modified", { target: layer.object });
@@ -86,7 +84,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   const toggleLock = (layer: LayerItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canvas) return;
-    
+
     layer.object.selectable = !layer.object.selectable;
     layer.object.evented = !layer.object.evented;
     canvas.renderAll();
@@ -96,7 +94,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   const deleteLayer = (layer: LayerItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canvas) return;
-    
+
     canvas.remove(layer.object);
     canvas.renderAll();
   };
@@ -104,7 +102,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   const moveLayerUp = (layer: LayerItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canvas) return;
-    
+
     const objects = canvas.getObjects();
     const currentIndex = objects.indexOf(layer.object);
     if (currentIndex < objects.length - 1) {
@@ -119,7 +117,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   const moveLayerDown = (layer: LayerItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canvas) return;
-    
+
     const objects = canvas.getObjects();
     const currentIndex = objects.indexOf(layer.object);
     if (currentIndex > 0) {
@@ -137,7 +135,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
   };
 
   return (
-    <TiltCard className="w-80 h-full bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-4 flex flex-col">
+    <div className="w-80 h-full bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-4 flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white">Layers</h3>
         <span className="text-sm text-zinc-400">{layers.length} objects</span>
@@ -156,10 +154,9 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
               onClick={() => selectLayer(layer)}
               className={`
                 group p-3 rounded-xl border-2 cursor-pointer transition-all
-                ${
-                  selectedLayerId === layer.id
-                    ? "bg-lime-400/10 border-lime-400"
-                    : "bg-zinc-800 border-zinc-700 hover:border-zinc-600"
+                ${selectedLayerId === layer.id
+                  ? "bg-lime-400/10 border-lime-400"
+                  : "bg-zinc-800 border-zinc-700 hover:border-zinc-600"
                 }
               `}
             >
@@ -175,68 +172,58 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
               </div>
 
               <div className="flex items-center gap-2">
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
+                <button
                   onClick={(e) => toggleVisibility(layer, e)}
                   title={layer.visible ? "Hide" : "Show"}
-                  className="h-6 px-2"
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >
                   {layer.visible ? (
                     <Eye className="w-3 h-3" />
                   ) : (
                     <EyeOff className="w-3 h-3 text-zinc-500" />
                   )}
-                </GummyButton>
+                </button>
 
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
+                <button
                   onClick={(e) => toggleLock(layer, e)}
                   title={layer.locked ? "Unlock" : "Lock"}
-                  className="h-6 px-2"
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >
                   {layer.locked ? (
                     <Lock className="w-3 h-3 text-zinc-500" />
                   ) : (
                     <Unlock className="w-3 h-3" />
                   )}
-                </GummyButton>
+                </button>
 
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
+                <button
                   onClick={(e) => moveLayerUp(layer, e)}
                   title="Move Up"
-                  className="h-6 px-2"
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >
                   <span className="text-xs">↑</span>
-                </GummyButton>
+                </button>
 
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
+                <button
                   onClick={(e) => moveLayerDown(layer, e)}
                   title="Move Down"
-                  className="h-6 px-2"
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >
                   <span className="text-xs">↓</span>
-                </GummyButton>
+                </button>
 
-                <GummyButton
-                  size="sm"
-                  variant="ghost"
+                <button
                   onClick={(e) => deleteLayer(layer, e)}
                   title="Delete"
-                  className="h-6 px-2 hover:text-red-400"
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >
                   <Trash2 className="w-3 h-3" />
-                </GummyButton>
+                </button>
               </div>
             </div>
           ))
         )}
       </div>
-    </TiltCard>
+    </div>
   );
 }

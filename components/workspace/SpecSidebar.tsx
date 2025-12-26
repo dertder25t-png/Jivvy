@@ -3,7 +3,6 @@
 import { cn } from "@/lib/utils";
 import { Check, Wand2, ChevronRight, Loader2, Sparkles, Plus, X, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { GummyButton } from "@/components/ui/GummyButton";
 import { generateSpecSheet, type SpecItem } from "@/app/ai/actions";
 
 interface SpecSidebarProps {
@@ -124,11 +123,10 @@ export function SpecSidebar({ className, pdfUrl, onUpdate }: SpecSidebarProps) {
                             </div>
                         </div>
 
-                        <GummyButton
-                            variant="solid"
+                        <button
                             className={cn(
-                                "w-full justify-center group bg-lime-400 hover:bg-lime-300 text-black shadow-lg shadow-lime-400/10 border-none",
-                                extracting && "pointer-events-none opacity-70"
+                                "w-full flex items-center justify-center p-3 rounded-xl bg-lime-400 hover:bg-lime-500 text-zinc-900 transition-colors shadow-sm",
+                                extracting && "opacity-70 cursor-not-allowed"
                             )}
                             onClick={handleExtractSpecs}
                             disabled={extracting}
@@ -144,7 +142,7 @@ export function SpecSidebar({ className, pdfUrl, onUpdate }: SpecSidebarProps) {
                                 )}
                             </span>
                             {!extracting && <Wand2 size={14} className="group-hover:animate-pulse" />}
-                        </GummyButton>
+                        </button>
 
                         {error && (
                             <p className="text-xs text-red-400 mt-2">{error}</p>

@@ -21,7 +21,6 @@ import {
     Settings
 } from "lucide-react";
 import { JivvyAvatar } from "@/components/ui/JivvyAvatar";
-import { GummyButton } from "@/components/ui/GummyButton";
 import { cn } from "@/lib/utils";
 import { useProjectStore } from "@/lib/store";
 import { getCurrentUser, type UserInfo } from "@/app/user/actions";
@@ -181,14 +180,12 @@ const Header = () => {
                         <>
                             {/* Back to Dashboard */}
                             <Link href="/">
-                                <GummyButton
-                                    variant="ghost"
-                                    size="sm"
-                                    className="rounded-full text-zinc-500 hover:text-white hover:bg-zinc-800"
-                                >
-                                    <ArrowLeft size={16} className="mr-2" />
-                                    Dashboard
-                                </GummyButton>
+                                <Link href="/">
+                                    <button className="flex items-center gap-2 px-3 py-1.5 rounded-full text-zinc-500 hover:text-white hover:bg-zinc-800 text-sm font-medium transition-colors">
+                                        <ArrowLeft size={16} />
+                                        Dashboard
+                                    </button>
+                                </Link>
                             </Link>
 
                             {/* Divider */}
@@ -228,13 +225,11 @@ const Header = () => {
 
                             {/* Project File Dropdown */}
                             <div className="relative" ref={dropdownRef}>
-                                <GummyButton
-                                    variant="ghost"
-                                    size="sm"
+                                <button
                                     onClick={() => setFileDropdownOpen(!fileDropdownOpen)}
                                     className={cn(
-                                        "rounded-full flex items-center gap-2",
-                                        fileDropdownOpen ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"
+                                        "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors",
+                                        fileDropdownOpen ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
                                     )}
                                 >
                                     <CurrentFileIcon size={16} className={
@@ -247,7 +242,7 @@ const Header = () => {
                                         "transition-transform",
                                         fileDropdownOpen && "rotate-180"
                                     )} />
-                                </GummyButton>
+                                </button>
 
                                 {/* Dropdown Menu */}
                                 {fileDropdownOpen && (
@@ -284,18 +279,16 @@ const Header = () => {
 
                             {/* Library Button */}
                             <div className="relative" ref={libraryRef}>
-                                <GummyButton
-                                    variant="ghost"
-                                    size="sm"
+                                <button
                                     onClick={() => setLibraryOpen(!libraryOpen)}
                                     className={cn(
-                                        "rounded-full",
-                                        libraryOpen ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-white"
+                                        "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors",
+                                        libraryOpen ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-white hover:bg-zinc-800/50"
                                     )}
                                 >
-                                    <Library size={16} className="mr-2" />
+                                    <Library size={16} />
                                     Library
-                                </GummyButton>
+                                </button>
 
                                 {/* Library Dropdown */}
                                 {libraryOpen && (
@@ -339,24 +332,16 @@ const Header = () => {
                         /* Dashboard Nav - Dashboard + Calendar */
                         <>
                             <Link href="/">
-                                <GummyButton
-                                    variant="solid"
-                                    size="sm"
-                                    className="rounded-full bg-zinc-800 text-white shadow-lg shadow-lime-400/10"
-                                >
-                                    <LayoutGrid size={18} className="mr-2 text-lime-400" />
+                                <button className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 text-white text-sm font-medium hover:bg-zinc-700 transition-colors shadow-lg shadow-lime-400/10">
+                                    <LayoutGrid size={18} className="text-lime-400" />
                                     Dashboard
-                                </GummyButton>
+                                </button>
                             </Link>
                             <Link href="/calendar">
-                                <GummyButton
-                                    variant="ghost"
-                                    size="sm"
-                                    className="rounded-full text-zinc-400 hover:text-white"
-                                >
-                                    <CalendarDays size={18} className="mr-2 text-amber-400" />
+                                <button className="flex items-center gap-2 px-3 py-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800/50 text-sm font-medium transition-colors">
+                                    <CalendarDays size={18} className="text-amber-400" />
                                     Calendar
-                                </GummyButton>
+                                </button>
                             </Link>
                         </>
                     )}
@@ -390,11 +375,9 @@ const Header = () => {
                     <Settings size={18} className="text-zinc-400" />
                 </button>
                 <Link href="/project/new">
-                    <GummyButton
-                        className="bg-lime-400 hover:bg-lime-300 text-black rounded-full font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(163,230,53,0.3)]"
-                    >
+                    <button className="flex items-center gap-2 px-4 py-2 bg-lime-400 hover:bg-lime-300 text-black rounded-full font-bold shadow-[0_0_20px_rgba(163,230,53,0.3)] transition-colors">
                         <Plus size={18} /> <span className="hidden md:inline">New</span>
-                    </GummyButton>
+                    </button>
                 </Link>
             </div>
 

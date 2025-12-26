@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Loader2, Download, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { GummyButton } from "@/components/ui/GummyButton";
 
 interface PDFViewerProps {
     url: string;
@@ -60,9 +59,13 @@ export function PDFViewer({ url, className }: PDFViewerProps) {
                     <span>PDF Viewer</span>
                 </div>
 
-                <GummyButton size="sm" variant="ghost" onClick={handleOpenExternal} title="Open in new tab">
+                <button
+                    onClick={handleOpenExternal}
+                    title="Open in new tab"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                >
                     <Download size={16} />
-                </GummyButton>
+                </button>
             </div>
 
             {/* Document Viewer */}
@@ -87,13 +90,19 @@ export function PDFViewer({ url, className }: PDFViewerProps) {
                         )}
                         <div className="flex gap-2">
                             {retryCount < 3 && (
-                                <GummyButton size="sm" onClick={handleRetry} variant="ghost">
+                                <button
+                                    onClick={handleRetry}
+                                    className="px-3 py-1.5 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                                >
                                     Retry
-                                </GummyButton>
+                                </button>
                             )}
-                            <GummyButton size="sm" onClick={handleOpenExternal}>
+                            <button
+                                onClick={handleOpenExternal}
+                                className="px-3 py-1.5 rounded-lg text-sm bg-lime-400 text-black hover:bg-lime-300 font-medium transition-colors"
+                            >
                                 Open in New Tab
-                            </GummyButton>
+                            </button>
                         </div>
                     </div>
                 )}

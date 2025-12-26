@@ -4,7 +4,6 @@ import { useState, useCallback } from 'react';
 import { DataGrid } from './DataGrid';
 import { Loader2, Zap, AlertCircle, Search, MessageSquare, Send, BookOpen, ExternalLink, Cpu } from 'lucide-react';
 import { TrendChart } from './TrendChart';
-import { GummyButton } from '../ui/GummyButton';
 import { scanForIndex, extractAllText, extractSpecificPages } from '@/utils/pdf-extraction';
 
 interface ResearchToolsProps {
@@ -343,13 +342,13 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
                 onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion()}
                 disabled={!pdfBuffer || isAnswering}
               />
-              <GummyButton
+              <button
                 onClick={handleAskQuestion}
                 disabled={!pdfBuffer || isAnswering || !question.trim()}
-                className="px-4"
+                className="px-4 py-2 bg-lime-500 rounded-lg text-black font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-lime-400 transition-colors"
               >
                 {isAnswering ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-              </GummyButton>
+              </button>
             </div>
 
             {qaError && (
@@ -424,9 +423,13 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
               />
             </div>
             {indexTerms.length === 0 && (
-              <GummyButton onClick={handleScanIndex} disabled={!pdfBuffer || isScanning}>
+              <button
+                onClick={handleScanIndex}
+                disabled={!pdfBuffer || isScanning}
+                className="px-3 py-2 bg-indigo-600 rounded-md hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+              >
                 {isScanning ? <Loader2 className="animate-spin h-4 w-4" /> : "Scan"}
-              </GummyButton>
+              </button>
             )}
           </div>
 
@@ -498,9 +501,13 @@ export function ResearchTools({ pdfBuffer, onJumpToPage }: ResearchToolsProps) {
               />
             </div>
             {minerError && <p className="text-xs text-red-400 mb-2">{minerError}</p>}
-            <GummyButton onClick={handleRunMiner} disabled={!pdfBuffer || isMining} className="w-full">
+            <button
+              onClick={handleRunMiner}
+              disabled={!pdfBuffer || isMining}
+              className="w-full px-4 py-2 bg-indigo-600 rounded-md hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+            >
               {isMining ? "Extracting..." : "Run Extraction"}
-            </GummyButton>
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-4">

@@ -2,8 +2,6 @@
 
 import React, { useState } from "react";
 import { Canvas, FabricImage, Rect, Circle, Triangle, Textbox } from "fabric";
-import { GummyButton } from "@/components/ui/GummyButton";
-import { TiltCard } from "@/components/ui/TiltCard";
 import {
   Type,
   Square,
@@ -141,7 +139,7 @@ export function Toolbar({ canvas, mode, setMode, showLayers, setShowLayers, onUn
   // Export
   const exportCanvas = (format: "png" | "jpg" | "svg") => {
     if (!canvas) return;
-    
+
     let dataUrl: string;
     if (format === "svg") {
       dataUrl = canvas.toSVG();
@@ -179,49 +177,49 @@ export function Toolbar({ canvas, mode, setMode, showLayers, setShowLayers, onUn
   return (
     <div className="absolute top-4 left-4 right-4 z-50 flex items-start justify-between gap-4">
       {/* Mode Selector */}
-      <TiltCard className="bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-2 flex gap-2">
-        <GummyButton
-          size="sm"
-          variant={mode === "typography" ? "solid" : "ghost"}
+      <div className="bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-2 flex gap-2">
+        <button
           onClick={() => setMode("typography")}
           title="Typography Mode"
+          className={`h-9 w-9 flex items-center justify-center rounded-xl transition-colors ${mode === "typography" ? "bg-lime-400 text-black" : "text-zinc-400 hover:text-white"}`}
         >
           <Type className="w-4 h-4" />
-        </GummyButton>
-        <GummyButton
-          size="sm"
-          variant={mode === "illustration" ? "solid" : "ghost"}
+        </button>
+        <button
           onClick={() => setMode("illustration")}
           title="Illustration Mode"
+          className={`h-9 w-9 flex items-center justify-center rounded-xl transition-colors ${mode === "illustration" ? "bg-lime-400 text-black" : "text-zinc-400 hover:text-white"}`}
         >
           <Pencil className="w-4 h-4" />
-        </GummyButton>
-        <GummyButton
-          size="sm"
-          variant={mode === "photo" ? "solid" : "ghost"}
+        </button>
+        <button
           onClick={() => setMode("photo")}
           title="Photo Mode"
+          className={`h-9 w-9 flex items-center justify-center rounded-xl transition-colors ${mode === "photo" ? "bg-lime-400 text-black" : "text-zinc-400 hover:text-white"}`}
         >
           <ImageIcon className="w-4 h-4" />
-        </GummyButton>
-        <GummyButton
-          size="sm"
-          variant={mode === "professional" ? "solid" : "ghost"}
+        </button>
+        <button
           onClick={() => setMode("professional")}
           title="Professional Mode"
+          className={`h-9 w-9 flex items-center justify-center rounded-xl transition-colors ${mode === "professional" ? "bg-lime-400 text-black" : "text-zinc-400 hover:text-white"}`}
         >
           <Settings className="w-4 h-4" />
-        </GummyButton>
-      </TiltCard>
+        </button>
+      </div>
 
       {/* Tools Panel */}
-      <TiltCard className="bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-2 flex gap-2 flex-wrap max-w-2xl">
+      <div className="bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-2 flex gap-2 flex-wrap max-w-2xl">
         {/* Typography Mode Tools */}
         {(mode === "typography" || mode === "professional") && (
           <>
-            <GummyButton size="sm" variant="outline" onClick={addText} title="Add Text">
+            <button
+              onClick={addText}
+              title="Add Text"
+              className="h-9 w-9 flex items-center justify-center rounded-xl border-2 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+            >
               <Type className="w-4 h-4" />
-            </GummyButton>
+            </button>
             <select
               value={fontFamily}
               onChange={(e) => setFontFamily(e.target.value)}
@@ -248,23 +246,34 @@ export function Toolbar({ canvas, mode, setMode, showLayers, setShowLayers, onUn
         {/* Illustration Mode Tools */}
         {(mode === "illustration" || mode === "professional") && (
           <>
-            <GummyButton size="sm" variant="outline" onClick={addRect} title="Add Rectangle">
+            <button
+              onClick={addRect}
+              title="Add Rectangle"
+              className="h-9 w-9 flex items-center justify-center rounded-xl border-2 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+            >
               <Square className="w-4 h-4" />
-            </GummyButton>
-            <GummyButton size="sm" variant="outline" onClick={addCircle} title="Add Circle">
+            </button>
+            <button
+              onClick={addCircle}
+              title="Add Circle"
+              className="h-9 w-9 flex items-center justify-center rounded-xl border-2 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+            >
               <CircleIcon className="w-4 h-4" />
-            </GummyButton>
-            <GummyButton size="sm" variant="outline" onClick={addTriangle} title="Add Triangle">
+            </button>
+            <button
+              onClick={addTriangle}
+              title="Add Triangle"
+              className="h-9 w-9 flex items-center justify-center rounded-xl border-2 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+            >
               <TriangleIcon className="w-4 h-4" />
-            </GummyButton>
-            <GummyButton
-              size="sm"
-              variant={canvas?.isDrawingMode ? "solid" : "outline"}
+            </button>
+            <button
               onClick={enableDrawing}
               title="Free Drawing"
+              className={`h-9 w-9 flex items-center justify-center rounded-xl border-2 transition-colors ${canvas?.isDrawingMode ? "bg-lime-400 border-lime-400 text-black" : "border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500"}`}
             >
               <Pencil className="w-4 h-4" />
-            </GummyButton>
+            </button>
             <input
               type="number"
               value={brushWidth}
@@ -280,9 +289,13 @@ export function Toolbar({ canvas, mode, setMode, showLayers, setShowLayers, onUn
         {/* Photo Mode Tools */}
         {(mode === "photo" || mode === "professional") && (
           <>
-            <GummyButton size="sm" variant="outline" onClick={uploadImage} title="Upload Image">
+            <button
+              onClick={uploadImage}
+              title="Upload Image"
+              className="h-9 w-9 flex items-center justify-center rounded-xl border-2 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+            >
               <ImageIcon className="w-4 h-4" />
-            </GummyButton>
+            </button>
           </>
         )}
 
@@ -294,33 +307,48 @@ export function Toolbar({ canvas, mode, setMode, showLayers, setShowLayers, onUn
           className="w-9 h-9 bg-zinc-800 border-2 border-zinc-700 rounded-xl cursor-pointer"
           title="Color"
         />
-      </TiltCard>
+      </div>
 
       {/* Actions Panel */}
-      <TiltCard className="bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-2 flex gap-2">
-        <GummyButton size="sm" variant="ghost" onClick={onUndo} title="Undo">
+      <div className="bg-zinc-900 border-2 border-zinc-700 rounded-2xl p-2 flex gap-2">
+        <button
+          onClick={onUndo}
+          title="Undo"
+          className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+        >
           <Undo className="w-4 h-4" />
-        </GummyButton>
-        <GummyButton size="sm" variant="ghost" onClick={onRedo} title="Redo">
+        </button>
+        <button
+          onClick={onRedo}
+          title="Redo"
+          className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+        >
           <Redo className="w-4 h-4" />
-        </GummyButton>
-        <GummyButton size="sm" variant="ghost" onClick={deleteSelected} title="Delete">
+        </button>
+        <button
+          onClick={deleteSelected}
+          title="Delete"
+          className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+        >
           <span className="text-sm">🗑️</span>
-        </GummyButton>
-        <GummyButton size="sm" variant="ghost" onClick={() => exportCanvas("png")} title="Export PNG">
+        </button>
+        <button
+          onClick={() => exportCanvas("png")}
+          title="Export PNG"
+          className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+        >
           <Download className="w-4 h-4" />
-        </GummyButton>
+        </button>
         {mode === "professional" && (
-          <GummyButton
-            size="sm"
-            variant={showLayers ? "solid" : "ghost"}
+          <button
             onClick={() => setShowLayers(!showLayers)}
             title="Toggle Layers"
+            className={`h-9 w-9 flex items-center justify-center rounded-xl transition-colors ${showLayers ? "bg-lime-400 text-black" : "text-zinc-400 hover:text-white hover:bg-zinc-800"}`}
           >
             <Layers className="w-4 h-4" />
-          </GummyButton>
+          </button>
         )}
-      </TiltCard>
+      </div>
     </div>
   );
 }
