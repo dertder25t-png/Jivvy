@@ -136,7 +136,10 @@ export const Dashboard = () => {
                                     </div>
                                 </div>
                                 <button
-                                    onClick={() => handleDeleteTask(task.id)}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteTask(task.id);
+                                    }}
                                     className="opacity-0 group-hover:opacity-100 p-1.5 text-zinc-400 hover:text-red-500 transition-all"
                                     title="Delete Task"
                                 >
