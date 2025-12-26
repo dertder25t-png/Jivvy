@@ -7,7 +7,7 @@ import { useProjectStore } from "@/lib/store";
 import { PDFViewer } from "./PDFViewer";
 import { answerQuestionLocal, initLocalLLM, isModelLoaded } from "@/utils/local-llm";
 import { searchPagesForTerms, extractSpecificPages } from "@/utils/pdf-extraction";
-import { smartSearch, extractKeywordsFast, detectQuizQuestion, answerQuizQuestion } from "@/utils/smart-search";
+import { SmartSearchEngine } from "@/utils/smart-search";
 import { db, Block } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 
@@ -221,10 +221,9 @@ export function PDFLookupPanel() {
             setModelStatus('Analyzing question...');
 
             // First try pure code methods (no AI needed)
-            const smartResult = await smartSearch(
+            const smartResult = await SmartSearchEngine.search(
                 userMessage.content,
-                activeSession.text || '',
-                setModelStatus
+                activeSession.text || ''
             );
 
             // If smart search found an answer (quiz or direct), use it immediately
@@ -256,7 +255,7 @@ export function PDFLookupPanel() {
             setModelStatus('Searching document...');
 
             // Use fast code-based keyword extraction (no AI)
-            const keywords = extractKeywordsFast(userMessage.content);
+            const keywords = SmartSearchEngine.extractKeywords(userMessage.content);
             console.log('[PDFLookupPanel] Fast keywords:', keywords);
 
             let context = '';
