@@ -1,7 +1,11 @@
 /**
  * Local LLM with Transformers.js
  * Runs entirely in the browser - no API calls, complete privacy
- * Optimized for better performance and error handling
+ * 
+ * OPTIMIZED FOR SUB-SECOND LATENCY:
+ * - Uses Qwen1.5-0.5B-Chat (decoder-only, faster than T5)
+ * - Pipe-delimited output for quiz questions (no JSON parsing overhead)
+ * - Strict input truncation to MAX_INPUT_CHARS
  */
 
 import { pipeline, env } from '@xenova/transformers';
@@ -18,15 +22,33 @@ let loadingPromise: Promise<any> | null = null;
 // Progress callback type
 type ProgressCallback = (progress: { status: string; progress?: number }) => void;
 
-// Configuration constants
-const MAX_CONTEXT_LENGTH = 3000; // Increased for better answers
-const MAX_GENERATION_TOKENS = 200; // Increased for longer answers
+// ============================================================================
+// CONFIGURATION CONSTANTS - Tuned for sub-second latency on older devices
+// ============================================================================
+const MAX_INPUT_CHARS = 1200;       // Hard limit for input text (sub-second constraint)
+const MAX_NEW_TOKENS = 150;         // Reduced for speed
+const MAX_CONTEXT_LENGTH = 3000;    // Legacy compatibility
 const DEFAULT_TEMPERATURE = 0.3;
+
+// ============================================================================
+// QUIZ QUESTION RESULT TYPE
+// ============================================================================
+export interface QuizQuestionResult {
+    question: string;
+    options: string[];
+    correctIndex: number;        // 0-3 mapping from A/B/C/D
+    correctLetter: string;       // A, B, C, or D
+    sourceQuote: string;
+}
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
 
 /**
  * Initialize the local LLM model
- * Uses a small, fast model suitable for browser
- * Enhanced with better error handling and retry logic
+ * Uses Qwen1.5-0.5B-Chat - fast decoder-only model suitable for browser
+ * Enhanced with singleton pattern to prevent race conditions
  */
 export async function initLocalLLM(onProgress?: ProgressCallback): Promise<boolean> {
     // Return immediately if already loaded
@@ -35,7 +57,7 @@ export async function initLocalLLM(onProgress?: ProgressCallback): Promise<boole
         return true;
     }
 
-    // If already loading, wait for existing promise
+    // If already loading, wait for existing promise (prevents race conditions)
     if (isLoading && loadingPromise) {
         console.log('[LocalLLM] Model loading in progress, waiting...');
         await loadingPromise;
@@ -45,11 +67,11 @@ export async function initLocalLLM(onProgress?: ProgressCallback): Promise<boole
     isLoading = true;
 
     try {
-        onProgress?.({ status: 'Initializing model...', progress: 0 });
+        onProgress?.({ status: 'Initializing Qwen model...', progress: 0 });
 
-        // Use LaMini-Flan-T5-248M - small (248MB) but capable model
-        // Good balance between size and performance for browser usage
-        loadingPromise = pipeline('text2text-generation', 'Xenova/LaMini-Flan-T5-248M', {
+        // Use Qwen1.5-0.5B-Chat - decoder-only model, faster than T5
+        loadingPromise = pipeline('text-generation', 'Xenova/Qwen1.5-0.5B-Chat', {
+            // device: 'webgpu',  // Uncomment for WebGPU acceleration if supported
             progress_callback: (data: any) => {
                 if (data.status === 'progress' && data.progress !== undefined) {
                     onProgress?.({
@@ -73,7 +95,7 @@ export async function initLocalLLM(onProgress?: ProgressCallback): Promise<boole
         textGenerationPipeline = await loadingPromise;
         onProgress?.({ status: 'Model ready!', progress: 100 });
 
-        console.log('[LocalLLM] Model loaded successfully');
+        console.log('[LocalLLM] Qwen1.5-0.5B-Chat loaded successfully');
         return true;
     } catch (error) {
         console.error('[LocalLLM] Failed to load model:', error);
@@ -83,7 +105,7 @@ export async function initLocalLLM(onProgress?: ProgressCallback): Promise<boole
         return false;
     } finally {
         isLoading = false;
-        loadingPromise = null;
+        // Note: We don't reset loadingPromise here to allow cached result access
     }
 }
 
@@ -94,9 +116,174 @@ export function isModelLoaded(): boolean {
     return !!textGenerationPipeline;
 }
 
+// ============================================================================
+// QWEN CHAT TEMPLATE HELPER
+// ============================================================================
+
 /**
- * Answer a question using local LLM
- * Improved prompt engineering and error handling
+ * Format prompt using Qwen's chat template
+ * <|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n
+ */
+function formatQwenPrompt(systemPrompt: string, userPrompt: string): string {
+    return `<|im_start|>system
+${systemPrompt}<|im_end|}
+<|im_start|>user
+${userPrompt}<|im_end|>
+<|im_start|>assistant
+`;
+}
+
+/**
+ * Truncate text to MAX_INPUT_CHARS for sub-second performance
+ */
+function truncateInput(text: string): string {
+    if (text.length <= MAX_INPUT_CHARS) return text;
+    // Truncate and add indicator
+    return text.slice(0, MAX_INPUT_CHARS) + '...';
+}
+
+// ============================================================================
+// QUIZ QUESTION GENERATION - Pipe-Delimited Strategy
+// ============================================================================
+
+/**
+ * Generate a quiz question using pipe-delimited output (faster than JSON)
+ * 
+ * Format: QUESTION ||| OPTION_A ||| OPTION_B ||| OPTION_C ||| OPTION_D ||| CORRECT_LETTER ||| SOURCE_QUOTE
+ * 
+ * @returns QuizQuestionResult or null if parsing fails
+ */
+export async function generateQuizQuestionLocal(
+    context: string,
+    topic?: string,
+    onProgress?: ProgressCallback
+): Promise<QuizQuestionResult | null> {
+    // Validate input
+    if (!context || context.trim().length === 0) {
+        console.warn('[LocalLLM] generateQuizQuestionLocal: empty context');
+        return null;
+    }
+
+    // Initialize model if needed
+    if (!textGenerationPipeline) {
+        const success = await initLocalLLM(onProgress);
+        if (!success) {
+            console.error('[LocalLLM] Failed to initialize model for quiz generation');
+            return null;
+        }
+    }
+
+    onProgress?.({ status: 'Generating quiz question...' });
+
+    // Truncate context for speed
+    const truncatedContext = truncateInput(context);
+
+    const systemPrompt = `You are a quiz generator. Output EXACTLY one line in this format:
+QUESTION ||| OPTION_A ||| OPTION_B ||| OPTION_C ||| OPTION_D ||| CORRECT_LETTER ||| SOURCE_QUOTE
+
+Rules:
+- Use ||| as delimiter
+- CORRECT_LETTER must be A, B, C, or D
+- SOURCE_QUOTE is a short phrase from the text
+- No extra text, just the formatted line`;
+
+    const userPrompt = topic
+        ? `Create a quiz question about "${topic}" from this text:\n\n${truncatedContext}`
+        : `Create a quiz question from this text:\n\n${truncatedContext}`;
+
+    const prompt = formatQwenPrompt(systemPrompt, userPrompt);
+
+    try {
+        const result = await textGenerationPipeline(prompt, {
+            max_new_tokens: MAX_NEW_TOKENS,
+            temperature: DEFAULT_TEMPERATURE,
+            do_sample: true,
+            top_k: 50,
+            repetition_penalty: 1.2,
+            return_full_text: false,  // Only return generated text, not prompt
+        });
+
+        const generatedText = result[0]?.generated_text || '';
+        onProgress?.({ status: 'Parsing quiz result...' });
+
+        // Parse the pipe-delimited output
+        return parseQuizOutput(generatedText);
+    } catch (error) {
+        console.error('[LocalLLM] Quiz generation error:', error);
+        return null;
+    }
+}
+
+/**
+ * Parse pipe-delimited quiz output
+ * Robust parser that handles missing columns gracefully
+ * 
+ * @returns QuizQuestionResult or null if parsing fails
+ */
+function parseQuizOutput(output: string): QuizQuestionResult | null {
+    if (!output || typeof output !== 'string') {
+        console.warn('[LocalLLM] parseQuizOutput: invalid output');
+        return null;
+    }
+
+    // Clean up the output - take first line only
+    const lines = output.trim().split('\n');
+    const line = lines[0]?.trim();
+
+    if (!line) {
+        console.warn('[LocalLLM] parseQuizOutput: empty line');
+        return null;
+    }
+
+    // Split by pipe delimiter
+    const parts = line.split('|||').map(p => p.trim());
+
+    // Minimum: we need question, 4 options, and correct letter (6 parts)
+    if (parts.length < 6) {
+        console.warn('[LocalLLM] parseQuizOutput: insufficient parts:', parts.length);
+        return null;
+    }
+
+    const [question, optA, optB, optC, optD, correctLetterRaw, sourceQuote = ''] = parts;
+
+    // Validate question exists
+    if (!question || question.length < 5) {
+        console.warn('[LocalLLM] parseQuizOutput: invalid question');
+        return null;
+    }
+
+    // Validate options exist
+    const options = [optA, optB, optC, optD];
+    if (options.some(opt => !opt || opt.length < 1)) {
+        console.warn('[LocalLLM] parseQuizOutput: invalid options');
+        return null;
+    }
+
+    // Parse correct letter to index
+    const correctLetter = correctLetterRaw?.toUpperCase()?.charAt(0);
+    const letterMap: Record<string, number> = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
+    const correctIndex = letterMap[correctLetter];
+
+    if (correctIndex === undefined) {
+        console.warn('[LocalLLM] parseQuizOutput: invalid correct letter:', correctLetterRaw);
+        return null;
+    }
+
+    return {
+        question,
+        options,
+        correctIndex,
+        correctLetter,
+        sourceQuote: sourceQuote || ''
+    };
+}
+
+// ============================================================================
+// ANSWER QUESTION - Updated for Qwen
+// ============================================================================
+
+/**
+ * Answer a question using local LLM with Qwen chat template
  */
 export async function answerQuestionLocal(
     question: string,
@@ -122,26 +309,21 @@ export async function answerQuestionLocal(
 
     onProgress?.({ status: 'Generating answer...' });
 
-    // Truncate context to fit model limits (T5 models have ~512 token limit)
-    // Using conservative limit for better results
-    const truncatedContext = context.slice(0, MAX_CONTEXT_LENGTH);
+    // Truncate context for sub-second performance
+    const truncatedContext = truncateInput(context);
 
-    // Improved prompt for better results
-    const prompt = `Answer the question based on the context.
-
-Context: ${truncatedContext}
-
-Question: ${question}
-
-Answer:`;
+    const systemPrompt = 'You are a helpful assistant. Answer questions accurately and concisely based on the provided context.';
+    const userPrompt = `Context: ${truncatedContext}\n\nQuestion: ${question}`;
+    const prompt = formatQwenPrompt(systemPrompt, userPrompt);
 
     try {
         const result = await textGenerationPipeline(prompt, {
-            max_new_tokens: MAX_GENERATION_TOKENS,
+            max_new_tokens: MAX_NEW_TOKENS,
             temperature: DEFAULT_TEMPERATURE,
             do_sample: true,
-            top_k: 50, // Limit vocabulary for more focused answers
-            repetition_penalty: 1.2, // Reduce repetition
+            top_k: 50,
+            repetition_penalty: 1.2,
+            return_full_text: false,
         });
 
         const answer = result[0]?.generated_text || 'Could not generate an answer.';
@@ -161,9 +343,12 @@ Answer:`;
     }
 }
 
+// ============================================================================
+// SUMMARIZE - Updated for Qwen
+// ============================================================================
+
 /**
- * Summarize text using local LLM
- * Improved summarization with better prompts
+ * Summarize text using local LLM with Qwen chat template
  */
 export async function summarizeLocal(
     text: string,
@@ -184,11 +369,12 @@ export async function summarizeLocal(
 
     onProgress?.({ status: 'Summarizing...' });
 
-    // Truncate text for model limits
-    const truncatedText = text.slice(0, MAX_CONTEXT_LENGTH);
+    // Truncate text for sub-second performance
+    const truncatedText = truncateInput(text);
 
-    // Improved prompt for better summaries
-    const prompt = `Summarize the following text concisely:\n\n${truncatedText}\n\nSummary:`;
+    const systemPrompt = 'You are a helpful assistant. Provide concise, accurate summaries.';
+    const userPrompt = `Summarize the following text concisely:\n\n${truncatedText}`;
+    const prompt = formatQwenPrompt(systemPrompt, userPrompt);
 
     try {
         const result = await textGenerationPipeline(prompt, {
@@ -197,6 +383,7 @@ export async function summarizeLocal(
             do_sample: true,
             top_k: 50,
             repetition_penalty: 1.2,
+            return_full_text: false,
         });
 
         const summary = result[0]?.generated_text?.trim() || 'Could not generate summary.';
@@ -209,6 +396,10 @@ export async function summarizeLocal(
         throw new Error(`Failed to generate summary: ${errorMessage}`);
     }
 }
+
+// ============================================================================
+// DATA ANALYSIS (Kept from original - uses pattern matching, not LLM)
+// ============================================================================
 
 /**
  * Chart data structure for visualization
@@ -239,7 +430,6 @@ export async function analyzeDataset(
     onProgress?.({ status: 'Analyzing data patterns...' });
 
     // Extract numerical data using pattern matching
-    // This is more reliable than asking the small LLM for JSON
     const dataPoints = extractNumericalData(text);
 
     if (dataPoints.length === 0) {
@@ -255,10 +445,15 @@ export async function analyzeDataset(
         }
 
         if (textGenerationPipeline) {
-            const prompt = `Summarize this data briefly: ${dataPoints.slice(0, 5).map(d => `${d.label}: ${d.value}`).join(', ')}\n\nSummary:`;
+            const dataStr = dataPoints.slice(0, 5).map(d => `${d.label}: ${d.value}`).join(', ');
+            const prompt = formatQwenPrompt(
+                'You are a data analyst. Provide a brief summary.',
+                `Summarize this data briefly: ${dataStr}`
+            );
             const result = await textGenerationPipeline(prompt, {
                 max_new_tokens: 50,
                 temperature: 0.3,
+                return_full_text: false,
             });
             summary = result[0]?.generated_text?.trim() || summary;
         }
@@ -352,12 +547,12 @@ function generateChartColors(count: number): string[] {
     return Array.from({ length: count }, (_, i) => baseColors[i % baseColors.length]);
 }
 
+// ============================================================================
+// KEYWORD EXTRACTION (Kept from original)
+// ============================================================================
+
 /**
  * Extract search keywords from a user question
- * Uses multiple strategies for better coverage:
- * 1. LLM extraction for semantic understanding
- * 2. Regex extraction for technical terms (acronyms, capitalized words)
- * 3. Direct word extraction as fallback
  */
 export async function extractKeywords(
     question: string,
@@ -377,7 +572,6 @@ export async function extractKeywords(
     importantWords.forEach(w => allTerms.add(w));
 
     // Strategy 3: Extract 2-word and 3-word phrases (n-grams)
-    // Critical for multi-word technical terms like "ignition harness", "zinc chromate"
     const ngrams = extractNgrams(question);
     ngrams.forEach(ng => allTerms.add(ng));
 
@@ -386,14 +580,15 @@ export async function extractKeywords(
         if (!textGenerationPipeline) await initLocalLLM(onProgress);
 
         if (textGenerationPipeline) {
-            const prompt = `Extract the main technical topics from this question. Return them as a comma-separated list.
-
-Question: "${question}"
-Topics:`;
+            const prompt = formatQwenPrompt(
+                'Extract key technical terms from questions. Return comma-separated list only.',
+                `Extract main topics from: "${question}"`
+            );
 
             const result = await textGenerationPipeline(prompt, {
                 max_new_tokens: 30,
                 temperature: 0.1,
+                return_full_text: false,
             });
 
             const text = result[0]?.generated_text || '';
@@ -410,7 +605,7 @@ Topics:`;
     const expandedTerms = expandAcronyms(question);
     expandedTerms.forEach(t => allTerms.add(t));
 
-    const finalTerms = Array.from(allTerms).slice(0, 25); // Increased to 25 terms
+    const finalTerms = Array.from(allTerms).slice(0, 25);
     console.log('[LocalLLM] Extracted keywords:', finalTerms);
     return finalTerms;
 }
@@ -431,7 +626,6 @@ function extractNgrams(text: string): string[] {
     for (let i = 0; i < words.length - 1; i++) {
         const w1 = words[i];
         const w2 = words[i + 1];
-        // Only include if at least one word is not a stop word
         if (!isStopWord(w1) || !isStopWord(w2)) {
             if (!isStopWord(w1) && !isStopWord(w2)) {
                 ngrams.push(`${w1} ${w2}`);
@@ -444,7 +638,6 @@ function extractNgrams(text: string): string[] {
         const w1 = words[i];
         const w2 = words[i + 1];
         const w3 = words[i + 2];
-        // Only include if first and last words are not stop words
         if (!isStopWord(w1) && !isStopWord(w3)) {
             ngrams.push(`${w1} ${w2} ${w3}`);
         }
@@ -523,6 +716,10 @@ function isStopWord(word: string): boolean {
     ]);
     return stopWords.has(word.toLowerCase());
 }
+
+// ============================================================================
+// CLEANUP
+// ============================================================================
 
 /**
  * Cleanup function to free resources

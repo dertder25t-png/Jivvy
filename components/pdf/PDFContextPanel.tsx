@@ -230,12 +230,52 @@ export function PDFLookupPanel() {
             if (smartResult.method !== 'ai' && smartResult.answer) {
                 console.log('[PDFLookupPanel] Smart answer found via:', smartResult.method);
 
+                // Extract page number from evidence if it contains [Page X] marker
+                const pageMatch = smartResult.evidence?.match(/\[Page (\d+)\]/);
+                const foundPages = pageMatch ? [parseInt(pageMatch[1])] : [];
+
+                // Also search for the evidence in the full text to find page
+                if (foundPages.length === 0 && smartResult.evidence && activeSession.text) {
+                    // Find which [Page X] section contains the evidence
+                    const sections = activeSession.text.split(/\[Page (\d+)\]/);
+                    for (let i = 1; i < sections.length; i += 2) {
+                        const pageNum = parseInt(sections[i]);
+                        const pageContent = sections[i + 1] || '';
+                        // Check if evidence (cleaned) appears in this page
+                        const cleanEvidence = smartResult.evidence.toLowerCase().replace(/[^a-z0-9\s]/g, '').slice(0, 50);
+                        const cleanContent = pageContent.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+                        if (cleanContent.includes(cleanEvidence)) {
+                            foundPages.push(pageNum);
+                            break;
+                        }
+                    }
+                }
+
+                // Build rich response with explanation and evidence
+                const confidencePercent = Math.round((smartResult.confidence || 0) * 100);
+                let responseContent = `**Answer: ${smartResult.answer}**`;
+
+                if (smartResult.explanation) {
+                    responseContent += `\n\n${smartResult.explanation}`;
+                }
+
+                if (smartResult.evidence && smartResult.evidence.length > 10) {
+                    responseContent += `\n\n📖 *Evidence:* "${smartResult.evidence.slice(0, 200)}${smartResult.evidence.length > 200 ? '...' : ''}"`;
+                }
+
+                if (foundPages.length > 0) {
+                    responseContent += `\n\n📄 Found on page ${foundPages.join(', ')}`;
+                }
+
+                responseContent += `\n\n🎯 Confidence: ${confidencePercent}%`;
+
                 const aiMessage: ChatMessage = {
                     id: `msg-${Date.now()}`,
                     role: 'assistant',
-                    content: smartResult.answer,
+                    content: responseContent,
                     timestamp: Date.now(),
-                    method: smartResult.method
+                    method: smartResult.method,
+                    sourcePages: foundPages.length > 0 ? foundPages : undefined
                 };
 
                 setSessions(prev => prev.map(s => {

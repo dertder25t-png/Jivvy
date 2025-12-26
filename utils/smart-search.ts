@@ -43,21 +43,21 @@ interface Chunk {
 }
 
 // ================================
-// CONSTANTS
+// CONSTANTS - Tuned for high accuracy
 // ================================
 
 const SCORING = {
-    QUESTION_KEYWORD: 10,
-    OPTION_KEYWORD: 15,
-    BOTH_SAME_SENTENCE: 50,
-    EXACT_PHRASE_MATCH: 100,
-    HIGH_COVERAGE_BONUS: 30,
-    PERFECT_COVERAGE_BONUS: 50
+    QUESTION_KEYWORD: 12,           // Slightly increased
+    OPTION_KEYWORD: 18,             // Increased - option matches are critical
+    BOTH_SAME_SENTENCE: 75,         // Significantly increased - co-occurrence is key
+    EXACT_PHRASE_MATCH: 150,        // Heavily weighted - exact matches are definitive
+    HIGH_COVERAGE_BONUS: 40,        // Increased
+    PERFECT_COVERAGE_BONUS: 60      // Increased
 };
 
-const CHUNK_SIZE = 500;
-const CHUNK_OVERLAP = 100;
-const TOP_HOTSPOTS = 20;
+const CHUNK_SIZE = 600;             // Larger chunks for more context
+const CHUNK_OVERLAP = 150;          // More overlap to avoid missing matches at boundaries
+const TOP_HOTSPOTS = 30;            // Analyze more chunks for better coverage
 
 // ================================
 // STOP WORDS
@@ -400,6 +400,27 @@ export class SmartSearchEngine {
                 // Bonus: Exact phrase match
                 if (this.containsExactPhrase(currSent, option.text)) {
                     score += SCORING.EXACT_PHRASE_MATCH;
+                }
+
+                // Bonus: Partial phrase match (2-word and 3-word terms)
+                // Critical for technical terms like "single-cord lacing", "clove hitch"
+                const optionWords = option.text.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                const sentLower = currSent.toLowerCase();
+
+                // Check for 2-word phrases from option appearing in sentence
+                for (let w = 0; w < optionWords.length - 1; w++) {
+                    const twoGram = optionWords[w] + ' ' + optionWords[w + 1];
+                    if (sentLower.includes(twoGram)) {
+                        score += 35; // Significant bonus for phrase match
+                    }
+                }
+
+                // Check for 3-word phrases
+                for (let w = 0; w < optionWords.length - 2; w++) {
+                    const threeGram = optionWords[w] + ' ' + optionWords[w + 1] + ' ' + optionWords[w + 2];
+                    if (sentLower.includes(threeGram)) {
+                        score += 50; // Even bigger bonus for 3-word match
+                    }
                 }
 
                 // Bonus: High option coverage
