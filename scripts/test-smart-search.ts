@@ -8,6 +8,7 @@ The Great Wall of China is visible from space.
 Python is a high-level programming language that emphasizes code readability.
 The Apollo 11 mission landed humans on the Moon in 1969.
 Water boils at 100 degrees Celsius at standard atmospheric pressure.
+The primary colors are Red, Blue, and Yellow. Green is a secondary color formed by mixing Blue and Yellow.
 `;
 
 const TESTS = [
@@ -21,7 +22,7 @@ const TESTS = [
         expected: 'B'
     },
     {
-        name: "Messy Separators",
+        name: "Messy Separators (dots)",
         text: `When did Apollo 11 land?
         a. 1950
         b. 1969
@@ -30,7 +31,7 @@ const TESTS = [
         expected: 'B'
     },
     {
-        name: "Negative Logic",
+        name: "Negative Logic (NOT)",
         text: `Which of the following is NOT true about Python?
         A. It is a high-level language
         B. It emphasizes code readability
@@ -51,11 +52,37 @@ const TESTS = [
         name: "No Spacing / Bad Formatting",
         text: `At what temperature does water boil?A) 50 degrees B) 90 degrees C) 100 degrees D) 150 degrees`,
         expected: 'C'
+    },
+    {
+        name: "Primary Colors NOT Question (from requirements)",
+        text: `Which of these is NOT a primary color? A. Red B. Blue C. Green D. Yellow`,
+        expected: 'C'
+    },
+    {
+        name: "5 Options (A-E)",
+        text: `What generates ATP in cells?
+        A) Nucleus
+        B) Ribosome
+        C) Mitochondria
+        D) Cell membrane
+        E) Golgi apparatus`,
+        expected: 'C'
+    },
+    {
+        name: "Bracket Format [A]",
+        text: `What does the mitochondria produce?
+        [A] DNA
+        [B] ATP
+        [C] RNA
+        [D] Protein`,
+        expected: 'B'
     }
 ];
 
 async function runTests() {
-    console.log("Running Smart Search V2 Tests...\n");
+    console.log("===========================================");
+    console.log("   Smart Search V3 - Large Doc Optimized");
+    console.log("===========================================\n");
     let passed = 0;
 
     for (const t of TESTS) {
@@ -65,15 +92,21 @@ async function runTests() {
         const quiz = SmartSearchEngine.detectQuizQuestion(t.text);
         if (!quiz.isQuiz) {
             console.error(`❌ FAILED DETECTION`);
+            console.log(`   Options found: ${quiz.options.length}`);
+            console.log(`   Raw text: ${t.text.substring(0, 50)}...`);
+            console.log('');
             continue;
         }
 
         // 2. Solve
         const result = SmartSearchEngine.solveQuiz(quiz, MOCK_PDF_TEXT);
 
-        console.log(`Question: ${quiz.question}`);
-        console.log(`Result: ${result.answer} (Confidence: ${result.confidence})`);
-        console.log(`Evidence: ${result.evidence.substring(0, 100)}...`);
+        console.log(`Question: ${quiz.question.substring(0, 50)}...`);
+        console.log(`Options: ${quiz.options.map(o => o.letter).join(', ')}`);
+        console.log(`Is Negative: ${quiz.isNegative}`);
+        console.log(`Result: ${result.answer} (Confidence: ${(result.confidence * 100).toFixed(0)}%)`);
+        console.log(`Evidence: ${result.evidence.substring(0, 80)}...`);
+        console.log(`Explanation: ${result.explanation}`);
 
         if (result.answer === t.expected) {
             console.log(`✅ PASSED`);
@@ -81,10 +114,18 @@ async function runTests() {
         } else {
             console.log(`❌ FAILED. Expected ${t.expected}, Got ${result.answer}`);
         }
-        console.log('\n');
+        console.log('');
     }
 
+    console.log("===========================================");
     console.log(`Summary: ${passed}/${TESTS.length} Passed`);
+    console.log("===========================================");
+
+    if (passed === TESTS.length) {
+        console.log("🎉 ALL TESTS PASSED!");
+    } else {
+        console.log(`⚠️  ${TESTS.length - passed} tests failed`);
+    }
 }
 
 runTests();

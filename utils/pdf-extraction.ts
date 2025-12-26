@@ -87,7 +87,7 @@ export async function scanForIndex(pdfData: ArrayBuffer): Promise<{ term: string
       }
     }
 
-    const combinedText = allText.join('\n');
+    const combinedText = allText.join('\n\n');
     console.log('[PDF Extraction] Extracted text length:', combinedText.length);
 
     if (combinedText.length === 0) {
@@ -272,7 +272,7 @@ export async function extractAllText(pdfData: ArrayBuffer): Promise<string> {
       }
     }
 
-    const result = allText.join('\n');
+    const result = allText.join('\n\n');
 
     if (result.length === 0) {
       console.warn('[PDF Extraction] No text extracted from PDF');
