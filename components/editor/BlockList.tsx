@@ -2,9 +2,29 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Block, db, BlockType } from '@/lib/db';
 import { TextBlock } from './blocks/TextBlock';
 import { TaskBlock } from './blocks/TaskBlock';
+import { ImageBlock } from './blocks/ImageBlock';
+import { PDFHighlightBlock } from './blocks/PDFHighlightBlock';
 import { SlashMenu, SlashMenuOption, SLASH_MENU_OPTIONS } from './SlashMenu';
+import { SortableBlockWrapper } from './SortableBlockWrapper';
 import { cn } from '@/lib/utils';
 import { v4 as uuidv4 } from 'uuid';
+
+// @dnd-kit imports
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent,
+} from '@dnd-kit/core';
+import {
+    SortableContext,
+    sortableKeyboardCoordinates,
+    verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
 // Extended block type to support heading and bullet variants
 type ExtendedBlockType = BlockType | 'heading1' | 'heading2' | 'bullet';
@@ -26,6 +46,18 @@ export function BlockList({ projectId, initialBlocks }: BlockListProps) {
 
     // Track block element refs for positioning
     const blockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+    // DnD sensors
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 8, // Require 8px movement before drag starts
+            },
+        }),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
 
     useEffect(() => {
         const sorted = [...initialBlocks].sort((a, b) => a.order - b.order);
@@ -139,6 +171,13 @@ export function BlockList({ projectId, initialBlocks }: BlockListProps) {
             case 'task':
                 newType = 'task';
                 break;
+            case 'image':
+                newType = 'image';
+                break;
+            case 'pdf_highlight':
+                newType = 'pdf_highlight';
+                newMetadata = { quote: '', source_name: 'Unknown' };
+                break;
             case 'heading1':
                 newType = 'text';
                 newMetadata = { variant: 'heading1' };
@@ -205,6 +244,45 @@ export function BlockList({ projectId, initialBlocks }: BlockListProps) {
         }
     }, [blocks, slashMenuOpen, handleCreateBlock, handleDeleteBlock, handleIndent, handleOutdent]);
 
+    // Handle drag end - reorder blocks
+    const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+        const { active, over } = event;
+
+        if (!over || active.id === over.id) return;
+
+        const oldIndex = blocks.findIndex(b => b.id === active.id);
+        const newIndex = blocks.findIndex(b => b.id === over.id);
+
+        if (oldIndex === -1 || newIndex === -1) return;
+
+        // Create new sorted array
+        const newBlocks = [...blocks];
+        const [movedBlock] = newBlocks.splice(oldIndex, 1);
+        newBlocks.splice(newIndex, 0, movedBlock);
+
+        // Reassign order values
+        const updatedBlocks = newBlocks.map((block, index) => ({
+            ...block,
+            order: index,
+        }));
+
+        // Optimistic UI update
+        setBlocks(updatedBlocks);
+
+        // Persist to database
+        try {
+            await Promise.all(
+                updatedBlocks.map(block =>
+                    db.blocks.update(block.id, { order: block.order })
+                )
+            );
+        } catch (error) {
+            console.error('Failed to persist block order:', error);
+            // Revert on error
+            setBlocks(blocks);
+        }
+    }, [blocks]);
+
     const blockMap = React.useMemo(() => {
         const map = new Map<string | null, Block[]>();
         blocks.forEach(b => {
@@ -220,18 +298,93 @@ export function BlockList({ projectId, initialBlocks }: BlockListProps) {
         return block.metadata?.variant as 'heading1' | 'heading2' | 'bullet' | undefined;
     };
 
+    // Get flat list of block IDs for the current parent level (for SortableContext)
+    const getBlockIds = (parentId: string | null): string[] => {
+        const children = blockMap.get(parentId) || [];
+        return children.sort((a, b) => a.order - b.order).map(b => b.id);
+    };
+
+    const renderBlock = (block: Block) => {
+        const variant = getBlockVariant(block);
+
+        if (block.type === 'image') {
+            return (
+                <ImageBlock
+                    block={block}
+                    onUpdate={(id, updates) => {
+                        if ('content' in updates) {
+                            handleContentChange(id, updates.content || '');
+                        } else {
+                            handleUpdateBlock(id, updates);
+                        }
+                    }}
+                    onKeyDown={handleKeyDown}
+                    autoFocus={block.id === focusedBlockId}
+                    onDelete={() => handleDeleteBlock(block)}
+                />
+            );
+        }
+
+        if (block.type === 'pdf_highlight') {
+            return (
+                <PDFHighlightBlock
+                    block={block}
+                    onUpdate={(id, updates) => handleUpdateBlock(id, updates)}
+                    onKeyDown={handleKeyDown}
+                    autoFocus={block.id === focusedBlockId}
+                    onDelete={() => handleDeleteBlock(block)}
+                />
+            );
+        }
+
+        if (block.type === 'task') {
+            return (
+                <TaskBlock
+                    block={block}
+                    onUpdate={(id, updates) => {
+                        if ('content' in updates) {
+                            handleContentChange(id, updates.content || '');
+                        } else {
+                            handleUpdateBlock(id, updates);
+                        }
+                    }}
+                    onKeyDown={handleKeyDown}
+                    autoFocus={block.id === focusedBlockId}
+                    onDelete={() => handleDeleteBlock(block)}
+                />
+            );
+        }
+
+        return (
+            <TextBlock
+                block={block}
+                variant={variant}
+                onUpdate={(id, updates) => {
+                    if ('content' in updates) {
+                        handleContentChange(id, updates.content || '');
+                    } else {
+                        handleUpdateBlock(id, updates);
+                    }
+                }}
+                onKeyDown={handleKeyDown}
+                autoFocus={block.id === focusedBlockId}
+                onDelete={() => handleDeleteBlock(block)}
+            />
+        );
+    };
+
     const renderTree = (parentId: string | null, depth: number = 0) => {
         const children = blockMap.get(parentId) || [];
         children.sort((a, b) => a.order - b.order);
 
         if (children.length === 0) return null;
 
-        return (
-            <div className={cn("flex flex-col", depth > 0 && "ml-6 border-l border-zinc-100 dark:border-zinc-800")}>
-                {children.map(block => {
-                    const variant = getBlockVariant(block);
+        const blockIds = getBlockIds(parentId);
 
-                    return (
+        return (
+            <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
+                <div className={cn("flex flex-col", depth > 0 && "ml-6 border-l border-zinc-100 dark:border-zinc-800")}>
+                    {children.map(block => (
                         <div
                             key={block.id}
                             className="relative"
@@ -239,47 +392,27 @@ export function BlockList({ projectId, initialBlocks }: BlockListProps) {
                                 if (el) blockRefs.current.set(block.id, el);
                             }}
                         >
-                            {block.type === 'task' ? (
-                                <TaskBlock
-                                    block={block}
-                                    onUpdate={(id, updates) => {
-                                        if ('content' in updates) {
-                                            handleContentChange(id, updates.content || '');
-                                        } else {
-                                            handleUpdateBlock(id, updates);
-                                        }
-                                    }}
-                                    onKeyDown={handleKeyDown}
-                                    autoFocus={block.id === focusedBlockId}
-                                    onDelete={() => handleDeleteBlock(block)}
-                                />
-                            ) : (
-                                <TextBlock
-                                    block={block}
-                                    variant={variant}
-                                    onUpdate={(id, updates) => {
-                                        if ('content' in updates) {
-                                            handleContentChange(id, updates.content || '');
-                                        } else {
-                                            handleUpdateBlock(id, updates);
-                                        }
-                                    }}
-                                    onKeyDown={handleKeyDown}
-                                    autoFocus={block.id === focusedBlockId}
-                                    onDelete={() => handleDeleteBlock(block)}
-                                />
-                            )}
+                            <SortableBlockWrapper id={block.id}>
+                                {renderBlock(block)}
+                            </SortableBlockWrapper>
                             {renderTree(block.id, depth + 1)}
                         </div>
-                    );
-                })}
-            </div>
+                    ))}
+                </div>
+            </SortableContext>
         );
     };
 
     return (
-        <div className="w-full pb-32 relative">
-            {renderTree(projectId)}
+        <div className="w-full pb-32 relative pl-8">
+            <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+                modifiers={[restrictToVerticalAxis]}
+            >
+                {renderTree(projectId)}
+            </DndContext>
 
             <div
                 className="flex-1 cursor-text min-h-[200px]"

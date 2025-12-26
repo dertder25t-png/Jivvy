@@ -1,0 +1,17 @@
+﻿components/auth/GoogleLoginButton.tsx(4,29): error TS2307: Cannot find module '@/components/ui/GummyButton' or its corresponding type declarations.
+components/dashboard/DashboardView.tsx(13,26): error TS2307: Cannot find module '@/components/ui/TiltCard' or its corresponding type declarations.
+components/layout/Header.tsx(24,29): error TS2307: Cannot find module '@/components/ui/GummyButton' or its corresponding type declarations.
+components/workspace/AICommandCenter.tsx(8,29): error TS2307: Cannot find module '@/components/ui/GummyButton' or its corresponding type declarations.
+components/workspace/DataVisualizer.tsx(18,29): error TS2307: Cannot find module '@/components/ui/GummyButton' or its corresponding type declarations.
+components/workspace/DesignCanvas/LayersPanel.tsx(5,26): error TS2307: Cannot find module '@/components/ui/TiltCard' or its corresponding type declarations.
+components/workspace/DesignCanvas/LayersPanel.tsx(6,29): error TS2307: Cannot find module '@/components/ui/GummyButton' or its corresponding type declarations.
+components/workspace/DesignCanvas/LayersPanel.tsx(181,29): error TS7006: Parameter 'e' implicitly has an 'any' type.
+components/workspace/DesignCanvas/LayersPanel.tsx(195,29): error TS7006: Parameter 'e' implicitly has an 'any' type.
+components/workspace/DesignCanvas/LayersPanel.tsx(209,29): error TS7006: Parameter 'e' implicitly has an 'any' type.
+components/workspace/DesignCanvas/LayersPanel.tsx(219,29): error TS7006: Parameter 'e' implicitly has an 'any' type.
+components/workspace/DesignCanvas/LayersPanel.tsx(229,29): error TS7006: Parameter 'e' implicitly has an 'any' type.
+components/workspace/DesignCanvas/Toolbar.tsx(5,29): error TS2307: Cannot find module '@/components/ui/GummyButton' or its corresponding type declarations.
+components/workspace/DesignCanvas/Toolbar.tsx(6,26): error TS2307: Cannot find module '@/components/ui/TiltCard' or its corresponding type declarations.
+components/workspace/PDFViewer.tsx(6,29): error TS2307: Cannot find module '@/components/ui/GummyButton' or its corresponding type declarations.
+components/workspace/ResearchTools.tsx(7,29): error TS2307: Cannot find module '../ui/GummyButton' or its corresponding type declarations.
+components/workspace/SpecSidebar.tsx(6,29): error TS2307: Cannot find module '@/components/ui/GummyButton' or its corresponding type declarations.

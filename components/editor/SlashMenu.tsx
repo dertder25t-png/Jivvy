@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { Type, CheckSquare, Heading1, Heading2, List } from 'lucide-react';
+import { Type, CheckSquare, Heading1, Heading2, List, Image, Quote } from 'lucide-react';
 
 export type SlashMenuOption = {
     label: string;
-    type: 'text' | 'task' | 'heading1' | 'heading2' | 'bullet';
+    type: 'text' | 'task' | 'heading1' | 'heading2' | 'bullet' | 'image' | 'pdf_highlight';
     icon: React.ElementType;
     description: string;
 };
@@ -17,6 +17,8 @@ const SLASH_MENU_OPTIONS: SlashMenuOption[] = [
     { label: 'Heading 1', type: 'heading1', icon: Heading1, description: 'Large heading' },
     { label: 'Heading 2', type: 'heading2', icon: Heading2, description: 'Medium heading' },
     { label: 'Bullet List', type: 'bullet', icon: List, description: 'Bulleted list item' },
+    { label: 'Image', type: 'image', icon: Image, description: 'Upload an image' },
+    { label: 'Citation', type: 'pdf_highlight', icon: Quote, description: 'PDF quote block' },
 ];
 
 interface SlashMenuProps {
