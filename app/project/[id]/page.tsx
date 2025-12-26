@@ -1,118 +1,75 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, Block } from "@/lib/db";
+import { db, Block, Project } from "@/lib/db";
 import { BlockList } from "@/components/editor/BlockList";
 import { v4 as uuidv4 } from "uuid";
+import { ArrowLeft, Clock, MoreHorizontal, Star, Share2 } from "lucide-react";
+
+// Format relative time (e.g., "2 hours ago", "Yesterday")
+function formatRelativeTime(timestamp: number): string {
+    const now = Date.now();
+    const diff = now - timestamp;
+
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 7) {
+        return new Date(timestamp).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: new Date(timestamp).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+        });
+    } else if (days > 1) {
+        return `${days} days ago`;
+    } else if (days === 1) {
+        return 'Yesterday';
+    } else if (hours > 1) {
+        return `${hours} hours ago`;
+    } else if (hours === 1) {
+        return '1 hour ago';
+    } else if (minutes > 1) {
+        return `${minutes} minutes ago`;
+    } else if (minutes === 1) {
+        return '1 minute ago';
+    } else {
+        return 'Just now';
+    }
+}
 
 export default function ProjectPage() {
     const params = useParams();
     const router = useRouter();
     const projectId = params.id as string;
 
-    // Fetch Project
+    // Local state for title editing
+    const [localTitle, setLocalTitle] = useState<string>('');
+    const [isTitleFocused, setIsTitleFocused] = useState(false);
+
+    // Fetch Project with live updates
     const project = useLiveQuery(() => db.projects.get(projectId), [projectId]);
 
-    // Fetch Blocks for this project (Top level? Or all?)
-    // In our BlockList, we scan the whole list and build a tree.
-    // So we fetch ALL blocks where parent_id is relevant? 
-    // Usually blocks are stored flat. "parent_id" points to another block OR to the project?
-    // Use Case: If nested, root blocks must point to project or have no parent?
-    // Let's assume root blocks have `parent_id` == projectId OR `parent_id` == null and we somehow link them.
-    // Simplest for now: fetch ALL blocks. Filter in memory? No.
-    // Let's assume blocks belonging to a project are connected via a "root node" or we just fetch everything?
-    // Wait, the DB schema has `parent_id`. It doesn't have `project_id`.
-    // This is a Linked List / Tree problem.
-    // If a block is deeply nested, does it know its project?
-    // Convention: ALL blocks in a project should probably have a `project_id` field if we want checking "all blocks for project" to be fast.
-    // BUT, the schema I read in `db.ts` does NOT have `project_id` on Block interface!
-    // It only has `id, parent_id, content, type, order...`.
-    // This implies we need a ROOT block for the project?
-    // OR we need to update the schema to include `project_id` on blocks. 
-    // OR `parent_id` can be the `projectId`.
-
-    // "Requirement: Connect to db.projects ... fetch specific project by ID and all associated blocks (where parent_id == project.id)."
-    // Ah, User prompt: "where parent_id == project.id".
-    // This implies only 1 level of nesting? Or that we only fetch roots?
-    // If I fetch roots, how do I get children?
-    // If children have `parent_id` = `parent_block_id`, then `db.blocks.where('parent_id').equals(projectId)` will ONLY return roots.
-    // This breaks the "fetch ALL associated blocks" requirement if there is deep nesting.
-
-    // SOLUTION: We either:
-    // 1. Fetch recursively (expensive individually).
-    // 2. Add `project_id` to Block schema (Best Practice).
-    // 3. Assume `parent_id` == `projectId` for EVERY block (Flat list, no nesting). BUT "Recursive Rendering" was requested.
-
-    // GIVEN "Context Window Efficiency", I should not edit `db.ts`. 
-    // BUT I can't fulfill requirements efficiently without it.
-    // HOWEVER, I can cheat: fetch ALL blocks and filter? No, too many.
-    // I will assume for this deliverable that we only support 1 level deep OR
-    // I will fetch roots `where('parent_id').equals(projectId)`
-    // AND then for each root, we might need children.
-
-    // Wait, let's look at `db.ts` again.
-    // `blocks: 'id, parent_id, order, type'`
-    // Index is on `parent_id`.
-
-    // I will try to implement a recursive fetch or a "fetch all" if the dataset is small? 
-    // Actually, maybe I can just fetch logic:
-    // When `BlockList` renders, it can recursively fetch children? 
-    // `useLiveQuery` inside a recursive component is risky (N+1 queries).
-
-    // LET'S ADAMS-SMITH THIS:
-    // I'll grab roots: `db.blocks.where('parent_id').equals(projectId).toArray()`.
-    // AND I will blindly assume for now that if we want children, we fetch them too?
-    // NO, implementing a full recursive fetcher in `useLiveQuery` is hard.
-
-    // ALTERNATIVE:
-    // We add `project_id` to `Block` in `db.ts`? 
-    // User said: "Do not rewrite db.ts... assume they exist".
-    // BUT User also said "Generate the code for...".
-    // I can generate a `BlockList` that manages its own data?
-    // NO, `page.tsx` must fetch.
-
-    // Let's stick to the prompt's implied logic: "fetch ... associated blocks (where parent_id == project.id)".
-    // Maybe the user intends flat list for this MVP?
-    // BUT later "Recursive Rendering" was requested.
-    // This contradicts unless:
-    // 1. We start with flat.
-    // 2. We allow nesting visually but `parent_id` always points to project? No, that's fake nesting.
-
-    // OKAY, I will implement a "Greedy Fetch" in `page.tsx`.
-    // I will fetch `db.blocks.toArray()` and filter by "descendant of project".
-    // This is slow but works for MVP.
-    // BETTER:
-    // I'll assume for this prototype we just use `parent_id`.
-    // I will fetch `const blocks = useLiveQuery(() => db.blocks.where('parent_id').equals(projectId).toArray())`.
-    // AND ALSO `db.blocks.toArray()` is unsafe.
-
-    // Let's assume we ONLY show root blocks for now, and `BlockList` sub-components fetch their children?
-    // `BlockList` calls `renderTree`.
-    // `renderTree` maps `children`.
-    // If I pass `blocks` (roots) to BlockList, `renderTree` needs access to ALL blocks.
-
-    // I will change my strategy:
-    // I will fetch ALL blocks. `db.blocks.toArray()`. 
-    // Yes, for a local-first MVP with indexedDB, fetching 1000 items is instant.
-    // I will filter in memory for those that belong to the tree rooted at `projectId`.
-    // Accessing `parent_id` chain.
-
+    // Fetch Blocks for this project
     const allBlocks = useLiveQuery(() => db.blocks.toArray());
 
-    // Filter for this project
+    // Sync local title with project name
+    useEffect(() => {
+        if (project && !isTitleFocused) {
+            setLocalTitle(project.name);
+        }
+    }, [project, isTitleFocused]);
+
+    // Filter for this project's blocks using BFS
     const projectBlocks = React.useMemo(() => {
         if (!allBlocks) return [];
-        // Build a set of IDs that are in this project.
-        // Start with roots (parent_id == projectId)
-        // Then find children of those, etc.
-        const relevantBlocks: Block[] = [];
-        const queue = [projectId];
 
-        // This is slow if we iterate allBlocks every time.
-        // Optimization: Map parent -> children
+        const relevantBlocks: Block[] = [];
         const childrenMap = new Map<string, Block[]>();
+
         allBlocks.forEach(b => {
             const pid = b.parent_id || 'root';
             if (!childrenMap.has(pid)) childrenMap.set(pid, []);
@@ -124,7 +81,7 @@ export default function ProjectPage() {
             if (kids) {
                 kids.forEach(k => {
                     relevantBlocks.push(k);
-                    collect(k.id); // Recurse
+                    collect(k.id);
                 });
             }
         };
@@ -133,14 +90,32 @@ export default function ProjectPage() {
         return relevantBlocks;
     }, [allBlocks, projectId]);
 
-    const handleTitleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (project) {
-            await db.projects.update(projectId, { name: e.target.value });
+    // Handle title change (local state for immediate feedback)
+    const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setLocalTitle(e.target.value);
+    };
+
+    // Save title on blur
+    const handleTitleBlur = useCallback(async () => {
+        setIsTitleFocused(false);
+        if (project && localTitle !== project.name) {
+            await db.projects.update(projectId, {
+                name: localTitle || 'Untitled',
+                updated_at: Date.now()
+            });
+        }
+    }, [project, projectId, localTitle]);
+
+    // Handle Enter key to blur title input
+    const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            (e.target as HTMLInputElement).blur();
         }
     };
 
+    // Create first block when clicking empty area
     const handleEmptyClick = async () => {
-        // Create first block
         await db.blocks.add({
             id: uuidv4(),
             parent_id: projectId,
@@ -148,30 +123,136 @@ export default function ProjectPage() {
             type: 'text',
             order: 0
         });
+        // Update project's updated_at
+        await db.projects.update(projectId, { updated_at: Date.now() });
     };
 
-    if (!project) return <div className="p-10 text-zinc-400">Loading Project...</div>;
+    // Loading state
+    if (!project) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    <span className="text-zinc-400 text-sm">Loading project...</span>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="max-w-4xl mx-auto py-12 px-8">
-            {/* Header */}
-            <input
-                className="text-4xl font-bold bg-transparent border-none outline-none w-full mb-8 text-text-primary placeholder:text-zinc-300"
-                value={project.name}
-                onChange={handleTitleChange}
-                placeholder="Untitled Project"
-            />
-
-            {/* Blocks */}
-            <div className="flex-1 min-h-[500px] cursor-text" onClick={projectBlocks.length === 0 ? handleEmptyClick : undefined}>
-                {projectBlocks && projectBlocks.length > 0 ? (
-                    <BlockList projectId={projectId} initialBlocks={projectBlocks} />
-                ) : (
-                    <div className="text-zinc-400 text-lg italic hover:text-zinc-500 transition-colors">
-                        Click anywhere or type '/' to begin...
+        <div className="min-h-screen bg-background">
+            {/* Top Navigation Bar */}
+            <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-zinc-100 dark:border-zinc-800">
+                <div className="max-w-4xl mx-auto px-6 h-12 flex items-center justify-between">
+                    {/* Left: Back Button + Breadcrumb */}
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => router.back()}
+                            className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                            aria-label="Go back"
+                        >
+                            <ArrowLeft size={18} />
+                        </button>
+                        <div className="flex items-center text-sm text-zinc-400">
+                            <span className="hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer transition-colors" onClick={() => router.push('/')}>
+                                Home
+                            </span>
+                            <span className="mx-2">/</span>
+                            <span className="text-zinc-600 dark:text-zinc-300 font-medium truncate max-w-[200px]">
+                                {project.name || 'Untitled'}
+                            </span>
+                        </div>
                     </div>
-                )}
-            </div>
+
+                    {/* Right: Actions */}
+                    <div className="flex items-center gap-1">
+                        <button
+                            className="p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                            aria-label="Share"
+                        >
+                            <Share2 size={16} />
+                        </button>
+                        <button
+                            className="p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                            aria-label="Favorite"
+                        >
+                            <Star size={16} />
+                        </button>
+                        <button
+                            className="p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                            aria-label="More options"
+                        >
+                            <MoreHorizontal size={16} />
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            {/* Main Content */}
+            <main className="max-w-4xl mx-auto py-12 px-8">
+                {/* Notion-Style Header */}
+                <div className="mb-8">
+                    {/* Project Color Accent (optional) */}
+                    {project.color && (
+                        <div
+                            className="w-full h-1 rounded-full mb-6 opacity-60"
+                            style={{ backgroundColor: project.color }}
+                        />
+                    )}
+
+                    {/* Title Input */}
+                    <input
+                        className="text-4xl font-bold bg-transparent border-none outline-none w-full text-text-primary placeholder:text-zinc-300 focus:placeholder:text-zinc-400 transition-colors"
+                        value={localTitle}
+                        onChange={handleTitleChange}
+                        onFocus={() => setIsTitleFocused(true)}
+                        onBlur={handleTitleBlur}
+                        onKeyDown={handleTitleKeyDown}
+                        placeholder="Untitled"
+                        spellCheck={false}
+                    />
+
+                    {/* Metadata Row */}
+                    <div className="flex items-center gap-4 mt-4 text-sm text-zinc-400">
+                        <div className="flex items-center gap-1.5">
+                            <Clock size={14} />
+                            <span>Edited {formatRelativeTime(project.updated_at || project.created_at)}</span>
+                        </div>
+                        {project.due_date && (
+                            <div className="flex items-center gap-1.5 text-amber-600">
+                                <span>Due {new Date(project.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                            </div>
+                        )}
+                        {project.priority && (
+                            <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${project.priority === 'high'
+                                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                    : project.priority === 'medium'
+                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                        : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
+                                }`}>
+                                {project.priority.charAt(0).toUpperCase() + project.priority.slice(1)} priority
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Divider */}
+                    <div className="w-full h-px bg-zinc-100 dark:bg-zinc-800 mt-6" />
+                </div>
+
+                {/* Blocks Area */}
+                <div
+                    className="flex-1 min-h-[500px] cursor-text"
+                    onClick={projectBlocks.length === 0 ? handleEmptyClick : undefined}
+                >
+                    {projectBlocks && projectBlocks.length > 0 ? (
+                        <BlockList projectId={projectId} initialBlocks={projectBlocks} />
+                    ) : (
+                        <div className="text-zinc-400 text-lg italic hover:text-zinc-500 transition-colors py-4">
+                            Click anywhere or type <kbd className="px-1.5 py-0.5 mx-1 text-sm font-mono bg-zinc-100 dark:bg-zinc-800 rounded">/</kbd> to begin...
+                        </div>
+                    )}
+                </div>
+            </main>
         </div>
     );
 }
