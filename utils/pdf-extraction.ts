@@ -119,9 +119,9 @@ export async function searchPagesForTerms(
   // Map SearchResult to the expected format
   return results.slice(0, options.maxResults || 10).map(r => ({
     page: r.page,
-    matchCount: r.matchCount,
-    matchedTerms: [], // Indexer doesn't return exact terms matched list yet, can be inferred
-    uniqueTermMatches: 1 // Simplified
+    matchCount: Math.floor(r.score / 10), // Convert score to approx match count
+    matchedTerms: [], // Indexer doesn't return exact terms matched list yet
+    uniqueTermMatches: r.matchType === 'phrase' ? 2 : 1
   }));
 }
 
