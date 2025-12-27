@@ -8,6 +8,7 @@ interface ProjectState {
     centerMode: ProjectCenterMode;
     pdfPage: number;
     activePdfUrl: string | null;
+    pdfHighlightRanges: Array<{ startPage: number; endPage: number | null }>;
     blocks: Block[];
     contextPanelOpen: boolean;
     isLoading: boolean;
@@ -17,6 +18,7 @@ interface ProjectState {
     setCenterMode: (mode: ProjectCenterMode) => void;
     setPdfPage: (page: number) => void;
     setPdfUrl: (url: string | null) => void;
+    setPdfHighlightRanges: (ranges: Array<{ startPage: number; endPage: number | null }>) => void;
     setContextPanelOpen: (open: boolean) => void;
 
     // Block Actions
@@ -46,6 +48,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     centerMode: "canvas",
     pdfPage: 1,
     activePdfUrl: null,
+    pdfHighlightRanges: [],
     blocks: [],
     contextPanelOpen: false,
     dashboardView: 'inbox',
@@ -58,6 +61,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     setCenterMode: (mode) => set({ centerMode: mode }),
     setPdfPage: (page) => set({ pdfPage: page }),
     setPdfUrl: (url) => set({ activePdfUrl: url }),
+    setPdfHighlightRanges: (ranges) => set({ pdfHighlightRanges: ranges }),
     setContextPanelOpen: (open) => set({ contextPanelOpen: open }),
 
     loadProjects: async () => {

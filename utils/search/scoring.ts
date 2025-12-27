@@ -1,9 +1,35 @@
-import { tokenizeQuery } from './preprocessor';
+import { tokenizeQuery, detectSectionType, SectionType } from './preprocessor';
 
 export interface ScoreResult {
     score: number;
     excerpt: string;
     matchType: 'exact' | 'phrase' | 'fuzzy';
+    sectionType?: SectionType;
+}
+
+// Section type boost multipliers (Strategy 7: boost explanation sections)
+const SECTION_BOOSTS: Record<SectionType, number> = {
+    explanation: 1.3,  // Boost explanatory content
+    procedure: 1.25,   // Boost procedures
+    glossary: 1.2,     // Boost definitions
+    example: 1.15,     // Boost examples
+    warning: 1.1,      // Slight boost for warnings
+    table: 1.0,
+    diagram: 0.9,      // Diagrams often need visual context
+    formula: 1.0,
+    unknown: 1.0
+};
+
+/**
+ * Apply section-based score boost
+ */
+export function applyScoreBoost(baseScore: number, text: string): { score: number; sectionType: SectionType } {
+    const sectionType = detectSectionType(text);
+    const boost = SECTION_BOOSTS[sectionType];
+    return {
+        score: Math.min(100, baseScore * boost),
+        sectionType
+    };
 }
 
 /**
@@ -104,11 +130,36 @@ export function scoreCandidate(text: string, query: string): ScoreResult {
     const endIdx = Math.min(sentences.length, bestSentenceIndex + 3);
     const excerpt = sentences.slice(startIdx, endIdx).join(' ').trim();
 
+    // Apply section-based boost (Strategy 7)
+    const { score: boostedScore, sectionType } = applyScoreBoost(finalScore, cleanText);
+
     return {
-        score: finalScore,
+        score: boostedScore,
         excerpt: excerpt,
-        matchType: finalScore > 85 ? 'phrase' : 'fuzzy'
+        matchType: boostedScore > 85 ? 'phrase' : 'fuzzy',
+        sectionType
     };
+}
+
+/**
+ * Calculate detailed score with section awareness
+ * Enhanced version for thorough mode
+ */
+export function calculateDetailedScore(
+    text: string,
+    query: string,
+    prioritizeSections?: SectionType[]
+): ScoreResult {
+    const baseResult = scoreCandidate(text, query);
+    
+    // Additional boost if section type matches priority
+    if (prioritizeSections && baseResult.sectionType) {
+        if (prioritizeSections.includes(baseResult.sectionType)) {
+            baseResult.score = Math.min(100, baseResult.score * 1.15);
+        }
+    }
+    
+    return baseResult;
 }
 
 function extractContext(text: string, index: number, length: number): string {

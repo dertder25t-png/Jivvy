@@ -2,10 +2,15 @@
  * Local LLM with Transformers.js
  * Runs entirely in the browser - no API calls, complete privacy
  * 
- * OPTIMIZED FOR SUB-SECOND LATENCY:
- * - Uses Qwen1.5-0.5B-Chat (decoder-only, faster than T5)
- * - Pipe-delimited output for quiz questions (no JSON parsing overhead)
- * - Strict input truncation to MAX_INPUT_CHARS
+ * DUAL MODEL SUPPORT:
+ * - Quick Mode: Qwen1.5-0.5B-Chat (fast, ~500MB)
+ * - Think More Mode: Qwen2.5-1.5B-Instruct (thorough, ~1.5GB)
+ * 
+ * FEATURES:
+ * - Lazy loading based on user preference
+ * - Per-device settings (localStorage)
+ * - Storage quota checking
+ * - Model caching with IndexedDB
  */
 
 import { pipeline, env } from '@xenova/transformers';
@@ -14,21 +19,61 @@ import { pipeline, env } from '@xenova/transformers';
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-// Singleton pipeline - only load once
+// ============================================================================
+// MODEL CONFIGURATION
+// ============================================================================
+
+export type AIMode = 'quick' | 'thorough';
+
+export interface ModelConfig {
+    id: AIMode;
+    name: string;
+    hfPath: string;
+    maxContext: number;
+    maxNewTokens: number;
+    estimatedSizeMB: number;
+}
+
+export const MODEL_CONFIGS: Record<AIMode, ModelConfig> = {
+    quick: {
+        id: 'quick',
+        name: 'Quick',
+        hfPath: 'Xenova/Qwen1.5-0.5B-Chat',
+        maxContext: 1200,
+        maxNewTokens: 100,
+        estimatedSizeMB: 500
+    },
+    thorough: {
+        id: 'thorough',
+        name: 'Think More',
+        hfPath: 'Xenova/TinyLlama-1.1B-Chat-v1.0',
+        maxContext: 2048,
+        maxNewTokens: 350,
+        estimatedSizeMB: 650
+    }
+};
+
+// ============================================================================
+// STATE MANAGEMENT
+// ============================================================================
+
 let textGenerationPipeline: any = null;
+let currentModelId: AIMode | null = null;
 let isLoading = false;
 let loadingPromise: Promise<any> | null = null;
 
 // Progress callback type
 type ProgressCallback = (progress: { status: string; progress?: number }) => void;
 
+// Storage keys
+const STORAGE_KEY_MODE = 'jivvy-ai-mode';
+const STORAGE_KEY_KEEP_BOTH = 'jivvy-ai-keep-both';
+
 // ============================================================================
-// CONFIGURATION CONSTANTS - Tuned for sub-second latency on older devices
+// CONFIGURATION CONSTANTS
 // ============================================================================
-const MAX_INPUT_CHARS = 1200;       // Hard limit for input text (sub-second constraint)
-const MAX_NEW_TOKENS = 150;         // Reduced for speed
-const MAX_CONTEXT_LENGTH = 3000;    // Legacy compatibility
 const DEFAULT_TEMPERATURE = 0.3;
+const MIN_FREE_SPACE_MB = 3000; // Warn if less than 3GB free
 
 // ============================================================================
 // QUIZ QUESTION RESULT TYPE
@@ -42,71 +87,269 @@ export interface QuizQuestionResult {
 }
 
 // ============================================================================
-// INITIALIZATION
+// PREFERENCE MANAGEMENT (Per-device, localStorage)
 // ============================================================================
 
 /**
- * Initialize the local LLM model
- * Uses Qwen1.5-0.5B-Chat - fast decoder-only model suitable for browser
- * Enhanced with singleton pattern to prevent race conditions
+ * Get user's preferred AI mode from localStorage
  */
-export async function initLocalLLM(onProgress?: ProgressCallback): Promise<boolean> {
-    // Return immediately if already loaded
+export function getPreferredMode(): AIMode {
+    if (typeof window === 'undefined') return 'quick';
+    const saved = localStorage.getItem(STORAGE_KEY_MODE);
+    return (saved === 'thorough' ? 'thorough' : 'quick') as AIMode;
+}
+
+/**
+ * Set user's preferred AI mode in localStorage
+ */
+export function setPreferredMode(mode: AIMode): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEY_MODE, mode);
+    console.log(`[LocalLLM] Preferred mode set to: ${mode}`);
+}
+
+/**
+ * Get whether user wants to keep both models cached
+ */
+export function getKeepBothCached(): boolean {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(STORAGE_KEY_KEEP_BOTH) === 'true';
+}
+
+/**
+ * Set whether to keep both models cached
+ */
+export function setKeepBothCached(keep: boolean): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEY_KEEP_BOTH, String(keep));
+}
+
+// ============================================================================
+// STORAGE MANAGEMENT
+// ============================================================================
+
+/**
+ * Check available storage space
+ */
+export async function checkStorageSpace(): Promise<{
+    available: boolean;
+    freeSpaceMB: number;
+    freeSpaceFormatted: string;
+    warning: string | null;
+}> {
+    try {
+        if (!navigator.storage || !navigator.storage.estimate) {
+            return { available: true, freeSpaceMB: 0, freeSpaceFormatted: 'Unknown', warning: null };
+        }
+
+        const estimate = await navigator.storage.estimate();
+        const quota = estimate.quota || 0;
+        const usage = estimate.usage || 0;
+        const freeBytes = quota - usage;
+        const freeSpaceMB = Math.floor(freeBytes / (1024 * 1024));
+        const freeSpaceFormatted = freeSpaceMB >= 1000 
+            ? `${(freeSpaceMB / 1000).toFixed(1)}GB` 
+            : `${freeSpaceMB}MB`;
+
+        const warning = freeSpaceMB < MIN_FREE_SPACE_MB
+            ? `Low storage: Only ${freeSpaceFormatted} available. Model download may fail.`
+            : null;
+
+        return { available: freeSpaceMB >= 500, freeSpaceMB, freeSpaceFormatted, warning };
+    } catch (error) {
+        console.warn('[LocalLLM] Could not check storage:', error);
+        return { available: true, freeSpaceMB: 0, freeSpaceFormatted: 'Unknown', warning: null };
+    }
+}
+
+/**
+ * Check if a specific model is cached in browser storage
+ */
+export async function isModelCached(mode: AIMode): Promise<boolean> {
+    try {
+        const config = MODEL_CONFIGS[mode];
+        // Check if model files exist in Cache API
+        const cache = await caches.open('transformers-cache');
+        const keys = await cache.keys();
+        const modelPrefix = config.hfPath.replace('/', '_');
+        return keys.some(req => req.url.includes(modelPrefix));
+    } catch (error) {
+        console.warn('[LocalLLM] Could not check model cache:', error);
+        return false;
+    }
+}
+
+/**
+ * Get download progress (called from event listener)
+ */
+export function getDownloadProgress(): { modelId: string; progress: number } | null {
+    // This is managed via events, return null for sync check
+    return null;
+}
+
+/**
+ * Clear a specific model from cache
+ */
+export async function clearModelCache(mode: AIMode): Promise<boolean> {
+    try {
+        const config = MODEL_CONFIGS[mode];
+        const cache = await caches.open('transformers-cache');
+        const keys = await cache.keys();
+        const modelPrefix = config.hfPath.replace('/', '_');
+        
+        let deleted = false;
+        for (const request of keys) {
+            if (request.url.includes(modelPrefix)) {
+                await cache.delete(request);
+                deleted = true;
+            }
+        }
+        
+        console.log(`[LocalLLM] Cleared cache for ${mode} model: ${deleted}`);
+        return deleted;
+    } catch (error) {
+        console.error('[LocalLLM] Failed to clear model cache:', error);
+        return false;
+    }
+}
+
+/**
+ * Get cache status for both models
+ */
+export async function getModelCacheStatus(): Promise<Record<AIMode, { cached: boolean; sizeMB: number }>> {
+    const quickCached = await isModelCached('quick');
+    const thoroughCached = await isModelCached('thorough');
+    
+    return {
+        quick: { cached: quickCached, sizeMB: quickCached ? MODEL_CONFIGS.quick.estimatedSizeMB : 0 },
+        thorough: { cached: thoroughCached, sizeMB: thoroughCached ? MODEL_CONFIGS.thorough.estimatedSizeMB : 0 }
+    };
+}
+
+// ============================================================================
+// MODEL LOADING
+// ============================================================================
+
+/**
+ * Emit download progress event
+ */
+function emitDownloadProgress(modelId: string, status: 'idle' | 'downloading' | 'complete' | 'error', progress: number, error?: string) {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('llm-download-progress', {
+        detail: { modelId, status, progress, error }
+    }));
+}
+
+/**
+ * Unload current model to free memory
+ */
+export async function unloadCurrentModel(): Promise<void> {
     if (textGenerationPipeline) {
-        console.log('[LocalLLM] Model already loaded');
+        console.log(`[LocalLLM] Unloading current model: ${currentModelId}`);
+        textGenerationPipeline = null;
+        currentModelId = null;
+        
+        // Try to trigger garbage collection
+        if (typeof window !== 'undefined' && (window as any).gc) {
+            (window as any).gc();
+        }
+    }
+}
+
+/**
+ * Load a specific model by mode
+ */
+export async function loadModel(mode: AIMode, onProgress?: ProgressCallback): Promise<boolean> {
+    const config = MODEL_CONFIGS[mode];
+    
+    // If same model already loaded, return immediately
+    if (textGenerationPipeline && currentModelId === mode) {
+        console.log(`[LocalLLM] Model ${mode} already loaded`);
         return true;
     }
 
-    // If already loading, wait for existing promise (prevents race conditions)
+    // If different model loaded, unload it first
+    if (textGenerationPipeline && currentModelId !== mode) {
+        await unloadCurrentModel();
+    }
+
+    // If already loading, wait for it
     if (isLoading && loadingPromise) {
         console.log('[LocalLLM] Model loading in progress, waiting...');
         await loadingPromise;
-        return !!textGenerationPipeline;
+        return currentModelId === mode;
     }
 
     isLoading = true;
+    emitDownloadProgress(mode, 'downloading', 0);
 
     try {
-        onProgress?.({ status: 'Initializing Qwen model...', progress: 0 });
+        onProgress?.({ status: `Initializing ${config.name} model...`, progress: 0 });
 
-        // Use Qwen1.5-0.5B-Chat - decoder-only model, faster than T5
-        loadingPromise = pipeline('text-generation', 'Xenova/Qwen1.5-0.5B-Chat', {
-            // device: 'webgpu',  // Uncomment for WebGPU acceleration if supported
+        loadingPromise = pipeline('text-generation', config.hfPath, {
             progress_callback: (data: any) => {
                 if (data.status === 'progress' && data.progress !== undefined) {
-                    onProgress?.({
-                        status: `Downloading model: ${Math.round(data.progress)}%`,
-                        progress: data.progress
-                    });
+                    const progress = Math.round(data.progress);
+                    onProgress?.({ status: `Downloading ${config.name}: ${progress}%`, progress });
+                    emitDownloadProgress(mode, 'downloading', progress);
                 } else if (data.status === 'initiate') {
-                    onProgress?.({
-                        status: 'Starting download...',
-                        progress: 0
-                    });
+                    onProgress?.({ status: 'Starting download...', progress: 0 });
                 } else if (data.status === 'done') {
-                    onProgress?.({
-                        status: 'Download complete, initializing...',
-                        progress: 95
-                    });
+                    onProgress?.({ status: 'Download complete, initializing...', progress: 95 });
                 }
             }
         });
 
         textGenerationPipeline = await loadingPromise;
-        onProgress?.({ status: 'Model ready!', progress: 100 });
-
-        console.log('[LocalLLM] Qwen1.5-0.5B-Chat loaded successfully');
+        currentModelId = mode;
+        
+        onProgress?.({ status: `${config.name} model ready!`, progress: 100 });
+        emitDownloadProgress(mode, 'complete', 100);
+        
+        console.log(`[LocalLLM] ${config.hfPath} loaded successfully`);
         return true;
     } catch (error) {
         console.error('[LocalLLM] Failed to load model:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         onProgress?.({ status: `Failed to load model: ${errorMessage}` });
-        textGenerationPipeline = null; // Reset on failure
+        emitDownloadProgress(mode, 'error', 0, errorMessage);
+        textGenerationPipeline = null;
+        currentModelId = null;
         return false;
     } finally {
         isLoading = false;
-        // Note: We don't reset loadingPromise here to allow cached result access
     }
+}
+
+/**
+ * Ensure the preferred model is loaded (lazy load on first use)
+ */
+export async function ensureModelLoaded(onProgress?: ProgressCallback): Promise<boolean> {
+    const preferredMode = getPreferredMode();
+    return loadModel(preferredMode, onProgress);
+}
+
+/**
+ * Preload a model for faster switching (downloads but may not keep in memory)
+ */
+export async function preloadModel(mode: AIMode, onProgress?: ProgressCallback): Promise<boolean> {
+    // Just load it - this will cache the files
+    const success = await loadModel(mode, onProgress);
+    
+    // If user doesn't want to keep both, and this isn't the preferred model, unload it
+    if (success && !getKeepBothCached() && mode !== getPreferredMode()) {
+        // Don't unload immediately - let user benefit from the load
+        console.log(`[LocalLLM] Preloaded ${mode} model, keeping in memory for now`);
+    }
+    
+    return success;
+}
+
+/**
+ * Legacy: Initialize the local LLM model (uses preferred mode)
+ */
+export async function initLocalLLM(onProgress?: ProgressCallback): Promise<boolean> {
+    return ensureModelLoaded(onProgress);
 }
 
 /**
@@ -114,6 +357,20 @@ export async function initLocalLLM(onProgress?: ProgressCallback): Promise<boole
  */
 export function isModelLoaded(): boolean {
     return !!textGenerationPipeline;
+}
+
+/**
+ * Get current loaded model ID
+ */
+export function getCurrentModelId(): AIMode | null {
+    return currentModelId;
+}
+
+/**
+ * Get current model config
+ */
+export function getCurrentModelConfig(): ModelConfig | null {
+    return currentModelId ? MODEL_CONFIGS[currentModelId] : null;
 }
 
 // ============================================================================
@@ -126,7 +383,7 @@ export function isModelLoaded(): boolean {
  */
 function formatQwenPrompt(systemPrompt: string, userPrompt: string): string {
     return `<|im_start|>system
-${systemPrompt}<|im_end|}
+${systemPrompt}<|im_end|>
 <|im_start|>user
 ${userPrompt}<|im_end|>
 <|im_start|>assistant
@@ -134,12 +391,37 @@ ${userPrompt}<|im_end|>
 }
 
 /**
- * Truncate text to MAX_INPUT_CHARS for sub-second performance
+ * Truncate text based on current model's max context
+ * Preserves paragraph boundaries when possible (Strategy: smart truncation)
  */
-function truncateInput(text: string): string {
-    if (text.length <= MAX_INPUT_CHARS) return text;
-    // Truncate and add indicator
-    return text.slice(0, MAX_INPUT_CHARS) + '...';
+function truncateInput(text: string, maxChars?: number): string {
+    const limit = maxChars ?? (currentModelId ? MODEL_CONFIGS[currentModelId].maxContext : 1200);
+    
+    if (text.length <= limit) return text;
+    
+    // Try to cut at a paragraph boundary first
+    const truncated = text.slice(0, limit);
+    
+    // Look for paragraph boundaries (double newline)
+    const lastParagraph = truncated.lastIndexOf('\n\n');
+    if (lastParagraph > limit * 0.7) {
+        return truncated.slice(0, lastParagraph) + '\n\n[Content truncated...]';
+    }
+    
+    // Look for section markers (=== Page X ===)
+    const lastSection = truncated.lastIndexOf('\n===');
+    if (lastSection > limit * 0.7) {
+        return truncated.slice(0, lastSection) + '\n\n[Content truncated...]';
+    }
+    
+    // Fall back to sentence boundary
+    const lastSentence = truncated.lastIndexOf('. ');
+    if (lastSentence > limit * 0.7) {
+        return truncated.slice(0, lastSentence + 1) + '\n\n[Content truncated...]';
+    }
+    
+    // Last resort: hard cutoff
+    return truncated + '...';
 }
 
 // ============================================================================
@@ -194,8 +476,11 @@ Rules:
     const prompt = formatQwenPrompt(systemPrompt, userPrompt);
 
     try {
+        const config = getCurrentModelConfig();
+        const maxTokens = config?.maxNewTokens ?? 150;
+        
         const result = await textGenerationPipeline(prompt, {
-            max_new_tokens: MAX_NEW_TOKENS,
+            max_new_tokens: maxTokens,
             temperature: DEFAULT_TEMPERATURE,
             do_sample: true,
             top_k: 50,
@@ -284,14 +569,14 @@ function parseQuizOutput(output: string): QuizQuestionResult | null {
 
 /**
  * Answer a question using local LLM with Qwen chat template
- * Includes timeout to prevent infinite hangs
+ * Automatically uses current model's context limits
  */
 export async function answerQuestionLocal(
     question: string,
     context: string,
     onProgress?: ProgressCallback
 ): Promise<string> {
-    const TIMEOUT_MS = 30000;  // 30 second timeout
+    const TIMEOUT_MS = 60000;  // 60 second timeout (longer for thorough mode)
 
     // Validate inputs
     if (!question || question.trim().length === 0) {
@@ -302,40 +587,58 @@ export async function answerQuestionLocal(
         throw new Error('Context cannot be empty');
     }
 
-    // Initialize model if needed
+    // Initialize model if needed (uses preferred mode)
     if (!textGenerationPipeline) {
-        const success = await initLocalLLM(onProgress);
+        const success = await ensureModelLoaded(onProgress);
         if (!success) {
             throw new Error('Failed to load local LLM model.');
         }
     }
 
-    onProgress?.({ status: 'Generating answer...' });
+    const config = getCurrentModelConfig()!;
+    onProgress?.({ status: `Generating answer with ${config.name} model...` });
 
-    // Truncate context aggressively for fast response
-    const truncatedContext = context.slice(0, MAX_INPUT_CHARS);
-    console.log(`[LocalLLM] Generating answer for question: "${question.slice(0, 50)}..." with ${truncatedContext.length} chars context`);
+    // Truncate context based on current model's limits.
+    // NOTE: config.maxContext is best-effort; in practice Transformers.js may throw
+    // "invalid or out-of-range index" if tokenization exceeds model limits.
+    const truncatedContext = truncateInput(context, config.maxContext);
+    console.log(`[LocalLLM] Generating answer with ${config.name} model: "${question.slice(0, 50)}..." with ${truncatedContext.length} chars context`);
 
-    const systemPrompt = 'You are a helpful assistant. Answer briefly based on context.';
-    const userPrompt = `Context: ${truncatedContext}\n\nQuestion: ${question}\n\nAnswer:`;
+    const systemPrompt = currentModelId === 'thorough'
+        ? 'You are an expert tutor. Answer the user\'s question based ONLY on the provided context. If the question is a multiple-choice question, select the best answer, explain WHY it is correct, and cite the page number where the information is found (e.g., [Page 12]).'
+        : 'You are a helpful assistant. Answer based on context. If it is a multiple choice question, give the answer and a brief explanation with page citation.';
+    
+    const userPrompt = `Context:\n${truncatedContext}\n\nQuestion: ${question}\n\nInstructions:\n1. Identify the correct answer.\n2. Explain why it is correct using evidence from the text.\n3. Cite the page number (e.g., [Page 5]) for the evidence.\n\nAnswer:`;
     const prompt = formatQwenPrompt(systemPrompt, userPrompt);
 
     console.log(`[LocalLLM] Prompt length: ${prompt.length} chars`);
 
+    const runGeneration = async (promptText: string, opts: { maxNewTokens: number; doSample: boolean; temperature: number }) => {
+        const result = await textGenerationPipeline(promptText, {
+            max_new_tokens: opts.maxNewTokens,
+            temperature: opts.temperature,
+            do_sample: opts.doSample,
+            top_k: opts.doSample ? 40 : 1,
+            repetition_penalty: 1.2,
+            return_full_text: false,
+        });
+
+        return result;
+    };
+
     try {
         // Create timeout promise
         const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('LLM generation timed out after 30 seconds')), TIMEOUT_MS);
+            setTimeout(() => reject(new Error('LLM generation timed out after 60 seconds')), TIMEOUT_MS);
         });
 
+        const maxTokens = config.maxNewTokens;
+
         // Race between generation and timeout
-        const generatePromise = textGenerationPipeline(prompt, {
-            max_new_tokens: 100,  // Reduced for faster response
+        const generatePromise = runGeneration(prompt, {
+            maxNewTokens: maxTokens,
+            doSample: true,
             temperature: 0.3,
-            do_sample: true,
-            top_k: 40,
-            repetition_penalty: 1.2,
-            return_full_text: false,
         });
 
         console.log('[LocalLLM] Starting generation...');
@@ -356,6 +659,40 @@ export async function answerQuestionLocal(
     } catch (error) {
         console.error('[LocalLLM] Generation error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+        // Transformers.js occasionally throws an internal indexing error.
+        // Retry once with a smaller context and deterministic decoding.
+        if (typeof errorMessage === 'string' && /out-of-range index|out of range/i.test(errorMessage)) {
+            try {
+                const reducedContext = truncateInput(context, Math.max(400, Math.floor(config.maxContext * 0.7)));
+                const fallbackUserPrompt = `Context:\n${reducedContext}\n\nQuestion: ${question}\n\nInstructions:\n1. Identify the correct answer.\n2. Explain why it is correct using evidence from the text.\n3. Cite the page number (e.g., [Page 5]) for the evidence.\n\nAnswer:`;
+                const fallbackPrompt = formatQwenPrompt(
+                    'You are a helpful assistant. Answer the user\'s question based ONLY on the provided context. If unsure, say so.',
+                    fallbackUserPrompt
+                );
+
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    setTimeout(() => reject(new Error('LLM generation timed out after 60 seconds')), TIMEOUT_MS);
+                });
+
+                const retryPromise = runGeneration(fallbackPrompt, {
+                    maxNewTokens: Math.min(150, config.maxNewTokens),
+                    doSample: false,
+                    temperature: 0,
+                });
+
+                const result = await Promise.race([retryPromise, timeoutPromise]);
+                const answer = result[0]?.generated_text || 'Could not generate an answer.';
+                const trimmedAnswer = answer.trim();
+                if (trimmedAnswer.length === 0) {
+                    throw new Error('No answer could be generated from the provided context.');
+                }
+                return trimmedAnswer;
+            } catch (retryError) {
+                console.error('[LocalLLM] Retry generation failed:', retryError);
+            }
+        }
+
         throw new Error(`Failed to generate answer: ${errorMessage}`);
     }
 }
@@ -744,9 +1081,15 @@ function isStopWord(word: string): boolean {
  */
 export function cleanupLocalLLM(): void {
     if (textGenerationPipeline) {
-        console.log('[LocalLLM] Cleaning up model resources');
+        console.log(`[LocalLLM] Cleaning up model resources (${currentModelId})`);
         textGenerationPipeline = null;
+        currentModelId = null;
         isLoading = false;
         loadingPromise = null;
+        
+        // Try to trigger garbage collection
+        if (typeof window !== 'undefined' && (window as any).gc) {
+            (window as any).gc();
+        }
     }
 }

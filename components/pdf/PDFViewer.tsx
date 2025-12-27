@@ -37,9 +37,14 @@ export function PDFViewer({ url, className, projectId, onAskAI }: PDFViewerProps
     const [scale, setScale] = useState(1.0);
     const [selection, setSelection] = useState<SelectionInfo | null>(null);
 
-    const { pdfPage, setPdfPage, activeProjectId } = useProjectStore();
+    const { pdfPage, setPdfPage, activeProjectId, pdfHighlightRanges } = useProjectStore();
     const containerRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
+
+    const isPageHighlighted = pdfHighlightRanges.some(r => {
+        const end = r.endPage ?? (r.startPage + 30);
+        return pdfPage >= r.startPage && pdfPage <= end;
+    });
 
     // Handle document load success
     const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -259,13 +264,23 @@ export function PDFViewer({ url, className, projectId, onAskAI }: PDFViewerProps
                     loading={null}
                     className="flex flex-col items-center py-4"
                 >
-                    <Page
-                        pageNumber={pdfPage}
-                        scale={scale}
-                        renderTextLayer={true}
-                        renderAnnotationLayer={true}
-                        className="shadow-xl"
-                    />
+                    <div className="relative">
+                        {isPageHighlighted && (
+                            <div
+                                className="absolute inset-0 bg-blue-500/10 ring-1 ring-blue-500/20 rounded-sm pointer-events-none z-0"
+                                aria-hidden="true"
+                            />
+                        )}
+                        <div className="relative z-10">
+                            <Page
+                                pageNumber={pdfPage}
+                                scale={scale}
+                                renderTextLayer={true}
+                                renderAnnotationLayer={true}
+                                className="shadow-xl"
+                            />
+                        </div>
+                    </div>
                 </Document>
 
                 {/* Selection Tooltip */}

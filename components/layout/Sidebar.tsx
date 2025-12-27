@@ -15,7 +15,8 @@ import {
     ChevronDown,
     ChevronRight,
     Plus,
-    Hash
+    Hash,
+    MessageSquare
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -129,6 +130,15 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
                     onClick={() => {
                         setDashboardView('upcoming');
                         router.push('/upcoming');
+                    }}
+                />
+                <SidebarItem
+                    icon={MessageSquare}
+                    label="AI Chat"
+                    active={pathname === '/ai-chat'}
+                    onClick={() => {
+                        setDashboardView('ai-chat'); // Assuming 'ai-chat' is valid or ignored
+                        router.push('/ai-chat');
                     }}
                 />
             </div>

@@ -14,6 +14,74 @@ export const STOP_WORDS = new Set([
   'just', 'also', 'now', 'about', 'over', 'through', 'out', 'up', 'down'
 ]);
 
+// ============================================================================
+// SECTION TYPE DETECTION (Strategy 7)
+// ============================================================================
+
+export type SectionType = 'explanation' | 'glossary' | 'table' | 'diagram' | 'procedure' | 'formula' | 'warning' | 'example' | 'unknown';
+
+const SECTION_PATTERNS: Record<SectionType, RegExp[]> = {
+  explanation: [
+    /\b(?:explain|describ|illustrat|means?|refers?\s+to|because|therefore)\b/i,
+    /\bis\s+(?:a|an|the)\s+\w+\s+(?:that|which)\b/i
+  ],
+  glossary: [
+    /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*[-–:]\s+[A-Z]/m,
+    /\b(?:glossary|definitions?|terminology)\b/i
+  ],
+  table: [
+    /\b(?:table|chart)\s+\d+/i,
+    /\|\s*\w+\s*\|.*\|/,
+    /(?:\d+(?:\.\d+)?%?\s+){3,}/
+  ],
+  diagram: [
+    /\b(?:figure|fig\.?)\s+\d+/i,
+    /\b(?:diagram|illustration|schematic)\b/i
+  ],
+  procedure: [
+    /\b(?:step|procedure)\s+\d+/i,
+    /^\s*\d+\.\s+[A-Z][a-z]+/m,
+    /\b(?:first|then|next|finally|how\s+to)\b/i
+  ],
+  formula: [
+    /[=><≤≥±∑∏∫√]\s*[\d\w]/,
+    /\b(?:equation|formula|calculation)\b/i
+  ],
+  warning: [
+    /\b(?:warning|caution|danger|note)\s*:/i,
+    /\b(?:do\s+not|never|avoid|must\s+not)\b/i
+  ],
+  example: [
+    /\b(?:example|e\.g\.|for\s+instance|such\s+as)\b/i,
+    /\b(?:consider|suppose|sample)\b/i
+  ],
+  unknown: []
+};
+
+/**
+ * Detect the semantic section type of a text chunk
+ */
+export function detectSectionType(text: string): SectionType {
+  let bestType: SectionType = 'unknown';
+  let bestScore = 0;
+  
+  for (const [type, patterns] of Object.entries(SECTION_PATTERNS)) {
+    if (type === 'unknown') continue;
+    
+    let score = 0;
+    for (const pattern of patterns) {
+      if (pattern.test(text)) score++;
+    }
+    
+    if (score > bestScore) {
+      bestScore = score;
+      bestType = type as SectionType;
+    }
+  }
+  
+  return bestType;
+}
+
 /**
  * Tokenizes arbitrary text while preserving numerics and filtering stopwords.
  */

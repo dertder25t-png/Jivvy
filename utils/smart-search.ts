@@ -4,6 +4,7 @@ import { SearchCandidate, SearchAnswer } from './search/types';
 import { STOP_WORDS, tokenizeText } from './search/preprocessor';
 import { buildSparseVector, cosineSimilarity, SparseVector } from './search/semantic';
 import { analyzeQuestion, QuestionAnalysis } from './search/question-analyzer';
+import { getPreferredMode, type AIMode } from './local-llm';
 
 /**
  * Smart Search Client
@@ -15,7 +16,24 @@ import { analyzeQuestion, QuestionAnalysis } from './search/question-analyzer';
  * - Worker-based search coordination
  * - Negative logic handling (NOT/EXCEPT questions)
  * - Option scoring against retrieved context
+ * - Mode-aware context limits (Quick vs Thorough)
+ * - Multi-source context assembly for deep analysis
  */
+
+// ============================================================================
+// CONTEXT CONFIGURATION (Strategy 1: Multi-stage context assembly)
+// ============================================================================
+
+// Maximum context sizes (increased for thorough mode)
+const MAX_CONTEXT_QUICK = 1100;
+const MAX_CONTEXT_THOROUGH = 15000;  // Increased from 8000 to 15000
+
+// Per-segment character limits
+const SEGMENT_CHAR_LIMIT_QUICK = 220;
+const SEGMENT_CHAR_LIMIT_THOROUGH = 2000;  // Increased from 500 to 2000
+
+// Page expansion for context gathering
+const PAGE_EXPANSION_RANGE = 2;  // Grab 2-3 pages before/after matches
 
 // Types for the search system
 export interface QuizOption {
@@ -38,6 +56,142 @@ export interface SmartSearchResult {
     page?: number;
     pages?: number[];
     chunkIds?: string[];
+}
+
+export interface ExpandedContext {
+    primaryPages: number[];
+    expandedPages: number[];
+    pageTexts: Map<number, string>;
+    totalCharacters: number;
+    assembledContext: string;
+}
+
+// ============================================================================
+// CONTEXT EXPANSION FUNCTIONS (Strategy 1 & 6)
+// ============================================================================
+
+/**
+ * Expand context by grabbing adjacent pages around matches
+ * Strategy 6: Full page context expansion
+ */
+export async function expandContext(
+    candidates: SearchCandidate[],
+    totalPages: number,
+    expansionRange: number = PAGE_EXPANSION_RANGE
+): Promise<ExpandedContext> {
+    const primaryPages = [...new Set(candidates.map(c => c.page))].sort((a, b) => a - b);
+    const expandedPages = new Set<number>();
+    
+    // Add primary and adjacent pages
+    for (const page of primaryPages) {
+        for (let p = Math.max(1, page - expansionRange); p <= Math.min(totalPages, page + expansionRange); p++) {
+            expandedPages.add(p);
+        }
+    }
+    
+    // Limit to prevent excessive fetching
+    const maxExpanded = 10;
+    const sortedExpanded = [...expandedPages].sort((a, b) => a - b).slice(0, maxExpanded);
+    
+    // Fetch page texts
+    const pageTexts = new Map<number, string>();
+    for (const page of sortedExpanded) {
+        const text = await pdfWorker.getPageText(page);
+        if (text) {
+            pageTexts.set(page, text.slice(0, 4000)); // Limit per-page size
+        }
+    }
+    
+    // Assemble context with page markers
+    const primarySet = new Set(primaryPages);
+    const sections: string[] = [];
+    
+    for (const page of sortedExpanded) {
+        const text = pageTexts.get(page);
+        if (!text) continue;
+        const marker = primarySet.has(page) ? '★' : '○';
+        sections.push(`\n=== Page ${page} ${marker} ===\n${text}`);
+    }
+    
+    const assembledContext = sections.join('\n\n');
+    
+    return {
+        primaryPages,
+        expandedPages: sortedExpanded,
+        pageTexts,
+        totalCharacters: assembledContext.length,
+        assembledContext
+    };
+}
+
+/**
+ * Assemble multi-source context from candidates with full page expansion
+ * Strategy 1: Multi-stage context assembly
+ */
+export async function assembleMultiSourceContext(
+    candidates: SearchCandidate[],
+    totalPages: number,
+    maxChars: number = MAX_CONTEXT_THOROUGH
+): Promise<{
+    context: string;
+    pages: number[];
+    sourceCounts: { primary: number; expanded: number };
+}> {
+    const expanded = await expandContext(candidates, totalPages, PAGE_EXPANSION_RANGE);
+    
+    // If expanded context fits, use it
+    if (expanded.totalCharacters <= maxChars) {
+        return {
+            context: expanded.assembledContext,
+            pages: expanded.expandedPages,
+            sourceCounts: {
+                primary: expanded.primaryPages.length,
+                expanded: expanded.expandedPages.length
+            }
+        };
+    }
+    
+    // Need to be selective - prioritize primary pages
+    const sections: string[] = [];
+    const includedPages: number[] = [];
+    let currentLength = 0;
+    const primarySet = new Set(expanded.primaryPages);
+    
+    // First add primary pages
+    for (const page of expanded.primaryPages) {
+        const text = expanded.pageTexts.get(page);
+        if (!text) continue;
+        
+        const section = `\n=== Page ${page} ★ ===\n${text}`;
+        if (currentLength + section.length <= maxChars) {
+            sections.push(section);
+            includedPages.push(page);
+            currentLength += section.length;
+        }
+    }
+    
+    // Then add adjacent pages if space allows
+    for (const page of expanded.expandedPages) {
+        if (primarySet.has(page)) continue; // Already added
+        const text = expanded.pageTexts.get(page);
+        if (!text) continue;
+        
+        const section = `\n=== Page ${page} ○ ===\n${text}`;
+        if (currentLength + section.length <= maxChars) {
+            sections.push(section);
+            includedPages.push(page);
+            currentLength += section.length;
+        }
+    }
+    
+    return {
+        context: sections.join('\n\n'),
+        pages: includedPages.sort((a, b) => a - b),
+        sourceCounts: {
+            primary: expanded.primaryPages.length,
+            expanded: includedPages.length
+        }
+    };
 }
 
 /**
@@ -65,48 +219,101 @@ export class SmartSearchEngine {
      * Handles formats: A), A., (A), [A], a), 1), etc.
      */
     static detectQuizQuestion(text: string): DetectedQuiz {
-        const cleanText = text.replace(/\r\n/g, '\n').trim();
+        try {
+            const cleanText = text.replace(/\r\n?/g, '\n').trim();
 
-        // Detect negative logic keywords
-        const isNegative = /\b(NOT|EXCEPT|FALSE|INCORRECT|NEVER)\b/i.test(cleanText);
+            // Detect negative logic keywords
+            const isNegative = /\b(NOT|EXCEPT|FALSE|INCORRECT|NEVER)\b/i.test(cleanText);
 
-        // Option pattern: A), A., (A), [A], a), 1), etc.
-        // Improved regex to handle inline options and messy formatting
-        // Looks for a single letter/number followed by a separator, then text, 
-        // but ensures it's not just a random letter in a sentence.
-        const optionRegex = /(?:^|\n|\s+)(?:\(?|\[?)([A-Da-d1-4])(?:\)|\.|]|-)\s+(.*?)(?=(?:(?:\n|\s+)(?:\(?|\[?)[A-Da-d1-4](?:\)|\.|]|-)\s+)|$)/gs;
+            // Option pattern: A), A., (A), [A], a), 1), etc.
+            // Also supports ':', '-', '—' separators and inline options.
+            // Expanded to A-H and 1-8 to handle more choices.
+            // Boundary ensures we don't match random letters inside a word.
+            const optionRegex = /(?:^|\n|\s)(?:\(?|\[)?([A-Ha-h1-8])(?:\)|\.|]|\-|:|—)\s+(.*?)(?=(?:(?:\n|\s)(?:\(?|\[)?[A-Ha-h1-8](?:\)|\.|]|\-|:|—)\s+)|$)/gs;
 
-        const matches: { letter: string; text: string }[] = [];
-        let match;
-        while ((match = optionRegex.exec(cleanText)) !== null) {
-            const letter = match[1].toUpperCase();
-            const text = match[2].trim();
-            
-            // Normalize numeric to letter
-            const normalizedLetter = letter.match(/[1-4]/)
-                ? String.fromCharCode(64 + parseInt(letter)) // 1->A, 2->B
-                : letter;
-
-            if (text.length > 0) {
-                matches.push({ letter: normalizedLetter, text });
+            const rawMatches = Array.from(cleanText.matchAll(optionRegex));
+            if (rawMatches.length < 2) {
+                return { isQuiz: false, question: '', options: [], isNegative: false };
             }
-        }
 
-        if (matches.length < 2) {
+            const options: { letter: string; text: string }[] = [];
+            const seenLetters = new Set<string>();
+
+            for (const m of rawMatches) {
+                const rawLetter = (m[1] || '').toUpperCase();
+                const optionText = (m[2] || '').trim();
+
+                const normalizedLetter = /[1-8]/.test(rawLetter)
+                    ? String.fromCharCode(64 + parseInt(rawLetter, 10))
+                    : rawLetter;
+
+                if (!normalizedLetter || seenLetters.has(normalizedLetter)) continue;
+                if (optionText.length === 0) continue;
+
+                // Heuristic: ignore extremely short "options" that are likely parsing noise.
+                if (optionText.length < 2) continue;
+
+                seenLetters.add(normalizedLetter);
+                options.push({ letter: normalizedLetter, text: optionText });
+            }
+
+            if (options.length < 2) {
+                // Fallback parser for messy inputs that don't include explicit separators
+                // (e.g., "A option" or "A)option" inconsistently).
+                const fallbackRegex = /(?:^|\n)\s*(?:\(?|\[)?([A-Ha-h1-8])(?:\)|\.|]|:|\-|–|—|\s)\s+(.+?)(?=(?:\n\s*(?:\(?|\[)?[A-Ha-h1-8](?:\)|\.|]|:|\-|–|—|\s)\s+)|$)/gs;
+                const fallbackMatches = Array.from(cleanText.matchAll(fallbackRegex));
+                if (fallbackMatches.length < 2) {
+                    return { isQuiz: false, question: '', options: [], isNegative: false };
+                }
+
+                const fallbackOptions: { letter: string; text: string }[] = [];
+                const fallbackSeen = new Set<string>();
+                for (const m of fallbackMatches) {
+                    const rawLetter = (m[1] || '').toUpperCase();
+                    const optionText = (m[2] || '').trim();
+
+                    const normalizedLetter = /[1-8]/.test(rawLetter)
+                        ? String.fromCharCode(64 + parseInt(rawLetter, 10))
+                        : rawLetter;
+
+                    if (!normalizedLetter || fallbackSeen.has(normalizedLetter)) continue;
+                    if (optionText.length < 2) continue;
+
+                    fallbackSeen.add(normalizedLetter);
+                    fallbackOptions.push({ letter: normalizedLetter, text: optionText });
+                }
+
+                if (fallbackOptions.length < 2) {
+                    return { isQuiz: false, question: '', options: [], isNegative: false };
+                }
+
+                const firstMatchIndex = fallbackMatches[0]?.index ?? -1;
+                const extractedQuestion = firstMatchIndex > 0
+                    ? cleanText.slice(0, firstMatchIndex).trim()
+                    : '';
+
+                return {
+                    isQuiz: true,
+                    question: extractedQuestion.length > 10 ? extractedQuestion : cleanText,
+                    options: fallbackOptions,
+                    isNegative
+                };
+            }
+
+            const firstMatchIndex = rawMatches[0]?.index ?? -1;
+            const extractedQuestion = firstMatchIndex > 0
+                ? cleanText.slice(0, firstMatchIndex).trim()
+                : '';
+
+            return {
+                isQuiz: true,
+                question: extractedQuestion.length > 10 ? extractedQuestion : cleanText,
+                options,
+                isNegative
+            };
+        } catch {
             return { isQuiz: false, question: '', options: [], isNegative: false };
         }
-
-        // Extract question (everything before first option match)
-        // We need the index of the first match
-        const firstMatchIndex = cleanText.indexOf(matches[0].text) - 4; // Approximate start
-        const question = cleanText.substring(0, Math.max(0, firstMatchIndex)).trim();
-
-        return {
-            isQuiz: true,
-            question: question.length > 10 ? question : cleanText, // Fallback if extraction fails
-            options: matches,
-            isNegative
-        };
     }
 
     // ==========================================
@@ -223,8 +430,12 @@ export class SmartSearchEngine {
         };
     }
 
-    private selectTopChunks(evaluatedCandidates: EvaluatedCandidate[], analysis: QuestionAnalysis, limit: number = 4): EvaluatedCandidate[] {
+    private selectTopChunks(evaluatedCandidates: EvaluatedCandidate[], analysis: QuestionAnalysis, limit?: number): EvaluatedCandidate[] {
         if (evaluatedCandidates.length === 0) return [];
+
+        // Mode-aware chunk limit
+        const mode = getPreferredMode();
+        const effectiveLimit = limit ?? (mode === 'thorough' ? 8 : 4);
 
         const normalizedTerms = analysis.keyTerms.map(t => t.toLowerCase());
         const sorted = [...evaluatedCandidates].sort((a, b) => b.combined - a.combined);
@@ -233,7 +444,7 @@ export class SmartSearchEngine {
         const usedIds = new Set<string>();
 
         for (const candidate of sorted) {
-            if (selected.length >= limit) break;
+            if (selected.length >= effectiveLimit) break;
             if (usedIds.has(candidate.candidate.chunkId)) continue;
 
             const chunkTokens = new Set(tokenizeText(candidate.candidate.text));
@@ -258,7 +469,7 @@ export class SmartSearchEngine {
 
         // Backfill remaining slots with highest scoring unused chunks
         for (const candidate of sorted) {
-            if (selected.length >= Math.min(limit, sorted.length)) break;
+            if (selected.length >= Math.min(effectiveLimit, sorted.length)) break;
             if (usedIds.has(candidate.candidate.chunkId)) continue;
             selected.push(candidate);
             usedIds.add(candidate.candidate.chunkId);
@@ -349,7 +560,11 @@ export class SmartSearchEngine {
         const chunkIds: string[] = [];
         const segments: string[] = [];
         let leadEvidence = chosenChunks[0]?.excerpt ?? '';
-        const SEGMENT_CHAR_LIMIT = 220;
+        
+        // Mode-aware limits (Strategy 1: expanded context for thorough mode)
+        const mode = getPreferredMode();
+        const SEGMENT_CHAR_LIMIT = mode === 'thorough' ? SEGMENT_CHAR_LIMIT_THOROUGH : SEGMENT_CHAR_LIMIT_QUICK;
+        const MAX_CONTEXT = mode === 'thorough' ? MAX_CONTEXT_THOROUGH : MAX_CONTEXT_QUICK;
 
         for (const candidate of chosenChunks) {
             pages.add(candidate.candidate.page);
@@ -365,10 +580,9 @@ export class SmartSearchEngine {
         let body = segments.join('\n\n---\n\n');
         let context = `${header}\n\nEvidence:\n${body}`;
 
-        // Trim down context if it exceeds the LLM limit
-        const MAX_CONTEXT = 1100;
+        // Trim down context if it exceeds the model's limit
         if (context.length > MAX_CONTEXT) {
-            const trimmedSegments = segments.map(segment => this.trimText(segment, 160));
+            const trimmedSegments = segments.map(segment => this.trimText(segment, mode === 'thorough' ? 400 : 160));
             body = trimmedSegments.join('\n\n---\n\n');
             context = `${header}\n\nEvidence:\n${body}`;
 
@@ -381,7 +595,7 @@ export class SmartSearchEngine {
         }
 
         return {
-            context: this.trimText(context, 1150),
+            context: this.trimText(context, MAX_CONTEXT + 50),
             pages: Array.from(pages).sort((a, b) => a - b),
             chunkIds,
             leadEvidence
