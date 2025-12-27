@@ -11,7 +11,6 @@ import {
     CalendarDays,
     Trash2,
     Settings,
-    MoreHorizontal,
     ChevronDown,
     ChevronRight,
     Plus,
@@ -19,6 +18,15 @@ import {
     MessageSquare
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface SidebarItemProps {
+    icon?: React.ElementType;
+    label: string;
+    count?: number | string;
+    active?: boolean;
+    onClick?: () => void;
+    rightElement?: React.ReactNode;
+}
 
 // Sidebar Item Component
 const SidebarItem = ({
@@ -28,7 +36,7 @@ const SidebarItem = ({
     active,
     onClick,
     rightElement
-}: any) => (
+}: SidebarItemProps) => (
     <div
         role="button"
         onClick={onClick}
@@ -78,10 +86,8 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
         if (confirm("Delete this project?")) {
             await db.projects.delete(id);
             // also delete blocks
-            const blocks = await db.blocks.where('parent_id').equals(id).toArray(); // This might need recursion if we store blocks under parent blocks, but usually top level blocks have parent_id=project_id? 
-            // Wait, schema says parent_id. If root blocks have parent_id = project_id, then we delete them.
-            // If we have strict block nesting where block -> parent_id = block, we need to cascade.
-            // For now, let's just delete the project.
+            // const blocks = await db.blocks.where('parent_id').equals(id).toArray(); 
+            // TODO: Implement cascade delete
             router.push('/inbox');
         }
     }

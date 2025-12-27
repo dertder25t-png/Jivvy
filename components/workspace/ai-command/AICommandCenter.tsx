@@ -88,6 +88,28 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
         if (!pdfBuffer) return;
 
         // Init Worker
+        // pdfWorker.initIndex(pdfBuffer); // REMOVED: Double initialization fix. 
+        // The worker is likely initialized by the parent or another component.
+        // If we need to re-init on buffer change, we should check if it's already done.
+        // But for now, let's assume the parent handles it or we do it once.
+        
+        // Actually, AICommandCenter is often mounted when the PDF is loaded.
+        // If we comment this out, search might fail if it wasn't initialized elsewhere.
+        // Let's check if we can detect if it's already initialized.
+        // For now, let's keep it but add a guard or debounce?
+        // The user reported "Index built..." twice. This component might be mounting twice (React Strict Mode).
+        // We can use a ref to track initialization.
+        
+        // Better fix: Use a ref to prevent double init in Strict Mode
+        
+    }, [pdfBuffer]);
+    
+    const initRef = useRef(false);
+    
+    useEffect(() => {
+        if (!pdfBuffer || initRef.current) return;
+        
+        initRef.current = true;
         pdfWorker.initIndex(pdfBuffer);
 
         // Listen for progress
@@ -97,6 +119,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                 setTimeout(() => setWorkerStatus(prev => ({ ...prev, message: 'Ready' })), 2000);
             }
         };
+
 
         const onInfo = (data: { message: string }) => {
             setWorkerStatus(prev => ({ ...prev, message: data.message }));
@@ -335,6 +358,20 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                 const filterPages = getPageFilter();
                 const quiz = SmartSearchEngine.detectQuizQuestion(userMessage.content);
 
+                // Context Awareness: If follow-up, include previous context
+                let searchContent = userMessage.content;
+                if (messages.length > 0 && !quiz.isQuiz) {
+                    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+                    if (lastUserMsg) {
+                        // If current query is short (< 50 chars) or has pronouns, append context
+                        const isShort = searchContent.length < 50;
+                        const hasPronouns = /\b(it|that|this|he|she|they|them)\b/i.test(searchContent);
+                        if (isShort || hasPronouns) {
+                             searchContent = `${searchContent} (Context: ${lastUserMsg.content})`;
+                        }
+                    }
+                }
+
                 if (aiMode === 'thorough') {
                     // THOROUGH MODE: Multi-stage search
                     const thinkingSteps: ThinkingStep[] = [];
@@ -343,7 +380,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                     try {
                         result = await withTimeout(
                             runMultiStageSearch(
-                                quiz.isQuiz ? quiz.question : userMessage.content,
+                                quiz.isQuiz ? quiz.question : searchContent,
                                 quiz.isQuiz ? quiz.options.map(o => o.text) : [],
                                 filterPages,
                                 (step) => {
@@ -373,7 +410,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                             // Fallback: return a best-effort quick result within the time budget.
                             const fallback = quiz.isQuiz
                                 ? await smartSearch.search(quiz.question, quiz.options.map(o => o.text), filterPages, true)
-                                : await smartSearch.search(userMessage.content, [], filterPages, true);
+                                : await smartSearch.search(searchContent, [], filterPages, true);
 
                             const fallbackAnswer = fallback.answer || fallback.explanation || '';
                             const fallbackSteps = [
@@ -443,7 +480,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                     if (quiz.isQuiz) {
                         result = await smartSearch.search(quiz.question, quiz.options.map(o => o.text), filterPages);
                     } else {
-                        result = await smartSearch.search(userMessage.content, [], filterPages);
+                        result = await smartSearch.search(searchContent, [], filterPages);
                     }
 
                     let answerContent = result.answer;
@@ -506,7 +543,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
             setModelLoading(false);
             setStatus('');
         }
-    }, [input, pdfBuffer, isProcessing, toolMode, scoutPages, getPageFilter, updateThinkingSteps]);
+    }, [input, pdfBuffer, isProcessing, toolMode, scoutPages, getPageFilter, updateThinkingSteps, messages]);
 
     return (
         <div className="flex flex-col h-full bg-surface rounded-2xl border border-border overflow-hidden">

@@ -46,3 +46,20 @@ export function cosineSimilarity(a: SparseVector, b: SparseVector): number {
 
   return dot / (a.norm * b.norm);
 }
+
+/**
+ * Calculates cosine similarity between two dense vectors (arrays of numbers).
+ */
+export function cosineSimilarityDense(a: number[], b: number[]): number {
+    if (a.length !== b.length) return 0;
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+    const div = Math.sqrt(normA) * Math.sqrt(normB);
+    return div === 0 ? 0 : dot / div;
+}

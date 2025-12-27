@@ -1,5 +1,6 @@
 import { IndexStructure, SearchCandidate, ChunkData, Posting } from './types';
 import { tokenizeQuery } from './preprocessor';
+import { cosineSimilarityDense } from './semantic';
 
 /**
  * Fast candidate retrieval using a BM25-style scorer over chunked content.
@@ -83,4 +84,68 @@ function getExcerpt(text: string, tokens: string[]): string {
     const start = Math.max(0, bestIndex - 60);
     const end = Math.min(text.length, bestIndex + 140);
     return (start > 0 ? "..." : "") + text.substring(start, end).replace(/\s+/g, ' ') + "...";
+}
+
+/**
+ * Hybrid retrieval combining BM25 and Vector Search using Reciprocal Rank Fusion (RRF).
+ */
+export function findHybridCandidates(
+    index: IndexStructure, 
+    query: string, 
+    queryEmbedding: number[] | null, 
+    limit: number = 20
+): SearchCandidate[] {
+    // 1. Get BM25 candidates
+    const bm25Candidates = findCandidates(index, query, limit * 2);
+    
+    // 2. Get Vector candidates (if embedding available)
+    let vectorCandidates: SearchCandidate[] = [];
+    if (queryEmbedding && index.chunks.some(c => c.embedding)) {
+        const scores = index.chunks
+            .filter(c => c.embedding)
+            .map(c => ({
+                chunk: c,
+                score: cosineSimilarityDense(queryEmbedding, c.embedding!)
+            }))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit * 2);
+            
+        vectorCandidates = scores.map(s => ({
+            page: s.chunk.pageNumber,
+            chunkId: s.chunk.id,
+            chunkIndex: s.chunk.chunkIndex,
+            score: s.score,
+            matchType: 'fuzzy',
+            excerpt: s.chunk.text.substring(0, 200),
+            text: s.chunk.text
+        }));
+    }
+    
+    // 3. RRF Fusion
+    return performRRF([bm25Candidates, vectorCandidates], limit);
+}
+
+function performRRF(rankings: SearchCandidate[][], limit: number): SearchCandidate[] {
+    const k = 60;
+    const scores = new Map<string, number>();
+    const lookup = new Map<string, SearchCandidate>();
+    
+    for (const ranking of rankings) {
+        ranking.forEach((candidate, rank) => {
+            const current = scores.get(candidate.chunkId) || 0;
+            scores.set(candidate.chunkId, current + (1 / (k + rank + 1)));
+            
+            if (!lookup.has(candidate.chunkId)) {
+                lookup.set(candidate.chunkId, candidate);
+            }
+        });
+    }
+    
+    return Array.from(scores.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([id, score]) => {
+            const c = lookup.get(id)!;
+            return { ...c, score };
+        });
 }

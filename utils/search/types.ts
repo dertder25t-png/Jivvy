@@ -17,6 +17,22 @@ export interface ChunkData {
    * Token length used for BM25 style normalization.
    */
   length: number;
+  /**
+   * Extracted keywords for this chunk (Tier 1).
+   */
+  keywords?: string[];
+  /**
+   * The section or header this chunk belongs to (Tier 1).
+   */
+  sectionTitle?: string;
+  /**
+   * The semantic type of the content (Tier 1).
+   */
+  type?: 'text' | 'table' | 'list' | 'image';
+  /**
+   * Dense vector embedding for semantic search (Tier 2).
+   */
+  embedding?: number[];
 }
 
 export interface Posting {

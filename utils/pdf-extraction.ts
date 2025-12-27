@@ -96,6 +96,24 @@ class PDFWorkerClient {
       });
   }
 
+  async rerank(query: string, texts: string[]): Promise<{ index: number, score: number }[]> {
+      return new Promise((resolve) => {
+          const id = Math.random().toString(36).substring(7);
+          const handler = (data: { id: string; payload: any[] }) => {
+              if (data.id === id) {
+                  this.off('RERANK_RESULT', handler as any);
+                  resolve(data.payload);
+              }
+          };
+          this.on('RERANK_RESULT', handler as any);
+          this.worker?.postMessage({
+              type: 'RERANK',
+              id,
+              payload: { query, texts }
+          });
+      });
+  }
+
   // Legacy API (Wraps new API or Legacy Worker calls)
   init(pdfBuffer: ArrayBuffer, subject?: string) {
     this.worker?.postMessage({

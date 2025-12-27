@@ -12,10 +12,17 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
+import { pipeline, env } from '@xenova/transformers';
 import { chunkPageText } from '../utils/search/preprocessor';
 import { buildIndex } from '../utils/search/indexer';
-import { findCandidates } from '../utils/search/retriever';
+import { findCandidates, findHybridCandidates } from '../utils/search/retriever';
 import { IndexStructure, ChunkData } from '../utils/search/types';
+import { parseLayout, LayoutBlock } from '../utils/search/layout-parser';
+import { extractKeywords } from '../utils/search/keyword-extractor';
+
+// Configure Transformers.js
+env.allowLocalModels = false;
+env.useBrowserCache = true;
 
 // Define Worker Scope
 const ctx: Worker = self as any;
@@ -26,6 +33,20 @@ let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
 let totalPages = 0;
 const pageTextCache: Map<number, string> = new Map();
 let topicMap: TopicMap | null = null;
+let extractor: any = null;
+let reranker: any = null;
+
+// Lazy load extractor
+async function getExtractor() {
+    if (!extractor) {
+        console.log('[MinerWorker] Loading embedding model...');
+        extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+            quantized: true,
+        });
+        console.log('[MinerWorker] Embedding model loaded');
+    }
+    return extractor;
+}
 
 // Topic Map Types (Strategy 3: Topic Mapping)
 interface TopicEntry {
@@ -48,7 +69,20 @@ interface TopicMap {
 }
 
 // Configure PDF.js Worker
+// Use a relative path that works in both dev and prod (copied to public/)
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+// Lazy load reranker
+async function getReranker() {
+    if (!reranker) {
+        console.log('[MinerWorker] Loading reranker model...');
+        reranker = await pipeline('text-classification', 'Xenova/bge-reranker-base', {
+            quantized: true,
+        });
+        console.log('[MinerWorker] Reranker model loaded');
+    }
+    return reranker;
+}
 
 // -- Main Message Handler --
 ctx.onmessage = async (event: MessageEvent) => {
@@ -73,8 +107,29 @@ ctx.onmessage = async (event: MessageEvent) => {
       case 'SEARCH':
         if (!searchIndex) throw new Error("Index not ready");
         const filterSet = payload.filterPages ? new Set(payload.filterPages as number[]) : undefined;
-        const candidates = findCandidates(searchIndex, payload.query, 12, filterSet); // Get top 12 chunks
+        
+        let queryEmbedding: number[] | null = null;
+        try {
+            const ext = await getExtractor();
+            const out = await ext(payload.query, { pooling: 'mean', normalize: true });
+            queryEmbedding = Array.from(out.data);
+        } catch (e) {
+            console.warn("Embedding failed", e);
+        }
+
+        const candidates = findHybridCandidates(searchIndex, payload.query, queryEmbedding, 20);
         ctx.postMessage({ type: 'SEARCH_RESULT', id, payload: candidates });
+        break;
+
+      case 'RERANK':
+        const { query, texts } = payload;
+        const ranker = await getReranker();
+        const scores = [];
+        for (let i = 0; i < texts.length; i++) {
+            const out = await ranker(query, { text_pair: texts[i] });
+            scores.push({ index: i, score: out[0].score });
+        }
+        ctx.postMessage({ type: 'RERANK_RESULT', id, payload: scores });
         break;
 
       case 'GET_TOPIC_MAP':
@@ -134,18 +189,49 @@ async function handleInitIndex(pdfData: ArrayBuffer) {
   pageTextCache.clear();
 
     // Extract text from all pages
-    // Note: For very large PDFs, we might want to chunk this or report progress
     for (let i = 1; i <= totalPages; i++) {
         const page = await pdfDoc.getPage(i);
         const textContent = await page.getTextContent();
-        const text = textContent.items.map((item: any) => item.str).join(' ');
-    pageTextCache.set(i, text);
+        
+        // Tier 1: Layout Analysis
+        const blocks = parseLayout(textContent.items as any[]);
+        
+        // Reconstruct page text with structure
+        let pageText = "";
+        let currentSection = "Introduction"; // Default
+        
+        blocks.forEach(block => {
+            if (block.type === 'heading') {
+                currentSection = block.text;
+                pageText += `\n# ${block.text}\n\n`;
+            } else {
+                pageText += `${block.text}\n\n`;
+            }
+        });
+        
+        pageTextCache.set(i, pageText);
 
-    const pageChunks = chunkPageText(text, i, {
-      targetTokens: 200,
-      sentenceOverlap: 1
-    });
-    chunks.push(...pageChunks);
+        // Create chunks
+        const pageChunks = chunkPageText(pageText, i, {
+            targetTokens: 200,
+            sentenceOverlap: 1
+        });
+        
+        // Tier 1: Enhance chunks with metadata
+        for (const chunk of pageChunks) {
+            chunk.keywords = extractKeywords(chunk.text);
+            // Simple heuristic: assign current section (might be inaccurate if multiple sections in page)
+            chunk.sectionTitle = currentSection; 
+            
+            // Detect type
+            if (chunk.text.includes('|') && chunk.text.match(/[-:]{3,}/)) {
+                chunk.type = 'table';
+            } else {
+                chunk.type = 'text';
+            }
+        }
+        
+        chunks.push(...pageChunks);
         
         // Report progress every 10 pages
         if (i % 10 === 0) {
@@ -155,6 +241,32 @@ async function handleInitIndex(pdfData: ArrayBuffer) {
 
   searchIndex = buildIndex(chunks);
   console.log(`[MinerWorker] Index built for ${totalPages} pages across ${chunks.length} chunks.`);
+  
+  // Tier 2: Trigger background vectorization
+  // We don't await this so the UI becomes responsive immediately
+  generateEmbeddings(chunks).then(() => {
+      console.log('[MinerWorker] Background vectorization complete');
+  });
+}
+
+async function generateEmbeddings(chunks: ChunkData[]) {
+    try {
+        const extractor = await getExtractor();
+        let count = 0;
+        const total = chunks.length;
+        
+        for (const chunk of chunks) {
+            if (chunk.embedding) continue;
+            
+            // Generate embedding
+            const output = await extractor(chunk.text, { pooling: 'mean', normalize: true });
+            chunk.embedding = Array.from(output.data);
+            
+            count++;
+        }
+    } catch (e) {
+        console.error("[MinerWorker] Embedding generation failed", e);
+    }
 }
 
 // ==========================================

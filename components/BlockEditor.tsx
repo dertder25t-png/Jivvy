@@ -12,6 +12,33 @@ interface BlockEditorProps {
 export function BlockEditor({ projectId }: BlockEditorProps) {
     const { blocks, loadBlocks, isLoading, error, addBlock, activePdfUrl, setContextPanelOpen, setPdfUrl } = useProjectStore();
 
+    const [slashMenuOpen, setSlashMenuOpen] = React.useState(false);
+    const [slashMenuPosition, setSlashMenuPosition] = React.useState({ top: 0, left: 0 });
+    const editorRef = React.useRef<HTMLDivElement>(null);
+    const workerRef = React.useRef<Worker | null>(null);
+
+    // Initialize Worker
+    useEffect(() => {
+        workerRef.current = new Worker(new URL('@/workers/miner.worker.ts', import.meta.url));
+        workerRef.current.onmessage = (e) => {
+            const { status, result, error } = e.data;
+            if (status === 'success') {
+                // Add AI response as new block
+                addBlock({
+                    id: crypto.randomUUID(),
+                    parent_id: projectId,
+                    content: result,
+                    type: 'text', // Markdown
+                    metadata: { author: 'AI', created_at: Date.now() },
+                    order: blocks.length
+                });
+            } else {
+                console.error("AI Worker Error:", error);
+            }
+        };
+        return () => workerRef.current?.terminate();
+    }, [blocks.length, projectId, addBlock]);
+
     useEffect(() => {
         if (projectId) {
             loadBlocks(projectId);
@@ -60,32 +87,7 @@ export function BlockEditor({ projectId }: BlockEditorProps) {
         );
     }
 
-    const [slashMenuOpen, setSlashMenuOpen] = React.useState(false);
-    const [slashMenuPosition, setSlashMenuPosition] = React.useState({ top: 0, left: 0 });
-    const editorRef = React.useRef<HTMLDivElement>(null);
-    const workerRef = React.useRef<Worker | null>(null);
 
-    // Initialize Worker
-    useEffect(() => {
-        workerRef.current = new Worker(new URL('@/workers/miner.worker.ts', import.meta.url));
-        workerRef.current.onmessage = (e) => {
-            const { status, result, error } = e.data;
-            if (status === 'success') {
-                // Add AI response as new block
-                addBlock({
-                    id: crypto.randomUUID(),
-                    parent_id: projectId,
-                    content: result,
-                    type: 'text', // Markdown
-                    metadata: { author: 'AI', created_at: Date.now() },
-                    order: blocks.length
-                });
-            } else {
-                console.error("AI Worker Error:", error);
-            }
-        };
-        return () => workerRef.current?.terminate();
-    }, [blocks.length, projectId, addBlock]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === '/') {

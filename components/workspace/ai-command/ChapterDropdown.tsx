@@ -73,14 +73,38 @@ export function ChapterDropdown({ value, onChange, disabled }: ChapterDropdownPr
     const toggleChapter = (chapter: FlatChapter) => {
         const isSelected = value.some(c => c.title === chapter.title && c.startPage === chapter.page);
         
+        // Find index to identify descendants
+        const index = flatChapters.findIndex(c => c.title === chapter.title && c.page === chapter.page);
+        
+        const targetChapters: FlatChapter[] = [chapter];
+        
+        if (index !== -1) {
+            // Identify descendants (items immediately following with greater depth)
+            for (let i = index + 1; i < flatChapters.length; i++) {
+                if (flatChapters[i].depth <= chapter.depth) break;
+                targetChapters.push(flatChapters[i]);
+            }
+        }
+
+        // Use composite key for reliable matching (Title + Page)
+        const targetKeys = new Set(targetChapters.map(c => `${c.title}|${c.page}`));
+
         if (isSelected) {
-            onChange(value.filter(c => !(c.title === chapter.title && c.startPage === chapter.page)));
+            // Deselect parent and all descendants
+            onChange(value.filter(c => !targetKeys.has(`${c.title}|${c.startPage}`)));
         } else {
-            onChange([...value, {
-                title: chapter.title,
-                startPage: chapter.page,
-                endPage: chapter.endPage ?? null
-            }]);
+            // Select parent and all descendants
+            // Avoid duplicates
+            const currentKeys = new Set(value.map(c => `${c.title}|${c.startPage}`));
+            const newSelections = targetChapters
+                .filter(c => !currentKeys.has(`${c.title}|${c.page}`))
+                .map(c => ({
+                    title: c.title,
+                    startPage: c.page,
+                    endPage: c.endPage ?? null
+                }));
+            
+            onChange([...value, ...newSelections]);
         }
     };
 

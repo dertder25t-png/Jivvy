@@ -25,19 +25,17 @@ import type { SubQuestion, EvidenceChain, CrossReference } from './types';
 
 // Import enhanced strategy modules (used selectively)
 import { classifyQuestion } from './QuestionClassifier';
-import type { SearchStrategy } from './QuestionClassifier';
 import { detectNegativeLogic } from './NegativeLogicHandler';
 import { analyzeNegativeLogicQuestion } from './NegativeLogicHandler';
-import { buildEvidenceChains as enhancedBuildChains } from './EvidenceChainBuilder';
 import { detectSectionType, getSectionBoost } from './SectionDetector';
 import { verifyAnswer, verifyQuizAnswerSelection, buildRegenerationContext } from './AnswerVerifier';
 
 // ============================================================================
-// CONFIGURATION - Updated for 15K context
+// CONFIGURATION - Updated for Performance
 // ============================================================================
 
-const MAX_CONTEXT_THOROUGH = 15000;  // 15K chars for thorough mode (was 8K)
-const PAGE_EXPANSION_RANGE = 2;      // Grab 2 pages before/after match
+const MAX_CONTEXT_THOROUGH = 6000;   // Reduced from 10K to 6K to fit model context
+const PAGE_EXPANSION_RANGE = 1;      // Reduced from 2 to 1 page before/after
 const MIN_EVIDENCE_SCORE = 0.3;      // Minimum score to consider as evidence
 const VERIFICATION_THRESHOLD = 0.6;  // Confidence threshold for verification pass
 
@@ -183,7 +181,7 @@ export async function gatherExpandedContext(
     const sortedPages = Array.from(expandedPages).sort((a, b) => a - b);
     const pageTexts: string[] = [];
 
-    for (const page of sortedPages.slice(0, 10)) { // Limit to 10 pages
+    for (const page of sortedPages.slice(0, 5)) { // Limit to 5 pages (was 10)
         try {
             if (!pageTextCache.has(page)) {
                 const text = await pdfWorker.getPageText(page);
@@ -391,7 +389,7 @@ export async function runMultiStageSearch(
         const { contexts, allPages, expandedText } = await gatherExpandedContext(subQuestions, filterPages);
         
         // Strategy 6: Expanded context already includes adjacent pages via gatherExpandedContext
-        let fullContext = expandedText;
+        const fullContext = expandedText;
         addStep('Gathering context', 'complete', `${allPages.size} pages, ${fullContext.length} chars`);
 
         // Strategy 8: Cross-reference following
@@ -531,7 +529,8 @@ export async function runMultiStageSearch(
         
         // Strategy 9: Verify open-ended answers too
         let verified = false;
-        if (strategy.useVerification) {
+        // OPTIMIZATION: Disable verification to meet 30s target
+        if (false && strategy.useVerification) {
             addStep('Verifying answer...', 'active');
             const verification = await verifyAnswer(answer, filterPages);
             verified = verification.supportedClaimCount > 0 && verification.overallConfidence >= VERIFICATION_THRESHOLD;

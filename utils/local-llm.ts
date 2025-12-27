@@ -46,10 +46,10 @@ export const MODEL_CONFIGS: Record<AIMode, ModelConfig> = {
     thorough: {
         id: 'thorough',
         name: 'Think More',
-        hfPath: 'Xenova/TinyLlama-1.1B-Chat-v1.0',
+        hfPath: 'Xenova/Qwen1.5-0.5B-Chat',
         maxContext: 2048,
         maxNewTokens: 350,
-        estimatedSizeMB: 650
+        estimatedSizeMB: 500
     }
 };
 
@@ -96,6 +96,7 @@ export interface QuizQuestionResult {
 export function getPreferredMode(): AIMode {
     if (typeof window === 'undefined') return 'quick';
     const saved = localStorage.getItem(STORAGE_KEY_MODE);
+    // Default to 'quick' if not set
     return (saved === 'thorough' ? 'thorough' : 'quick') as AIMode;
 }
 

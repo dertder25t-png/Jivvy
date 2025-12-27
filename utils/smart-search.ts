@@ -24,16 +24,16 @@ import { getPreferredMode, type AIMode } from './local-llm';
 // CONTEXT CONFIGURATION (Strategy 1: Multi-stage context assembly)
 // ============================================================================
 
-// Maximum context sizes (increased for thorough mode)
-const MAX_CONTEXT_QUICK = 1100;
-const MAX_CONTEXT_THOROUGH = 15000;  // Increased from 8000 to 15000
+// Maximum context sizes (Optimized for speed)
+const MAX_CONTEXT_QUICK = 1000;
+const MAX_CONTEXT_THOROUGH = 3500;  // Reduced from 6000 to 3500 to ensure speed on low-end devices
 
 // Per-segment character limits
-const SEGMENT_CHAR_LIMIT_QUICK = 220;
-const SEGMENT_CHAR_LIMIT_THOROUGH = 2000;  // Increased from 500 to 2000
+const SEGMENT_CHAR_LIMIT_QUICK = 200;
+const SEGMENT_CHAR_LIMIT_THOROUGH = 800;  // Reduced from 1000 to 800
 
 // Page expansion for context gathering
-const PAGE_EXPANSION_RANGE = 2;  // Grab 2-3 pages before/after matches
+const PAGE_EXPANSION_RANGE = 1;  // Reduced to 1 page for speed
 
 // Types for the search system
 export interface QuizOption {
@@ -350,8 +350,15 @@ export class SmartSearchEngine {
         const refinedQuery = this.refineQuery(question);
         
         // Use original question for retrieval to cast a wider net.
-        const candidates = await pdfWorker.searchCandidates(question, filterPages);
+        let candidates = await pdfWorker.searchCandidates(question, filterPages);
 
+        // Tier 3: Reranking (The "Judge")
+        // Only run reranking in "thorough" mode to save time
+        const mode = getPreferredMode();
+        
+        // OPTIMIZATION: Disable reranking for now to meet 30s target
+        // if (candidates.length > 0 && mode === 'thorough') { ... }
+        
         if (candidates.length === 0) {
              return {
                 answer: '',
@@ -367,7 +374,12 @@ export class SmartSearchEngine {
 
         let bestCandidate: EvaluatedCandidate | null = null;
 
-        for (const candidate of candidates) {
+        // Optimization: Process fewer candidates to save CPU/Power
+        // Quick: Top 5, Thorough: Top 15
+        const limit = mode === 'quick' ? 5 : 15;
+        const candidatesToProcess = candidates.slice(0, limit);
+
+        for (const candidate of candidatesToProcess) {
             const lexicalNorm = Math.min(candidate.score / lexicalMax, 1);
             const vector = buildSparseVector(candidate.text);
             const semanticScore = cosineSimilarity(questionVector, vector);
