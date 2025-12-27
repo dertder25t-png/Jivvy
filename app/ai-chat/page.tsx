@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { AICommandCenter } from "@/components/workspace/AICommandCenter";
 import { Upload, FileText, X, Loader2, MessageSquare, Plus, Trash2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { pdfWorker } from "@/utils/pdf-extraction";
 import type { Message } from "@/components/workspace/ai-command/types";
 
 interface ChatSession {
@@ -25,6 +26,13 @@ export default function AIChatPage() {
     // Session Management
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+    // Initialize PDF Worker when buffer changes
+    useEffect(() => {
+        if (pdfBuffer) {
+            pdfWorker.initIndex(pdfBuffer);
+        }
+    }, [pdfBuffer]);
 
     // Load sessions from local storage on mount
     useEffect(() => {
@@ -154,51 +162,62 @@ export default function AIChatPage() {
 
     return (
         <AppShell>
-            <div className="h-full flex gap-6 max-w-7xl mx-auto w-full">
-                {/* Sidebar - Chat History */}
-                <div className="w-64 flex-shrink-0 flex flex-col gap-4 h-[calc(100vh-100px)]">
-                    <button
-                        onClick={createNewSession}
-                        className="flex items-center gap-2 w-full px-4 py-3 bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors shadow-sm font-medium text-sm"
-                    >
-                        <Plus size={18} />
-                        New Chat
-                    </button>
-
-                    <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-                        <div className="text-xs font-medium text-text-secondary uppercase tracking-wider px-2 mb-2">History</div>
-                        {sessions.map(session => (
-                            <div
-                                key={session.id}
-                                onClick={() => setCurrentSessionId(session.id)}
-                                className={cn(
-                                    "group flex items-center justify-between px-3 py-2.5 rounded-lg text-sm cursor-pointer transition-all border",
-                                    currentSessionId === session.id
-                                        ? "bg-surface border-primary/30 shadow-sm"
-                                        : "bg-transparent border-transparent hover:bg-surface-hover text-text-secondary hover:text-text-primary"
-                                )}
-                            >
-                                <div className="flex items-center gap-3 truncate">
-                                    <MessageSquare size={14} className={currentSessionId === session.id ? "text-primary" : "text-text-secondary"} />
-                                    <span className="truncate">{session.title}</span>
-                                </div>
-                                <button
-                                    onClick={(e) => deleteSession(e, session.id)}
-                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/10 hover:text-red-500 rounded transition-all"
-                                >
-                                    <Trash2 size={12} />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
+            <div className="h-full max-w-5xl mx-auto w-full p-4">
                 {/* Main Content */}
-                <div className="flex-1 flex flex-col h-[calc(100vh-100px)]">
+                <div className="flex flex-col h-full">
                     <div className="mb-6 flex items-center justify-between">
                         <div>
                             <h1 className="text-2xl font-bold text-text-primary">AI Chat Room</h1>
                             <p className="text-text-secondary text-sm">Chat with your PDF documents using local AI.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                             {/* History Dropdown */}
+                             <div className="relative group">
+                                <button className="flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-lg hover:bg-surface-hover transition-colors text-sm font-medium text-text-secondary">
+                                    <History size={16} />
+                                    History
+                                </button>
+                                <div className="absolute right-0 top-full mt-2 w-72 bg-surface border border-border rounded-xl shadow-xl overflow-hidden hidden group-hover:block z-50">
+                                    <div className="p-2 border-b border-border bg-surface-hover/30 text-xs font-medium text-text-secondary">
+                                        Recent Chats
+                                    </div>
+                                    <div className="max-h-80 overflow-y-auto p-1">
+                                        {sessions.map(session => (
+                                            <div
+                                                key={session.id}
+                                                onClick={() => setCurrentSessionId(session.id)}
+                                                className={cn(
+                                                    "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm cursor-pointer transition-all mb-0.5",
+                                                    currentSessionId === session.id
+                                                        ? "bg-primary/10 text-primary font-medium"
+                                                        : "hover:bg-surface-hover text-text-secondary hover:text-text-primary"
+                                                )}
+                                            >
+                                                <span className="truncate flex-1 mr-2">{session.title}</span>
+                                                <button
+                                                    onClick={(e) => deleteSession(e, session.id)}
+                                                    className="p-1.5 hover:bg-red-500/10 hover:text-red-500 rounded transition-all opacity-50 hover:opacity-100"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {sessions.length === 0 && (
+                                            <div className="p-4 text-center text-xs text-text-secondary">
+                                                No history yet
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                             </div>
+
+                             <button
+                                onClick={createNewSession}
+                                className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-sm font-medium text-sm"
+                            >
+                                <Plus size={16} />
+                                New Chat
+                            </button>
                         </div>
                     </div>
 

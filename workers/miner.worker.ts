@@ -23,6 +23,10 @@ import { extractKeywords } from '../utils/search/keyword-extractor';
 // Configure Transformers.js
 env.allowLocalModels = false;
 env.useBrowserCache = true;
+// Optimize for stability
+if (env.backends?.onnx?.wasm) {
+    env.backends.onnx.wasm.numThreads = 1;
+}
 
 // Define Worker Scope
 const ctx: Worker = self as any;
@@ -252,17 +256,40 @@ async function handleInitIndex(pdfData: ArrayBuffer) {
 async function generateEmbeddings(chunks: ChunkData[]) {
     try {
         const extractor = await getExtractor();
-        let count = 0;
         const total = chunks.length;
-        
-        for (const chunk of chunks) {
-            if (chunk.embedding) continue;
+        const batchSize = 4; // Small batch size to prevent blocking
+
+        for (let i = 0; i < total; i += batchSize) {
+            const batch = chunks.slice(i, i + batchSize);
+            const texts = batch.filter(c => !c.embedding).map(c => c.text);
             
-            // Generate embedding
-            const output = await extractor(chunk.text, { pooling: 'mean', normalize: true });
-            chunk.embedding = Array.from(output.data);
+            if (texts.length === 0) continue;
+
+            // Generate embeddings for batch
+            const output = await extractor(texts, { pooling: 'mean', normalize: true });
             
-            count++;
+            // Handle output
+            if (texts.length === 1) {
+                 // Find the chunk that corresponds to this text
+                 const chunk = batch.find(c => !c.embedding);
+                 if (chunk) chunk.embedding = Array.from(output.data);
+            } else {
+                 const embeddingSize = output.dims[1];
+                 let textIndex = 0;
+                 for (const chunk of batch) {
+                     if (!chunk.embedding) {
+                         const start = textIndex * embeddingSize;
+                         const end = start + embeddingSize;
+                         chunk.embedding = Array.from(output.data.slice(start, end));
+                         textIndex++;
+                     }
+                 }
+            }
+            
+            // Yield to event loop occasionally to allow other messages (like SEARCH) to be processed
+            if (i % 20 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
         }
     } catch (e) {
         console.error("[MinerWorker] Embedding generation failed", e);

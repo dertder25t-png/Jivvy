@@ -5,9 +5,10 @@ import {
     Send, Loader2, MessageSquare, BarChart3,
     Cpu, AlertCircle, Sparkles, Wrench, BookOpen
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { pdfWorker } from '@/utils/pdf-extraction';
 import { SmartSearchEngine, smartSearch } from '@/utils/smart-search';
-import { ModeToggle } from './ModeToggle';
+// ModeToggle removed
 import { ChapterDropdown } from './ChapterDropdown';
 import { ChatMessage } from './ChatMessage';
 import { runMultiStageSearch } from './MultiStageSearch';
@@ -34,6 +35,8 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
     const [workerStatus, setWorkerStatus] = useState({ message: '', percent: 0 });
     const [storageWarning, setStorageWarning] = useState<string | null>(null);
     const [modelLoading, setModelLoading] = useState(false);
+    const [totalPages, setTotalPages] = useState<number>(0);
+    const [focusRequired, setFocusRequired] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const onMessagesChangeRef = useRef<AICommandCenterProps['onMessagesChange']>(onMessagesChange);
 
@@ -83,34 +86,31 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
         }
     };
 
-    // Initialize Worker and Listeners
+    // Initialize Worker Listeners (Worker init is handled by parent)
     useEffect(() => {
         if (!pdfBuffer) return;
 
-        // Init Worker
-        // pdfWorker.initIndex(pdfBuffer); // REMOVED: Double initialization fix. 
-        // The worker is likely initialized by the parent or another component.
-        // If we need to re-init on buffer change, we should check if it's already done.
-        // But for now, let's assume the parent handles it or we do it once.
-        
-        // Actually, AICommandCenter is often mounted when the PDF is loaded.
-        // If we comment this out, search might fail if it wasn't initialized elsewhere.
-        // Let's check if we can detect if it's already initialized.
-        // For now, let's keep it but add a guard or debounce?
-        // The user reported "Index built..." twice. This component might be mounting twice (React Strict Mode).
-        // We can use a ref to track initialization.
-        
-        // Better fix: Use a ref to prevent double init in Strict Mode
-        
-    }, [pdfBuffer]);
-    
-    const initRef = useRef(false);
-    
-    useEffect(() => {
-        if (!pdfBuffer || initRef.current) return;
-        
-        initRef.current = true;
-        pdfWorker.initIndex(pdfBuffer);
+        // Get total pages from worker
+        const checkPages = async () => {
+            const outline = pdfWorker.getOutline();
+            // The outline may not be ready immediately, so we wait for the INDEX_READY event
+            const handler = (data: { message: string }) => {
+                if (data.message.includes('Index built for')) {
+                    const match = data.message.match(/(\d+) pages/);
+                    if (match) {
+                        const pages = parseInt(match[1], 10);
+                        setTotalPages(pages);
+                        setFocusRequired(pages > 75);
+                    }
+                }
+            };
+            pdfWorker.on('info', handler as any);
+            
+            return () => {
+                pdfWorker.off('info', handler as any);
+            };
+        };
+        checkPages();
 
         // Listen for progress
         const onProgress = (data: { message: string, percent: number }) => {
@@ -119,7 +119,6 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                 setTimeout(() => setWorkerStatus(prev => ({ ...prev, message: 'Ready' })), 2000);
             }
         };
-
 
         const onInfo = (data: { message: string }) => {
             setWorkerStatus(prev => ({ ...prev, message: data.message }));
@@ -141,6 +140,13 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                 setStorageWarning(result.warning);
             }
         });
+
+        // Cleanup on unmount
+        return () => {
+            import('@/utils/local-llm').then(({ unloadCurrentModel }) => {
+                unloadCurrentModel();
+            });
+        };
     }, []);
 
     // Auto-scroll to bottom
@@ -291,6 +297,17 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                 )
             );
         } catch (error) {
+        // Enforce focus selection for large PDFs
+        if (focusRequired && chapterSelection.length === 0) {
+            setMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: `⚠️ This PDF has ${totalPages} pages. Please select a chapter focus (above) to narrow the search scope. This will significantly improve search speed and accuracy.`,
+                timestamp: new Date(),
+            }]);
+            return;
+        }
+
             console.error('Escalation failed', error);
         } finally {
             setIsProcessing(false);
@@ -321,7 +338,8 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
         };
 
         const loadingMessageId = `assistant-${Date.now()}`;
-        const aiMode = getPreferredMode();
+        // Force 'thorough' mode (Single Chat Type)
+        const aiMode = 'thorough';
 
         const loadingMessage: Message = {
             id: loadingMessageId,
@@ -339,21 +357,6 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
         setIsProcessing(true);
 
         try {
-            // Ensure model is loaded (lazy load)
-            setModelLoading(true);
-            setStatus(`Loading ${aiMode === 'thorough' ? 'Think More' : 'Quick'} AI model...`);
-
-            let lastStatus = '';
-            const modelLoaded = await ensureModelLoaded((p) => {
-                setStatus(p.status);
-                lastStatus = p.status;
-            });
-            setModelLoading(false);
-
-            if (!modelLoaded) {
-                throw new Error(lastStatus || 'Failed to load AI model. Check your internet connection.');
-            }
-
             if (toolMode === 'chat') {
                 const filterPages = getPageFilter();
                 const quiz = SmartSearchEngine.detectQuizQuestion(userMessage.content);
@@ -372,144 +375,108 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                     }
                 }
 
-                if (aiMode === 'thorough') {
-                    // THOROUGH MODE: Multi-stage search
-                    const thinkingSteps: ThinkingStep[] = [];
+                // Use Multi-Stage Search (with Fast Solver optimization)
+                console.log('[AICommandCenter] Starting multi-stage search...');
+                const thinkingSteps: ThinkingStep[] = [];
 
-                    let result;
-                    try {
-                        result = await withTimeout(
-                            runMultiStageSearch(
-                                quiz.isQuiz ? quiz.question : searchContent,
-                                quiz.isQuiz ? quiz.options.map(o => o.text) : [],
-                                filterPages,
-                                (step) => {
-                                    // Update thinking steps in real-time
-                                    const existingIdx = thinkingSteps.findIndex(s => s.label === step.label);
-                                    if (existingIdx >= 0) {
-                                        thinkingSteps[existingIdx] = {
-                                            ...thinkingSteps[existingIdx],
-                                            status: step.status === 'active' ? 'active' : 'complete',
-                                            detail: step.detail
-                                        };
-                                    } else {
-                                        thinkingSteps.push({
-                                            id: String(thinkingSteps.length + 1),
-                                            label: step.label,
-                                            status: step.status === 'active' ? 'active' : 'complete',
-                                            detail: step.detail
-                                        });
+                let result;
+                try {
+                    result = await withTimeout(
+                        runMultiStageSearch(
+                            quiz.isQuiz ? quiz.question : searchContent,
+                            quiz.isQuiz ? quiz.options.map(o => o.text) : [],
+                            filterPages,
+                            (step) => {
+                                // Update thinking steps in real-time
+                                const existingIdx = thinkingSteps.findIndex(s => s.label === step.label);
+                                if (existingIdx >= 0) {
+                                    thinkingSteps[existingIdx] = {
+                                        ...thinkingSteps[existingIdx],
+                                        status: step.status === 'active' ? 'active' : 'complete',
+                                        detail: step.detail
+                                    };
+                                } else {
+                                    thinkingSteps.push({
+                                        id: String(thinkingSteps.length + 1),
+                                        label: step.label,
+                                        status: step.status === 'active' ? 'active' : 'complete',
+                                        detail: step.detail
+                                    });
+                                }
+                                updateThinkingSteps(loadingMessageId, [...thinkingSteps]);
+                            }
+                        ),
+                        TIME_BUDGET_MS
+                    );
+                } catch (err) {
+                    if (err instanceof TimeoutError) {
+                        console.log('[AICommandCenter] Timeout - using fallback search');
+                        const fallback = quiz.isQuiz
+                            ? await smartSearch.search(quiz.question, quiz.options.map(o => o.text), filterPages, true)
+                            : await smartSearch.search(searchContent, [], filterPages, true);
+
+                        const fallbackAnswer = fallback.answer || fallback.explanation || '';
+                        const fallbackSteps = [
+                            ...thinkingSteps,
+                            {
+                                id: String(thinkingSteps.length + 1),
+                                label: 'Time limit reached',
+                                status: 'complete' as const,
+                                detail: 'Returned best-effort answer within 20s'
+                            }
+                        ];
+
+                        const answerContent = quiz.isQuiz
+                            ? formatQuizAnswerContent(quiz, fallback.answer || '', fallback.explanation)
+                            : fallbackAnswer;
+
+                        setMessages(prev =>
+                            prev.map(m =>
+                                m.id === loadingMessageId
+                                    ? {
+                                        ...m,
+                                        content: answerContent,
+                                        sourcePages: fallback.pages ?? (fallback.page ? [fallback.page] : []),
+                                        isLoading: false,
+                                        thinkingSteps: fallbackSteps,
+                                        isLowConfidence: (fallback.confidence ?? 0) < 0.4
                                     }
-                                    updateThinkingSteps(loadingMessageId, [...thinkingSteps]);
-                                }
-                            ),
-                            TIME_BUDGET_MS
+                                    : m
+                            )
                         );
-                    } catch (err) {
-                        if (err instanceof TimeoutError) {
-                            // Fallback: return a best-effort quick result within the time budget.
-                            const fallback = quiz.isQuiz
-                                ? await smartSearch.search(quiz.question, quiz.options.map(o => o.text), filterPages, true)
-                                : await smartSearch.search(searchContent, [], filterPages, true);
-
-                            const fallbackAnswer = fallback.answer || fallback.explanation || '';
-                            const fallbackSteps = [
-                                ...thinkingSteps,
-                                {
-                                    id: String(thinkingSteps.length + 1),
-                                    label: 'Time limit reached',
-                                    status: 'complete' as const,
-                                    detail: 'Returned best-effort answer within 15s'
-                                }
-                            ];
-
-                            const answerContent = quiz.isQuiz
-                                ? formatQuizAnswerContent(quiz, fallback.answer || '', fallback.explanation)
-                                : fallbackAnswer;
-
-                            setMessages(prev =>
-                                prev.map(m =>
-                                    m.id === loadingMessageId
-                                        ? {
-                                            ...m,
-                                            content: answerContent,
-                                            sourcePages: fallback.pages ?? (fallback.page ? [fallback.page] : []),
-                                            isLoading: false,
-                                            thinkingSteps: fallbackSteps,
-                                            isLowConfidence: (fallback.confidence ?? 0) < 0.4
-                                        }
-                                        : m
-                                )
-                            );
-                            return;
-                        }
-                        throw err;
+                        return;
                     }
-
-                    let answerContent = result.answer;
-                    if (!answerContent) {
-                        answerContent = result.explanation;
-                    } else if (quiz.isQuiz) {
-                        answerContent = formatQuizAnswerContent(quiz, result.answer, result.explanation);
-                    }
-
-                    setMessages(prev =>
-                        prev.map(m =>
-                            m.id === loadingMessageId
-                                ? {
-                                    ...m,
-                                    content: answerContent,
-                                    sourcePages: result.pages,
-                                    isLoading: false,
-                                    thinkingSteps: result.thinkingSteps.map((s, i) => ({
-                                        id: String(i + 1),
-                                        label: s.label,
-                                        status: s.status,
-                                        detail: s.detail
-                                    })),
-                                    isLowConfidence: result.confidence < 0.4
-                                }
-                                : m
-                        )
-                    );
-                } else {
-                    // QUICK MODE: Standard search
-                    setStatus('Searching...');
-
-                    let result;
-                    if (quiz.isQuiz) {
-                        result = await smartSearch.search(quiz.question, quiz.options.map(o => o.text), filterPages);
-                    } else {
-                        result = await smartSearch.search(searchContent, [], filterPages);
-                    }
-
-                    let answerContent = result.answer;
-                    let isLowConfidence = false;
-
-                    if (!answerContent) {
-                        answerContent = result.explanation;
-                        if (result.confidence < 0.4) {
-                            isLowConfidence = true;
-                        }
-                    } else if (quiz.isQuiz) {
-                        answerContent = formatQuizAnswerContent(quiz, result.answer, result.explanation);
-                    }
-
-                    setMessages(prev =>
-                        prev.map(m =>
-                            m.id === loadingMessageId
-                                ? {
-                                    ...m,
-                                    content: answerContent,
-                                    sourcePages: result.pages ?? (result.page ? [result.page] : []),
-                                    isLoading: false,
-                                    isLowConfidence
-                                }
-                                : m
-                        )
-                    );
+                    throw err;
                 }
-            } else {
+
+                console.log('[AICommandCenter] Search complete, formatting response...');
+                let answerContent = result.answer;
+                if (!answerContent) {
+                    answerContent = result.explanation;
+                } else if (quiz.isQuiz) {
+                    answerContent = formatQuizAnswerContent(quiz, result.answer, result.explanation);
+                }
+
+                setMessages(prev =>
+                    prev.map(m =>
+                        m.id === loadingMessageId
+                            ? {
+                                ...m,
+                                content: answerContent,
+                                sourcePages: result.pages,
+                                isLoading: false,
+                                thinkingSteps: result.thinkingSteps.map((s, i) => ({
+                                    id: String(i + 1),
+                                    label: s.label,
+                                    status: s.status,
+                                    detail: s.detail
+                                })),
+                                isLowConfidence: result.confidence < 0.4
+                            }
+                            : m
+                    )
+                );
+            } else if (toolMode === 'analyze') {
                 // ANALYZE MODE
                 const { pages, context } = await scoutPages(userMessage.content);
 
@@ -543,7 +510,19 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
             setModelLoading(false);
             setStatus('');
         }
-    }, [input, pdfBuffer, isProcessing, toolMode, scoutPages, getPageFilter, updateThinkingSteps, messages]);
+    }, [
+        input, 
+        pdfBuffer, 
+        isProcessing, 
+        toolMode, 
+        scoutPages, 
+        getPageFilter, 
+        updateThinkingSteps, 
+        messages, 
+        focusRequired, 
+        chapterSelection.length, 
+        totalPages
+    ]);
 
     return (
         <div className="flex flex-col h-full bg-surface rounded-2xl border border-border overflow-hidden">
@@ -556,8 +535,15 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                         {toolMode === 'chat' ? 'Q&A Mode' : 'Analyze Mode'}
                     </span>
                 </div>
-                <div className="flex items-center gap-1">
-                    <Cpu size={14} className="text-text-secondary" />
+                <div className="flex items-center gap-3">
+                    <div className={cn(
+                        "text-xs whitespace-nowrap flex items-center gap-1",
+                        focusRequired ? "text-amber-500 font-medium" : "text-text-secondary"
+                    )}>
+                        <BookOpen size={12} />
+                        <span>Focus{focusRequired ? ':' : ''}</span>
+                        {focusRequired && <span className="text-[10px]">(Required for {totalPages}+ pages)</span>}
+                    </div>
                     <span className="text-xs text-text-secondary">Local LLM</span>
                 </div>
             </div>
@@ -565,12 +551,6 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
             {/* Mode Toggle & Chapter Selection */}
             {pdfBuffer && (
                 <div className="px-4 py-2 border-b border-border bg-surface space-y-2">
-                    {/* AI Mode Toggle */}
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-text-secondary whitespace-nowrap">AI Mode:</span>
-                        <ModeToggle disabled={isProcessing} />
-                    </div>
-
                     {/* Chapter/Subject Focus */}
                     <div className="flex items-center gap-2">
                         <span className="text-xs text-text-secondary whitespace-nowrap flex items-center gap-1">

@@ -18,6 +18,10 @@ import { pipeline, env } from '@xenova/transformers';
 // Configure for browser usage
 env.allowLocalModels = false;
 env.useBrowserCache = true;
+// Optimize for stability and prevent crashes
+if (env.backends?.onnx?.wasm) {
+    env.backends.onnx.wasm.numThreads = 1;
+}
 
 // ============================================================================
 // MODEL CONFIGURATION

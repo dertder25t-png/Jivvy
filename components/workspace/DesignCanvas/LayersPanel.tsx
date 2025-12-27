@@ -173,7 +173,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={(e) => toggleVisibility(layer, e)}
+                  onClick={(e: React.MouseEvent) => toggleVisibility(layer, e)}
                   title={layer.visible ? "Hide" : "Show"}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >
@@ -185,7 +185,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
                 </button>
 
                 <button
-                  onClick={(e) => toggleLock(layer, e)}
+                  onClick={(e: React.MouseEvent) => toggleLock(layer, e)}
                   title={layer.locked ? "Unlock" : "Lock"}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >
@@ -197,7 +197,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
                 </button>
 
                 <button
-                  onClick={(e) => moveLayerUp(layer, e)}
+                  onClick={(e: React.MouseEvent) => moveLayerUp(layer, e)}
                   title="Move Up"
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >
@@ -205,7 +205,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
                 </button>
 
                 <button
-                  onClick={(e) => moveLayerDown(layer, e)}
+                  onClick={(e: React.MouseEvent) => moveLayerDown(layer, e)}
                   title="Move Down"
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >
@@ -213,7 +213,7 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
                 </button>
 
                 <button
-                  onClick={(e) => deleteLayer(layer, e)}
+                  onClick={(e: React.MouseEvent) => deleteLayer(layer, e)}
                   title="Delete"
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-700 transition-colors h-6 px-2 flex items-center justify-center"
                 >

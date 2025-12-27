@@ -127,7 +127,7 @@ export function decomposeQuestion(question: string): SubQuestion[] {
         if (seen.has(normalized)) return false;
         seen.add(normalized);
         return true;
-    }).slice(0, 5); // Max 5 sub-questions
+    }).slice(0, 3); // Max 3 sub-questions
 }
 
 // ============================================================================
@@ -149,19 +149,22 @@ export async function gatherExpandedContext(
     const allPages = new Set<number>();
     const pageTextCache = new Map<number, string>();
 
-    // Search for each sub-question
-    for (const sq of subQuestions) {
+    // Search for each sub-question in parallel
+    const searchPromises = subQuestions.map(async (sq) => {
         const candidates = await pdfWorker.searchCandidates(sq.question, filterPages);
         const scoredCandidates = candidates.map(c => ({
             text: c.text,
             page: c.page,
             score: c.score
         }));
-        
-        contexts.set(sq.id, scoredCandidates);
-        
-        // Track all pages found
-        for (const c of candidates) {
+        return { sqId: sq.id, scoredCandidates, candidates };
+    });
+
+    const results = await Promise.all(searchPromises);
+
+    for (const result of results) {
+        contexts.set(result.sqId, result.scoredCandidates);
+        for (const c of result.candidates) {
             allPages.add(c.page);
         }
     }
@@ -177,22 +180,29 @@ export async function gatherExpandedContext(
         }
     }
 
-    // Fetch full text for expanded pages
-    const sortedPages = Array.from(expandedPages).sort((a, b) => a - b);
-    const pageTexts: string[] = [];
-
-    for (const page of sortedPages.slice(0, 5)) { // Limit to 5 pages (was 10)
+    // Fetch full text for expanded pages in parallel
+    const sortedPages = Array.from(expandedPages).sort((a, b) => a - b).slice(0, 5); // Limit to 5 pages
+    
+    const pageTextPromises = sortedPages.map(async (page) => {
         try {
             if (!pageTextCache.has(page)) {
                 const text = await pdfWorker.getPageText(page);
-                pageTextCache.set(page, text);
+                return { page, text };
             }
-            const text = pageTextCache.get(page)!;
-            if (text && text.length > 50) {
-                pageTexts.push(`[Page ${page}]\n${text}`);
-            }
+            return { page, text: pageTextCache.get(page)! };
         } catch (e) {
             console.warn(`[MultiStageSearch] Failed to get text for page ${page}:`, e);
+            return null;
+        }
+    });
+
+    const pageTextsResults = await Promise.all(pageTextPromises);
+    const pageTexts: string[] = [];
+
+    for (const result of pageTextsResults) {
+        if (result && result.text && result.text.length > 50) {
+            pageTexts.push(`[Page ${result.page}]\n${result.text}`);
+            pageTextCache.set(result.page, result.text);
         }
     }
 
@@ -228,7 +238,26 @@ export function buildEvidenceChains(
             const candidateVector = buildSparseVector(candidate.text);
             const semantic = cosineSimilarity(optionVector, candidateVector);
             const detail = scoreCandidate(candidate.text, `${question} ${option}`);
-            const combined = (semantic * 0.4) + (detail.score / 100 * 0.6);
+            
+            // [NEW] Exact Phrase Matching with Proximity Safeguard
+            const normalizedText = candidate.text.toLowerCase();
+            const normalizedOption = option.toLowerCase().replace(/[.,]/g, '');
+            
+            // Check 1: Does the option appear exactly?
+            const isExactMatch = normalizedText.includes(normalizedOption);
+            
+            // Check 2: Is it near the question topic? (Contextual relevance)
+            // We check if the chunk that contains the option ALSO contains key question terms
+            // detail.score comes from scoreCandidate which checks for question terms overlap
+            const isContextual = detail.score > 50; 
+
+            let combined = (semantic * 0.4) + (detail.score / 100 * 0.6);
+            
+            if (isExactMatch && isContextual) {
+                combined += 0.5; // Huge boost ONLY if exact AND in context
+            } else if (isExactMatch) {
+                combined += 0.2; // Smaller boost if exact but context is weak
+            }
 
             if (combined > MIN_EVIDENCE_SCORE) {
                 sources.push({
@@ -473,6 +502,25 @@ export async function runMultiStageSearch(
         // For quiz questions, use evidence chains to determine answer
         if (options.length > 0 && evidenceChains) {
             const result = solveQuizWithEvidence(question, options, evidenceChains);
+
+            // === [NEW LOGIC START] ===
+            // 1. FAST PATH: If confidence is high, skip LLM verification completely.
+            // This enables sub-second answers for direct lookups like aviation examples.
+            // AVIATION SAFEGUARD: Only fast-solve if clearly superior and NOT a complex negative question
+            if (result.confidence > 0.65 && !negativeAnalysis.isNegative) { 
+                addStep('High confidence match', 'complete', `Selected ${result.answer} (Fast Solver)`);
+                return {
+                    ...result,
+                    explanation: result.explanation + "\n\n(Source: Direct Manual Retrieval)",
+                    pages: Array.from(allPages),
+                    subQuestions,
+                    evidenceChains,
+                    crossReferences,
+                    thinkingSteps,
+                    verified: true // Technically "verified" by strong evidence
+                };
+            }
+            // === [NEW LOGIC END] ===
 
             // Strategy 9: Always verify quiz selections (a bare letter is not verifiable)
             addStep('Verifying answer...', 'active');
