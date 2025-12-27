@@ -6,7 +6,8 @@ import {
     ExternalLink, Cpu, AlertCircle, Sparkles, Wrench
 } from 'lucide-react';
 import { DataVisualizer } from './DataVisualizer';
-import { searchPagesForTerms, extractSpecificPages, pdfWorker } from '@/utils/pdf-extraction';
+import { extractSpecificPages, pdfWorker } from '@/utils/pdf-extraction';
+import { SmartSearchEngine, smartSearch } from '@/utils/smart-search';
 import type { ChartData } from '@/utils/local-llm';
 
 interface AICommandCenterProps {
@@ -22,6 +23,7 @@ interface Message {
     chartData?: ChartData | null;
     timestamp: Date;
     isLoading?: boolean;
+    isLowConfidence?: boolean; // New flag for low confidence answers
 }
 
 type ToolMode = 'chat' | 'analyze';
@@ -41,8 +43,8 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
     useEffect(() => {
         if (!pdfBuffer) return;
 
-        // Init Worker
-        pdfWorker.init(pdfBuffer, subjectFocus);
+        // Init Worker (New System)
+        pdfWorker.initIndex(pdfBuffer);
 
         // Listen for progress
         const onProgress = (data: { message: string, percent: number }) => {
@@ -65,7 +67,7 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
             pdfWorker.off('progress', onProgress);
             pdfWorker.off('info', onInfo);
         };
-    }, [pdfBuffer, subjectFocus]); // Re-init if subject changes
+    }, [pdfBuffer]); // Removed subjectFocus dependency as it's not used in initIndex
 
     // Auto-scroll to bottom
     useEffect(() => {
@@ -73,37 +75,98 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
     }, [messages]);
 
     /**
-     * Scout Phase: Find relevant pages using searchPagesForTerms
+     * Helper: Resolve subject focus string to page numbers
+     */
+    const resolveSubjectFocus = async (focus: string): Promise<Set<number> | undefined> => {
+        if (!focus.trim()) return undefined;
+
+        // 1. Try parsing as page ranges (e.g. "1-5, 8, 10-12")
+        if (/^[\d\s,-]+$/.test(focus)) {
+            const pages = new Set<number>();
+            const parts = focus.split(',');
+            for (const part of parts) {
+                const range = part.trim().split('-');
+                if (range.length === 2) {
+                    const start = parseInt(range[0]);
+                    const end = parseInt(range[1]);
+                    if (!isNaN(start) && !isNaN(end)) {
+                        for (let i = start; i <= end; i++) pages.add(i);
+                    }
+                } else {
+                    const page = parseInt(part);
+                    if (!isNaN(page)) pages.add(page);
+                }
+            }
+            return pages.size > 0 ? pages : undefined;
+        }
+
+        // 2. Try matching against PDF Outline (Table of Contents)
+        const outline = pdfWorker.getOutline();
+        if (outline && outline.length > 0) {
+            // Flatten outline to linear list of chapters
+            const flatChapters: { title: string; page: number }[] = [];
+            const traverse = (items: any[]) => {
+                for (const item of items) {
+                    flatChapters.push({ title: item.title, page: item.page });
+                    if (item.items) traverse(item.items);
+                }
+            };
+            traverse(outline);
+            
+            // Sort by page number
+            flatChapters.sort((a, b) => a.page - b.page);
+
+            // Find matching chapter
+            const lowerFocus = focus.toLowerCase();
+            const matchIndex = flatChapters.findIndex(c => c.title.toLowerCase().includes(lowerFocus));
+
+            if (matchIndex !== -1) {
+                const startPage = flatChapters[matchIndex].page;
+                // End page is the start of the next chapter, or end of doc (we don't know end of doc, so maybe +20 pages?)
+                // Actually, let's just assume it goes until the next chapter.
+                const nextChapter = flatChapters[matchIndex + 1];
+                const endPage = nextChapter ? nextChapter.page - 1 : startPage + 30; // Default to 30 pages if last chapter
+
+                const pages = new Set<number>();
+                for (let i = startPage; i <= endPage; i++) pages.add(i);
+                
+                // Also add the chapter title to the status so user knows what happened
+                setStatus(`Focused on: ${flatChapters[matchIndex].title} (p.${startPage}-${endPage})`);
+                return pages;
+            }
+        }
+
+        // 3. Treat as a topic string -> Search for it to find relevant pages
+        try {
+            const candidates = await pdfWorker.searchCandidates(focus);
+            if (candidates.length > 0) {
+                return new Set(candidates.map(c => c.page));
+            }
+        } catch (e) {
+            console.error("Failed to resolve subject focus topic", e);
+        }
+        
+        return undefined;
+    };
+
+    /**
+     * Scout Phase: Find relevant pages using new Search System
      */
     const scoutPages = useCallback(async (query: string): Promise<{ pages: number[]; context: string }> => {
         if (!pdfBuffer) return { pages: [], context: '' };
 
         setStatus('Searching document...');
 
-        // Extract keywords from query
-        const { extractKeywords } = await import('@/utils/local-llm');
-        const keywords = await extractKeywords(query, (p) => setStatus(p.status));
+        // Use new worker search
+        const candidates = await pdfWorker.searchCandidates(query);
 
-        console.log('[AICommandCenter] Keywords:', keywords);
-
-        // Search for pages with these terms
-        const searchResults = await searchPagesForTerms(pdfBuffer.slice(0), keywords, { maxResults: 8 });
-
-        if (searchResults.length === 0) {
-            // Fallback: If no results, try broader search or just first pages
-            setStatus('No direct matches, checking priority pages...');
-
-            // If worker already indexed, we might just not have matches.
-            // Return first 5 pages as context
-            return { pages: [1, 2, 3, 4, 5], context: '' };
+        if (candidates.length === 0) {
+            return { pages: [], context: '' };
         }
 
-        const pages = searchResults.map(r => r.page);
-
-        // Extract content from found pages
-        setStatus(`Reading pages: ${pages.join(', ')}...`);
-        const pageData = await extractSpecificPages(pdfBuffer.slice(0), pages);
-        const context = pageData.map(p => `[Page ${p.page}]\n${p.content}`).join('\n\n');
+        const pages = candidates.map(c => c.page);
+        // Use the text already returned by the worker
+        const context = candidates.map(c => `[Page ${c.page}]\n${c.text}`).join('\n\n');
 
         return { pages, context };
     }, [pdfBuffer]);
@@ -144,6 +207,52 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
     };
 
     /**
+     * Handle escalation (Continue Searching)
+     */
+    const handleEscalate = async (messageId: string, query: string) => {
+        setIsProcessing(true);
+        setStatus('Deep searching...');
+
+        try {
+            // Resolve subject focus
+            const filterPages = await resolveSubjectFocus(subjectFocus);
+
+            // Re-detect quiz context to pass options
+            const quiz = SmartSearchEngine.detectQuizQuestion(query);
+            const options = quiz.isQuiz ? quiz.options.map(o => o.text) : [];
+
+            // Call escalateSearch with context
+            const result = await smartSearch.escalateSearch(query, options, filterPages);
+            
+            let answerContent = result.answer;
+            if (!answerContent) {
+                answerContent = result.explanation;
+            } else if (quiz.isQuiz) {
+                // Format quiz answer nicely
+                answerContent = `**Answer: ${result.answer}**\n\n${result.explanation}`;
+            }
+
+            setMessages(prev =>
+                prev.map(m =>
+                    m.id === messageId
+                        ? { 
+                            ...m, 
+                            content: answerContent, 
+                                                                        sourcePages: result.pages ?? (result.page ? [result.page] : []), 
+                            isLowConfidence: false // Clear the flag
+                          }
+                        : m
+                )
+            );
+        } catch (error) {
+            console.error('Escalation failed', error);
+        } finally {
+            setIsProcessing(false);
+            setStatus('');
+        }
+    };
+
+    /**
      * Main handler: Scout -> Analyst pipeline
      */
     const handleSubmit = useCallback(async () => {
@@ -169,24 +278,71 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
         setIsProcessing(true);
 
         try {
-            // Scout Phase
-            const { pages, context } = await scoutPages(input);
+            if (toolMode === 'chat') {
+                // NEW SYSTEM: Smart Search (Layer 4)
+                setStatus('Searching...');
+                
+                // Resolve subject focus
+                const filterPages = await resolveSubjectFocus(subjectFocus);
 
-            if (context.length === 0 && pages.length === 0) {
-                throw new Error('Could not find relevant content in the document');
+                // Detect if it's a quiz question
+                const quiz = SmartSearchEngine.detectQuizQuestion(userMessage.content);
+                let result;
+                
+                if (quiz.isQuiz) {
+                    // Pass options to search
+                    result = await smartSearch.search(quiz.question, quiz.options.map(o => o.text), filterPages);
+                } else {
+                    result = await smartSearch.search(userMessage.content, [], filterPages);
+                }
+                
+                let answerContent = result.answer;
+                let isLowConfidence = false;
+
+                if (!answerContent) {
+                    answerContent = result.explanation; // "I can't find a confident answer..."
+                    // Check if it's the specific low confidence message
+                    if (result.confidence < 0.4) {
+                        isLowConfidence = true;
+                    }
+                } else if (quiz.isQuiz) {
+                    // Format quiz answer nicely
+                    answerContent = `**Answer: ${result.answer}**\n\n${result.explanation}`;
+                }
+
+                setMessages(prev =>
+                    prev.map(m =>
+                        m.id === loadingMessage.id
+                            ? { 
+                                ...m, 
+                                content: answerContent, 
+                                                                sourcePages: result.pages ?? (result.page ? [result.page] : []), 
+                                isLoading: false,
+                                isLowConfidence
+                              }
+                            : m
+                    )
+                );
+            } else {
+                // ANALYZE MODE: Use Scout -> Analyst pipeline
+                const { pages, context } = await scoutPages(userMessage.content);
+
+                if (context.length === 0 && pages.length === 0) {
+                    throw new Error('Could not find relevant content in the document');
+                }
+
+                // Analyst Phase
+                const { answer, chartData } = await analyzeContent(userMessage.content, context, pages, toolMode);
+
+                // Update the loading message with the result
+                setMessages(prev =>
+                    prev.map(m =>
+                        m.id === loadingMessage.id
+                            ? { ...m, content: answer, sourcePages: pages, chartData, isLoading: false }
+                            : m
+                    )
+                );
             }
-
-            // Analyst Phase
-            const { answer, chartData } = await analyzeContent(input, context, pages, toolMode);
-
-            // Update the loading message with the result
-            setMessages(prev =>
-                prev.map(m =>
-                    m.id === loadingMessage.id
-                        ? { ...m, content: answer, sourcePages: pages, chartData, isLoading: false }
-                        : m
-                )
-            );
         } catch (error) {
             console.error('[AICommandCenter] Error:', error);
             const errorMessage = error instanceof Error ? error.message : 'An error occurred';
@@ -280,6 +436,33 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
                                 <>
                                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
 
+                                    {/* Low Confidence Actions */}
+                                    {message.isLowConfidence && (
+                                        <div className="mt-3 flex gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    // Find the user query that triggered this
+                                                    const userMsgIndex = messages.findIndex(m => m.id === message.id) - 1;
+                                                    const query = messages[userMsgIndex]?.content || '';
+                                                    handleEscalate(message.id, query);
+                                                }}
+                                                className="px-3 py-1.5 bg-lime-500/20 hover:bg-lime-500/30 text-lime-300 text-xs rounded-md transition-colors flex items-center gap-1"
+                                            >
+                                                <Sparkles size={12} />
+                                                Keep Searching
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    // Just remove the flag
+                                                    setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLowConfidence: false } : m));
+                                                }}
+                                                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-zinc-400 text-xs rounded-md transition-colors"
+                                            >
+                                                Stop
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {/* Chart visualization */}
                                     {message.chartData && (
                                         <div className="mt-3">
@@ -335,19 +518,22 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage }: AICommandCenterProp
                         </button>
 
                         {showToolMenu && (
-                            <div className="absolute bottom-full left-0 mb-2 bg-zinc-800 border border-white/10 rounded-lg overflow-hidden shadow-xl z-10">
+                            <div className="absolute bottom-full left-0 mb-2 bg-zinc-900/90 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl z-10 min-w-[160px] animate-in fade-in zoom-in-95 duration-100">
+                                <div className="px-3 py-2 text-[10px] font-medium text-zinc-500 uppercase tracking-wider border-b border-white/5">
+                                    Select Mode
+                                </div>
                                 <button
                                     onClick={() => { setToolMode('chat'); setShowToolMenu(false); }}
-                                    className={`flex items-center gap-2 px-3 py-2 text-sm w-full hover:bg-zinc-700 ${toolMode === 'chat' ? 'text-lime-400' : 'text-zinc-300'}`}
+                                    className={`flex items-center gap-3 px-3 py-2.5 text-sm w-full hover:bg-white/5 transition-colors ${toolMode === 'chat' ? 'text-lime-400 bg-lime-500/5' : 'text-zinc-300'}`}
                                 >
-                                    <MessageSquare size={14} />
+                                    <MessageSquare size={16} />
                                     Q&A Chat
                                 </button>
                                 <button
                                     onClick={() => { setToolMode('analyze'); setShowToolMenu(false); }}
-                                    className={`flex items-center gap-2 px-3 py-2 text-sm w-full hover:bg-zinc-700 ${toolMode === 'analyze' ? 'text-purple-400' : 'text-zinc-300'}`}
+                                    className={`flex items-center gap-3 px-3 py-2.5 text-sm w-full hover:bg-white/5 transition-colors ${toolMode === 'analyze' ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-300'}`}
                                 >
-                                    <BarChart3 size={14} />
+                                    <BarChart3 size={16} />
                                     Data Analyze
                                 </button>
                             </div>

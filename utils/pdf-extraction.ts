@@ -1,9 +1,13 @@
 import { SearchResult } from './search-indexer';
+import { SearchCandidate } from './search/types';
 
 // Defines the interface for the Worker logic
 type WorkerMessage =
   | { type: 'progress'; message: string; percent: number }
   | { type: 'search_results'; results: SearchResult[] }
+  | { type: 'SEARCH_RESULT'; id: string; payload: SearchCandidate[] }
+  | { type: 'INDEX_READY'; id: string }
+  | { type: 'OUTLINE_READY'; payload: any[] }
   | { type: 'page_text'; page: number; text: string | null }
   | { type: 'status'; status: any }
   | { type: 'info'; message: string }
@@ -12,6 +16,7 @@ type WorkerMessage =
 class PDFWorkerClient {
   private worker: Worker | null = null;
   private listeners: Map<string, ((data: any) => void)[]> = new Map();
+  private outlineCache: any[] = [];
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -21,9 +26,16 @@ class PDFWorkerClient {
 
       this.worker.onmessage = (event: MessageEvent) => {
         const data = event.data as WorkerMessage;
+        if (data.type === 'OUTLINE_READY') {
+            this.outlineCache = data.payload;
+        }
         this.emit(data.type, data);
       };
     }
+  }
+
+  getOutline(): any[] {
+      return this.outlineCache;
   }
 
   private emit(type: string, data: any) {
@@ -47,6 +59,44 @@ class PDFWorkerClient {
     }
   }
 
+  // New API
+  async initIndex(pdfData: ArrayBuffer): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const id = Math.random().toString(36).substring(7);
+        const handler = (data: { id: string }) => {
+            if (data.id === id) {
+                this.off('INDEX_READY', handler as any);
+                resolve();
+            }
+        };
+        this.on('INDEX_READY', handler as any);
+        this.worker?.postMessage({
+            type: 'INIT_INDEX',
+            id,
+            payload: { pdfData }
+        });
+    });
+  }
+
+  async searchCandidates(query: string, filterPages?: Set<number>): Promise<SearchCandidate[]> {
+      return new Promise((resolve) => {
+          const id = Math.random().toString(36).substring(7);
+          const handler = (data: { id: string; payload: SearchCandidate[] }) => {
+              if (data.id === id) {
+                  this.off('SEARCH_RESULT', handler as any);
+                  resolve(data.payload);
+              }
+          };
+          this.on('SEARCH_RESULT', handler as any);
+          this.worker?.postMessage({
+              type: 'SEARCH',
+              id,
+              payload: { query, filterPages }
+          });
+      });
+  }
+
+  // Legacy API (Wraps new API or Legacy Worker calls)
   init(pdfBuffer: ArrayBuffer, subject?: string) {
     this.worker?.postMessage({
       type: 'init_pdf',

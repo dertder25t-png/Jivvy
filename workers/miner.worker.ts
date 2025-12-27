@@ -10,19 +10,20 @@
  * - get_page_text: Retrieve text for a specific page
  */
 
-import { InvertedIndex, SearchResult } from '../utils/search-indexer';
 import * as pdfjsLib from 'pdfjs-dist';
+import { chunkPageText } from '../utils/search/preprocessor';
+import { buildIndex } from '../utils/search/indexer';
+import { findCandidates } from '../utils/search/retriever';
+import { IndexStructure, ChunkData } from '../utils/search/types';
 
 // Define Worker Scope
 const ctx: Worker = self as any;
 
 // -- State --
-let searchIndex: InvertedIndex | null = null;
+let searchIndex: IndexStructure | null = null;
 let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
 let totalPages = 0;
-let isIndexing = false;
-let processedPages = new Set<number>();
-let priorityQueue: number[] = [];
+const pageTextCache: Map<number, string> = new Map();
 
 // Configure PDF.js Worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -37,21 +38,26 @@ ctx.onmessage = async (event: MessageEvent) => {
       // NEW API (matches user spec)
       // ==========================================
       case 'INIT_INDEX':
-        await buildIndex(payload.pdfData);
+        await handleInitIndex(payload.pdfData);
+        // Extract and send outline (Table of Contents)
+        const outline = await extractOutline();
+        ctx.postMessage({ type: 'OUTLINE_READY', payload: outline });
         ctx.postMessage({ type: 'INDEX_READY', id });
         break;
 
       case 'SEARCH':
         if (!searchIndex) throw new Error("Index not ready");
-        const results = searchIndex.search(payload.query, payload.isNegative || false);
-        ctx.postMessage({ type: 'SEARCH_RESULT', id, payload: results });
+        const filterSet = payload.filterPages ? new Set(payload.filterPages as number[]) : undefined;
+        const candidates = findCandidates(searchIndex, payload.query, 12, filterSet); // Get top 12 chunks
+        ctx.postMessage({ type: 'SEARCH_RESULT', id, payload: candidates });
         break;
 
       // ==========================================
       // LEGACY API (backward compatibility)
       // ==========================================
       case 'init_pdf':
-        await handleInitPDF(payload.pdfBuffer, payload.subject);
+        // Legacy init just calls the new one
+        await handleInitIndex(payload.pdfBuffer || payload.pdfData);
         break;
 
       case 'search_pdf':
@@ -59,34 +65,21 @@ ctx.onmessage = async (event: MessageEvent) => {
           ctx.postMessage({ type: 'search_results', results: [] });
           break;
         }
-        const legacyResults = searchIndex.search(payload.query);
+        const legacyCandidates = findCandidates(searchIndex, payload.query, 5);
         // Map to legacy format
         ctx.postMessage({
           type: 'search_results',
-          results: legacyResults.map(r => ({
+          results: legacyCandidates.map(r => ({
             page: r.page,
-            score: r.score,
+            score: r.score * 10, // Scale up for legacy expectations
             snippet: r.excerpt,
-            matchCount: Math.floor(r.score / 10)
+            matchCount: Math.round(r.score)
           }))
         });
         break;
 
       case 'get_page_text':
-        const pText = searchIndex?.getPageText(payload.page) || null;
-        ctx.postMessage({ type: 'page_text', page: payload.page, text: pText });
-        break;
-
-      case 'debug_status':
-        ctx.postMessage({
-          type: 'status',
-          status: {
-            indexed: processedPages.size,
-            total: totalPages,
-            queue: priorityQueue.length,
-            stats: searchIndex?.getStats() || null
-          }
-        });
+        ctx.postMessage({ type: 'page_text', page: payload.page, text: pageTextCache.get(payload.page) ?? null });
         break;
     }
   } catch (error: any) {
@@ -96,194 +89,93 @@ ctx.onmessage = async (event: MessageEvent) => {
 };
 
 // ==========================================
-// NEW INDEX BUILDER (User spec)
+// INDEX BUILDER
 // ==========================================
 
-/**
- * Build index from raw PDF data (new API)
- */
-async function buildIndex(pdfData: ArrayBuffer): Promise<void> {
-  if (isIndexing) {
-    console.log('[MinerWorker] Already indexing, skipping');
-    return;
-  }
-  isIndexing = true;
+async function handleInitIndex(pdfData: ArrayBuffer) {
+    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+    pdfDoc = await loadingTask.promise;
+    totalPages = pdfDoc.numPages;
 
-  searchIndex = new InvertedIndex();
-  const loadingTask = pdfjsLib.getDocument({ data: pdfData });
-  const doc = await loadingTask.promise;
-  const numPages = doc.numPages;
+  const chunks: ChunkData[] = [];
+  pageTextCache.clear();
 
-  console.log(`[MinerWorker] Building index for ${numPages} pages...`);
+    // Extract text from all pages
+    // Note: For very large PDFs, we might want to chunk this or report progress
+    for (let i = 1; i <= totalPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const textContent = await page.getTextContent();
+        const text = textContent.items.map((item: any) => item.str).join(' ');
+    pageTextCache.set(i, text);
 
-  // Process all pages in batches
-  for (let i = 1; i <= numPages; i++) {
-    try {
-      const page = await doc.getPage(i);
-      const content = await page.getTextContent();
-      const text = content.items.map((item: any) => item.str).join(' ');
-
-      searchIndex.addPage(i, text);
-
-      // Report progress every 10%
-      if (i % Math.ceil(numPages / 10) === 0) {
-        ctx.postMessage({
-          type: 'PROGRESS',
-          payload: { percent: Math.round((i / numPages) * 100) }
-        });
-      }
-    } catch (err) {
-      console.warn(`[MinerWorker] Skipped page ${i}`);
+    const pageChunks = chunkPageText(text, i, {
+      targetTokens: 200,
+      sentenceOverlap: 1
+    });
+    chunks.push(...pageChunks);
+        
+        // Report progress every 10 pages
+        if (i % 10 === 0) {
+             ctx.postMessage({ type: 'progress', message: `Indexing page ${i}/${totalPages}`, percent: (i / totalPages) * 100 });
+        }
     }
-  }
 
-  isIndexing = false;
-  console.log('[MinerWorker] Index build complete', searchIndex.getStats());
+  searchIndex = buildIndex(chunks);
+  console.log(`[MinerWorker] Index built for ${totalPages} pages across ${chunks.length} chunks.`);
 }
 
 // ==========================================
-// LEGACY INIT (Backward compatible)
+// OUTLINE EXTRACTION
 // ==========================================
 
-/**
- * Main Initialization Logic (legacy API)
- * 1. Load PDF
- * 2. Scout First 20 + Last 50
- * 3. Scan for "Subject" references
- * 4. Fill Priority Queue
- * 5. Start Processor
- */
-async function handleInitPDF(buffer: ArrayBuffer, subject?: string) {
-  // Reset
-  processedPages.clear();
-  searchIndex = new InvertedIndex();
-  priorityQueue = [];
-
-  // Load Doc
-  const loadingTask = pdfjsLib.getDocument({ data: buffer });
-  pdfDoc = await loadingTask.promise;
-  totalPages = pdfDoc.numPages;
-
-  ctx.postMessage({ type: 'progress', message: 'PDF Loaded. Scouting...', percent: 0 });
-
-  // 1. Scout Phase: First 20 + Last 50 pages
-  const scoutPages = new Set<number>();
-  for (let i = 1; i <= Math.min(20, totalPages); i++) scoutPages.add(i);
-  for (let i = Math.max(1, totalPages - 50); i <= totalPages; i++) scoutPages.add(i);
-
-  // Extract Scout Text immediately
-  const scoutTextArr = await extractPages(Array.from(scoutPages));
-
-  // Index Scouted Pages
-  scoutTextArr.forEach(p => {
-    searchIndex!.addPage(p.page, p.content);
-    processedPages.add(p.page);
-  });
-
-  ctx.postMessage({ type: 'progress', message: 'Scout Complete. Analyzing Priority...', percent: 5 });
-
-  // 2. Map Phase (Subject Priority)
-  const prioritizedPages = new Set<number>();
-
-  if (subject) {
-    const combinedScoutText = scoutTextArr.map(p => p.content).join('\n');
-
-    // Look for subject + page numbers in TOC/Index
-    const subjectRegex = new RegExp(`${subject}[^0-9\\n]{0,50}(\\d+(?:[-,]\\d+)*)`, 'gi');
-    let match;
-    while ((match = subjectRegex.exec(combinedScoutText)) !== null) {
-      if (match[1]) {
-        const nums = match[1].match(/\d+/g);
-        nums?.forEach(n => {
-          const p = parseInt(n);
-          if (p > 0 && p <= totalPages && !processedPages.has(p)) {
-            prioritizedPages.add(p);
-          }
-        });
-      }
-    }
-
-    if (prioritizedPages.size > 0) {
-      ctx.postMessage({
-        type: 'info',
-        message: `Prioritizing ${prioritizedPages.size} pages related to "${subject}"`
-      });
-    }
-  }
-
-  // 3. Build Queue: Priority pages first, then the rest
-  priorityQueue.push(...Array.from(prioritizedPages));
-  for (let i = 1; i <= totalPages; i++) {
-    if (!processedPages.has(i) && !prioritizedPages.has(i)) {
-      priorityQueue.push(i);
-    }
-  }
-
-  // 4. Start Background Processing
-  ctx.postMessage({ type: 'progress', message: 'Starting Indexing...', percent: 10 });
-  processQueue();
+interface OutlineItem {
+    title: string;
+    page: number;
+    items: OutlineItem[];
 }
 
-/**
- * Process the Queue in batches
- */
-async function processQueue() {
-  if (!pdfDoc || priorityQueue.length === 0) {
-    ctx.postMessage({ type: 'progress', message: 'Indexing Complete', percent: 100 });
-    return;
-  }
-
-  isIndexing = true;
-  const BATCH_SIZE = 5;
-
-  while (priorityQueue.length > 0) {
-    const batch = priorityQueue.splice(0, BATCH_SIZE);
-
+async function extractOutline(): Promise<OutlineItem[]> {
+    if (!pdfDoc) return [];
+    
     try {
-      const extracted = await extractPages(batch);
-      extracted.forEach(p => {
-        searchIndex!.addPage(p.page, p.content);
-        processedPages.add(p.page);
-      });
+        const rawOutline = await pdfDoc.getOutline();
+        if (!rawOutline) return [];
 
-      // Report Progress
-      const percent = Math.round((processedPages.size / totalPages) * 100);
-      ctx.postMessage({
-        type: 'progress',
-        message: `Indexing... (${processedPages.size}/${totalPages})`,
-        percent
-      });
+        const processItems = async (items: any[]): Promise<OutlineItem[]> => {
+            const result: OutlineItem[] = [];
+            for (const item of items) {
+                let pageNumber = 0;
+                try {
+                    if (typeof item.dest === 'string') {
+                        const dest = await pdfDoc!.getDestination(item.dest);
+                        if (dest) {
+                            const ref = dest[0];
+                            pageNumber = (await pdfDoc!.getPageIndex(ref)) + 1;
+                        }
+                    } else if (Array.isArray(item.dest)) {
+                        const ref = item.dest[0];
+                        pageNumber = (await pdfDoc!.getPageIndex(ref)) + 1;
+                    }
+                } catch (e) {
+                    console.warn('Failed to resolve outline destination', e);
+                }
 
-      // Yield to event loop briefly
-      await new Promise(r => setTimeout(r, 50));
+                if (pageNumber > 0) {
+                    result.push({
+                        title: item.title,
+                        page: pageNumber,
+                        items: await processItems(item.items || [])
+                    });
+                }
+            }
+            return result;
+        };
 
+        return await processItems(rawOutline);
     } catch (e) {
-      console.error('[MinerWorker] Batch Error', e);
+        console.error('Error extracting outline', e);
+        return [];
     }
-  }
-
-  isIndexing = false;
-  ctx.postMessage({ type: 'progress', message: 'Indexing Complete', percent: 100 });
 }
 
-/**
- * Extract text from specific pages
- */
-async function extractPages(pages: number[]): Promise<{ page: number; content: string }[]> {
-  if (!pdfDoc) return [];
-  const results = [];
-
-  for (const pageNum of pages) {
-    try {
-      const page = await pdfDoc.getPage(pageNum);
-      const content = await page.getTextContent();
-      const str = content.items.map((item: any) => item.str).join(' ');
-      results.push({ page: pageNum, content: str });
-    } catch (e) {
-      console.warn(`[MinerWorker] Failed to extract page ${pageNum}`);
-    }
-  }
-  return results;
-}
-
-export { };
+export {};
