@@ -160,10 +160,10 @@ class PDFWorkerClient {
         if (!resolved) {
           resolved = true;
           this.off('page_text', handler as any);
-          console.warn(`[PDFWorkerClient] getPageText timeout for page ${page} after 10s`);
+          console.warn(`[PDFWorkerClient] getPageText timeout for page ${page} after 5s`);
           resolve('');
         }
-      }, 10000);
+      }, 5000); // Reduced to 5s since we are now fetching in parallel
       
       console.log(`[PDFWorkerClient] Requesting page text for page ${page}`);
       this.worker?.postMessage({

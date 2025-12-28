@@ -42,7 +42,8 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
 
     const setPdfHighlightRanges = useProjectStore(s => s.setPdfHighlightRanges);
 
-    const TIME_BUDGET_MS = 20000;
+    // Increased timeout to accommodate NLI model loading (first run can be slow)
+    const TIME_BUDGET_MS = 60000;
 
     const extractQuizLetter = (raw: string | null | undefined): string | null => {
         if (!raw) return null;

@@ -34,6 +34,8 @@ import { detectNegativeLogic } from './NegativeLogicHandler';
 import { analyzeNegativeLogicQuestion } from './NegativeLogicHandler';
 import { detectSectionType, getSectionBoost } from './SectionDetector';
 import { verifyAnswer, verifyQuizAnswerSelection, buildRegenerationContext } from './AnswerVerifier';
+import { solveWithJudge } from './NLIJudge';
+import { runAdversarialCheck } from './AdversarialMatrix';
 
 // ============================================================================
 // SESSION CACHE - For Instant Follow-up Questions
@@ -471,31 +473,43 @@ export async function gatherExpandedContext(
 
     console.log(`[MultiStageSearch] Expanded to ${expandedPages.size} pages for context`);
 
-    // Fetch full text for expanded pages SEQUENTIALLY (not in parallel)
-    // Worker may block if too many requests come in at once
+    // Fetch full text for expanded pages IN PARALLEL
+    // We use Promise.all to fetch all pages at once, significantly reducing total wait time
     const sortedPages = Array.from(expandedPages).sort((a, b) => a - b).slice(0, 5); // Limit to 5 pages
     
-    console.log(`[MultiStageSearch] Fetching text for ${sortedPages.length} pages sequentially:`, sortedPages);
+    console.log(`[MultiStageSearch] Fetching text for ${sortedPages.length} pages in parallel:`, sortedPages);
 
     const pageTexts: string[] = [];
     console.time(`[MultiStageSearch] Page text fetching`);
     
-    for (const page of sortedPages) {
+    // Create promises for all page fetches
+    const pagePromises = sortedPages.map(async (page) => {
         try {
             if (!pageTextCache.has(page)) {
+                // Use a shorter timeout for individual pages since we are running in parallel
+                // If one page is slow, we don't want to block the whole process for too long
                 const text = await pdfWorker.getPageText(page);
                 if (text && text.length > 50) {
-                    pageTexts.push(`[Page ${page}]\n${text}`);
-                    pageTextCache.set(page, text);
-                    console.log(`[MultiStageSearch] Successfully fetched page ${page}, length: ${text.length}`);
+                    return { page, text, success: true };
                 }
             } else {
-                const cached = pageTextCache.get(page)!;
-                pageTexts.push(`[Page ${page}]\n${cached}`);
-                console.log(`[MultiStageSearch] Using cached text for page ${page}`);
+                return { page, text: pageTextCache.get(page)!, success: true };
             }
         } catch (e) {
             console.warn(`[MultiStageSearch] Failed to get text for page ${page}:`, e);
+        }
+        return { page, text: '', success: false };
+    });
+
+    // Wait for all fetches to complete (or fail/timeout individually)
+    const pageResults = await Promise.all(pagePromises);
+
+    // Process results in order
+    for (const result of pageResults) {
+        if (result.success && result.text) {
+            pageTexts.push(`[Page ${result.page}]\n${result.text}`);
+            pageTextCache.set(result.page, result.text);
+            console.log(`[MultiStageSearch] Successfully fetched page ${result.page}, length: ${result.text.length}`);
         }
     }
     
@@ -763,49 +777,31 @@ export async function runMultiStageSearch(
             addStep('Following cross-references', 'complete', `${crossReferences.length} references found`);
         }
 
-        // Strategy 5: Build evidence chains for quiz questions (using local function)
-        let evidenceChains: EvidenceChain[] | undefined;
         if (options.length > 0) {
-            addStep('Building evidence chains...', 'active');
+            addStep('Running Adversarial Logic Matrix...', 'active');
             
-            // Flatten all candidates with section boosting (Strategy 7)
-            const allCandidates: SearchCandidate[] = [];
-            const contextEntries = Array.from(contexts.values());
-            for (const candidates of contextEntries) {
-                for (const c of candidates) {
-                    const sectionClassification = detectSectionType(c.text);
-                    const boost = getSectionBoost(sectionClassification.type);
-                    allCandidates.push({
-                        chunkId: `${c.page}-0`,
-                        page: c.page,
-                        chunkIndex: 0,
-                        text: c.text,
-                        score: c.score * boost  // Apply section boost
-                    } as SearchCandidate);
-                }
-            }
+            // Use the new Adversarial Matrix logic
+            // We pass a search function that wraps the worker search
+            const searchFn = async (q: string) => {
+                return await pdfWorker.search(q);
+            };
 
-            evidenceChains = buildEvidenceChains(options, question, allCandidates);
-            addStep('Building evidence chains', 'complete', `${options.length} options analyzed`);
-        }
-
-        // Strategy 4: Handle negative logic questions specially
-        if (negativeAnalysis.isNegative && options.length > 0 && evidenceChains) {
-            addStep('Applying negative logic...', 'active');
-            // For negative questions, use specialized handler
-            const negResult = await analyzeNegativeLogicQuestion(question, options, filterPages);
-            addStep('Negative logic applied', 'complete', `Exception found: ${negResult.selectedAnswer}`);
+            const judgeResult = await runAdversarialCheck(question, options, searchFn);
             
+            // Merge pages found during adversarial search
+            judgeResult.pages.forEach(p => allPages.add(p));
+
+            addStep('Adversarial Logic', 'complete', `Selected ${judgeResult.bestOption} (${(judgeResult.confidence * 100).toFixed(0)}%)`);
+
             return {
-                answer: negResult.selectedAnswer,
-                explanation: negResult.reasoning,
-                confidence: negResult.confidence,
-                evidence: fullContext.slice(0, 500),
+                answer: judgeResult.bestOption,
+                explanation: judgeResult.explanation,
+                confidence: judgeResult.confidence,
+                evidence: judgeResult.evidence,
                 pages: Array.from(allPages),
                 subQuestions,
-                evidenceChains,
-                crossReferences,
-                thinkingSteps
+                thinkingSteps,
+                verified: true
             };
         }
 
@@ -829,83 +825,13 @@ export async function runMultiStageSearch(
                 evidence: '',
                 pages: Array.from(allPages),
                 subQuestions,
-                evidenceChains,
+
                 crossReferences,
                 thinkingSteps,
             };
         }
 
-        // For quiz questions, use evidence chains to determine answer
-        if (options.length > 0 && evidenceChains) {
-            const result = solveQuizWithEvidence(question, options, evidenceChains, analysis);
 
-            // === [NEW LOGIC START] ===
-            // 1. FAST PATH: If confidence is high, skip LLM verification completely.
-            // This enables sub-second answers for direct lookups like aviation examples.
-            // AVIATION SAFEGUARD: Only fast-solve if clearly superior and NOT a complex negative question
-            if (result.confidence > 0.65 && !negativeAnalysis.isNegative) { 
-                addStep('High confidence match', 'complete', `Selected ${result.answer} (Fast Solver)`);
-                return {
-                    ...result,
-                    explanation: result.explanation + "\n\n(Source: Direct Manual Retrieval)",
-                    pages: Array.from(allPages),
-                    subQuestions,
-                    evidenceChains,
-                    crossReferences,
-                    thinkingSteps,
-                    verified: true // Technically "verified" by strong evidence
-                };
-            }
-            // === [NEW LOGIC END] ===
-
-            // Strategy 9: Always verify quiz selections (a bare letter is not verifiable)
-            addStep('Verifying answer...', 'active');
-            const selectedIndex = Math.max(0, result.answer.toUpperCase().charCodeAt(0) - 65);
-            const selectedOptionText = options[selectedIndex] ?? '';
-
-            const verification = await verifyQuizAnswerSelection({
-                question,
-                selectedLetter: result.answer,
-                selectedOptionText,
-                filterPages
-            });
-
-            const quizVerified = verification.supportedClaimCount > 0 && verification.overallConfidence >= VERIFICATION_THRESHOLD;
-            addStep(
-                quizVerified ? 'Answer verified' : 'Answer not verified',
-                'complete',
-                quizVerified
-                    ? `${verification.supportedClaimCount} claim verified`
-                    : 'No supporting evidence found for selected option'
-            );
-
-            // If not verified, optionally regenerate a stricter grounded explanation (does not change the chosen letter)
-            // This helps avoid confident but ungrounded rationales.
-            let explanation = result.explanation;
-            if (!quizVerified && verification.shouldRegenerate) {
-                const regenContext = buildRegenerationContext(verification, question);
-                const { answerQuestionLocal } = await import('@/utils/local-llm');
-                // Only regenerate if we have real document context to ground to.
-                if (truncatedContext.trim().length >= 50) {
-                    explanation = await answerQuestionLocal(
-                        question,
-                        `${regenContext.stricterPrompt}\n\nSelected option: ${result.answer}. ${selectedOptionText}\n\nContext:\n${truncatedContext}`
-                    );
-                }
-            }
-            
-            addStep('Generating answer', 'complete');
-            
-            return {
-                ...result,
-                explanation,
-                pages: Array.from(allPages),
-                subQuestions,
-                evidenceChains,
-                crossReferences,
-                thinkingSteps
-            };
-        }
 
         // For open questions, use LLM with full context
         const { answerQuestionLocal } = await import('@/utils/local-llm');

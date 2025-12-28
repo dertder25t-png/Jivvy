@@ -24,6 +24,74 @@ if (env.backends?.onnx?.wasm) {
 }
 
 // ============================================================================
+// NLI JUDGE ENGINE (The Reliability Layer)
+// ============================================================================
+
+let nliPipeline: any = null;
+
+/**
+ * Initialize the NLI Judge model (Zero-Shot Classification)
+ */
+export async function initNLIModel(onProgress?: ProgressCallback): Promise<boolean> {
+    if (nliPipeline) return true;
+
+    try {
+        onProgress?.({ status: 'Loading Judge Model (Deberta)...', progress: 10 });
+        
+        // Use the specialized NLI model
+        nliPipeline = await pipeline('zero-shot-classification', 'Xenova/nli-deberta-v3-xsmall', {
+            quantized: true,
+            progress_callback: (data: any) => {
+               if (data.status === 'progress') {
+                   onProgress?.({ status: `Loading Judge: ${Math.round(data.progress)}%`, progress: data.progress });
+               }
+            }
+        });
+        
+        console.log('[LocalLLM] NLI Judge model loaded successfully');
+        return true;
+    } catch (error) {
+        console.error('[LocalLLM] Failed to load NLI model:', error);
+        return false;
+    }
+}
+
+export interface NLIResult {
+    option: string;
+    score: number;
+    label: 'entailment' | 'contradiction' | 'neutral';
+    scores: { entailment: number; contradiction: number; neutral: number };
+}
+
+/**
+ * Compare a Premise (PDF Text) against a Hypothesis (Option)
+ */
+export async function judgeOption(premise: string, hypothesis: string): Promise<NLIResult> {
+    if (!nliPipeline) await initNLIModel();
+
+    // The model returns scores for "entailment", "neutral", "contradiction"
+    // We strictly look at Entailment (True) vs Contradiction (False)
+    const result = await nliPipeline(premise, [hypothesis]);
+    
+    // Deberta v3 labels usually come back as entailment/neutral/contradiction
+    const entailmentIdx = result.labels.indexOf('entailment');
+    const contradictionIdx = result.labels.indexOf('contradiction');
+    const neutralIdx = result.labels.indexOf('neutral');
+
+    return {
+        option: hypothesis,
+        score: result.scores[entailmentIdx], // The confidence that this is TRUE
+        label: result.labels[0], // The top label
+        scores: {
+            entailment: result.scores[entailmentIdx],
+            contradiction: result.scores[contradictionIdx],
+            neutral: result.scores[neutralIdx]
+        }
+    };
+}
+
+
+// ============================================================================
 // MODEL CONFIGURATION
 // ============================================================================
 
