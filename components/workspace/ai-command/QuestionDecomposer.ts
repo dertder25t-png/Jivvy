@@ -46,15 +46,20 @@ const DECOMPOSITION_TEMPLATES: Record<string, (q: string, analysis: QuestionAnal
             { id: 'main', text: q, type: 'main', priority: 1 }
         ];
         
-        // Add definition lookups for key terms
-        analysis.keyTerms.slice(0, 3).forEach((term, i) => {
+        // NEW LOGIC: Join key terms into a single specific phrase
+        // instead of searching for them individually
+        const subject = analysis.keyTerms
+            .filter(k => k.length > 3 && !/^(what|when|where|does|how|purpose|function)$/i.test(k))
+            .join(' ');
+
+        if (subject.length > 0) {
             subQs.push({
-                id: `def-${i}`,
-                text: `What is ${term}? Define ${term}`,
+                id: 'def-subject',
+                text: `What is ${subject}? Detailed explanation of ${subject}`,
                 type: 'definition',
-                priority: 0.6
+                priority: 0.9
             });
-        });
+        }
         
         return subQs;
     },

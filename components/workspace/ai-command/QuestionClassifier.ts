@@ -24,6 +24,7 @@ export type QuestionType =
     | 'hypothetical'
     | 'enumerative'
     | 'diagnostic'
+    | 'mechanism'
     | 'unknown';
 
 export interface QuestionClassification {
@@ -104,11 +105,12 @@ const TYPE_PATTERNS: Record<QuestionType, RegExp[]> = {
         /\b(?:various|different|several|multiple)\s+\w+s?\b/i
     ],
     diagnostic: [
-        /\b(?:symptom|indication|sign|diagnos)\b/i,
+        /\b(?:symptom|indication|sign|diagnos|detected by|indicates)\b/i, // Added 'detected by', 'indicates'
         /\b(?:troubleshoot|debug|fix|solve|resolve)\b/i,
-        /\b(?:error|problem|issue|fault)\b/i,
+        /\b(?:error|problem|issue|fault|failure)\b/i,
         /\b(?:what is wrong|what causes|why does.*fail)\b/i
     ],
+    mechanism: [],
     unknown: []
 };
 
@@ -195,6 +197,15 @@ const TYPE_STRATEGIES: Record<QuestionType, SearchStrategy> = {
         useVerification: true,  // Diagnostics need accuracy
         maxChunks: 8
     },
+    mechanism: {
+        name: 'Causal Chain Search',
+        prioritizeSections: ['explanation', 'example', 'diagram'],
+        expandContext: true,
+        useDecomposition: true,
+        requireEvidence: true,
+        useVerification: true,
+        maxChunks: 8
+    },
     unknown: {
         name: 'General Search',
         prioritizeSections: ['explanation'],
@@ -217,6 +228,7 @@ const TYPE_FORMATS: Record<QuestionType, AnswerFormat> = {
     hypothetical: 'paragraph',
     enumerative: 'list',
     diagnostic: 'steps',
+    mechanism: 'paragraph',
     unknown: 'paragraph'
 };
 
@@ -253,10 +265,15 @@ export function classifyQuestion(question: string): QuestionClassification {
     // Sort by score
     typeScores.sort((a, b) => b.score - a.score);
     
-    const bestType = typeScores[0]?.type ?? 'unknown';
+    let bestType = typeScores[0]?.type ?? 'unknown';
     const confidence = typeScores.length > 0
         ? Math.min(1, typeScores[0].score / 4)
         : 0;
+
+    // Add this condition BEFORE the final return:
+    if (/detected by|indicates|caused by|result of|sign of/i.test(question)) {
+        bestType = 'mechanism'; 
+    }
     
     return {
         type: bestType,

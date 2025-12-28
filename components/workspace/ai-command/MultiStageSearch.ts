@@ -460,6 +460,17 @@ export async function gatherExpandedContext(
 
     console.log(`[MultiStageSearch] Found ${allPages.size} unique pages from search results:`, Array.from(allPages).slice(0, 10));
 
+    // 1. Calculate a score for every page based on search hits
+    const pageScores = new Map<number, number>();
+
+    for (const [sqId, candidates] of contexts.entries()) {
+        for (const c of candidates) {
+            // Add the candidate's score to the page's total score
+            const current = pageScores.get(c.page) || 0;
+            pageScores.set(c.page, current + c.score);
+        }
+    }
+
     // Expand to adjacent pages for context continuity
     const expandedPages = new Set<number>();
     const allPagesArray = Array.from(allPages);
@@ -475,7 +486,12 @@ export async function gatherExpandedContext(
 
     // Fetch full text for expanded pages IN PARALLEL
     // We use Promise.all to fetch all pages at once, significantly reducing total wait time
-    const sortedPages = Array.from(expandedPages).sort((a, b) => a - b).slice(0, 5); // Limit to 5 pages
+    // 2. Sort pages by Score (High to Low), THEN by Page Number
+    const sortedPages = Array.from(expandedPages).sort((a, b) => {
+        const scoreA = pageScores.get(a) || 0;
+        const scoreB = pageScores.get(b) || 0;
+        return scoreB - scoreA; // Descending score
+    }).slice(0, 5); // Take top 5 MOST RELEVANT pages
     
     console.log(`[MultiStageSearch] Fetching text for ${sortedPages.length} pages in parallel:`, sortedPages);
 

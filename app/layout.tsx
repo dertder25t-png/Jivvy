@@ -3,6 +3,12 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { initPDFWorker } from '@/lib/pdf-init';
+
+// CALL IT OUTSIDE THE COMPONENT to run immediately on load
+if (typeof window !== 'undefined') {
+  initPDFWorker();
+}
 
 export const metadata: Metadata = {
   title: "Jivvy | Calm Workspace",
