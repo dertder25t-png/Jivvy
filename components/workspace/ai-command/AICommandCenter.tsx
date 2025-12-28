@@ -86,9 +86,12 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
         }
     };
 
-    // Initialize Worker Listeners (Worker init is handled by parent)
+    // Initialize Worker Listeners and Index
     useEffect(() => {
         if (!pdfBuffer) return;
+
+        // Initialize the PDF index
+        pdfWorker.initIndex(pdfBuffer);
 
         // Get total pages from worker
         const checkPages = async () => {

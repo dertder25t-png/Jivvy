@@ -93,16 +93,17 @@ export function findHybridCandidates(
     index: IndexStructure, 
     query: string, 
     queryEmbedding: number[] | null, 
-    limit: number = 20
+    limit: number = 20,
+    filterPages?: Set<number>
 ): SearchCandidate[] {
     // 1. Get BM25 candidates
-    const bm25Candidates = findCandidates(index, query, limit * 2);
+    const bm25Candidates = findCandidates(index, query, limit * 2, filterPages);
     
     // 2. Get Vector candidates (if embedding available)
     let vectorCandidates: SearchCandidate[] = [];
     if (queryEmbedding && index.chunks.some(c => c.embedding)) {
         const scores = index.chunks
-            .filter(c => c.embedding)
+            .filter(c => c.embedding && (!filterPages || filterPages.has(c.pageNumber)))
             .map(c => ({
                 chunk: c,
                 score: cosineSimilarityDense(queryEmbedding, c.embedding!)

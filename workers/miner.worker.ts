@@ -121,7 +121,7 @@ ctx.onmessage = async (event: MessageEvent) => {
             console.warn("Embedding failed", e);
         }
 
-        const candidates = findHybridCandidates(searchIndex, payload.query, queryEmbedding, 20);
+        const candidates = findHybridCandidates(searchIndex, payload.query, queryEmbedding, 20, filterSet);
         ctx.postMessage({ type: 'SEARCH_RESULT', id, payload: candidates });
         break;
 
@@ -171,7 +171,9 @@ ctx.onmessage = async (event: MessageEvent) => {
         break;
 
       case 'get_page_text':
-        ctx.postMessage({ type: 'page_text', page: payload.page, text: pageTextCache.get(payload.page) ?? null });
+        const cachedText = pageTextCache.get(payload.page);
+        console.log(`[MinerWorker] get_page_text request for page ${payload.page}, cache has: ${cachedText ? 'YES (' + cachedText.length + ' chars)' : 'NO'}`);
+        ctx.postMessage({ type: 'page_text', page: payload.page, text: cachedText ?? null });
         break;
     }
   } catch (error: any) {
@@ -286,10 +288,9 @@ async function generateEmbeddings(chunks: ChunkData[]) {
                  }
             }
             
-            // Yield to event loop occasionally to allow other messages (like SEARCH) to be processed
-            if (i % 20 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0));
-            }
+            // Yield to event loop frequently to allow other messages (like SEARCH/GET_TEXT) to be processed
+            // We yield every iteration because embedding generation is CPU intensive and can block for 100ms+ per batch
+            await new Promise(resolve => setTimeout(resolve, 0));
         }
     } catch (e) {
         console.error("[MinerWorker] Embedding generation failed", e);

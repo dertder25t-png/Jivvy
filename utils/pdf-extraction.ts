@@ -91,7 +91,10 @@ class PDFWorkerClient {
           this.worker?.postMessage({
               type: 'SEARCH',
               id,
-              payload: { query, filterPages }
+              payload: { 
+                  query, 
+                  filterPages: filterPages ? Array.from(filterPages) : undefined
+              }
           });
       });
   }
@@ -138,13 +141,31 @@ class PDFWorkerClient {
 
   async getPageText(page: number): Promise<string> {
     return new Promise((resolve) => {
+      let timeoutId: NodeJS.Timeout;
+      let resolved = false;
+      
       const handler = (data: { page: number; text: string | null }) => {
-        if (data.page === page) {
+        if (data.page === page && !resolved) {
+          resolved = true;
+          clearTimeout(timeoutId);
           this.off('page_text', handler as any);
+          console.log(`[PDFWorkerClient] getPageText succeeded for page ${page}, text length: ${data.text?.length || 0}`);
           resolve(data.text || '');
         }
       };
       this.on('page_text', handler as any);
+      
+      // Increase timeout to 10 seconds - worker might be busy with other tasks
+      timeoutId = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          this.off('page_text', handler as any);
+          console.warn(`[PDFWorkerClient] getPageText timeout for page ${page} after 10s`);
+          resolve('');
+        }
+      }, 10000);
+      
+      console.log(`[PDFWorkerClient] Requesting page text for page ${page}`);
       this.worker?.postMessage({
         type: 'get_page_text',
         payload: { page }

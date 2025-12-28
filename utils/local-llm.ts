@@ -569,17 +569,28 @@ function parseQuizOutput(output: string): QuizQuestionResult | null {
 }
 
 // ============================================================================
-// ANSWER QUESTION - Updated for Qwen
+// ANSWER QUESTION - Updated for Qwen with Strict Context Grounding
 // ============================================================================
+
+export interface PreviousConversationTurn {
+    question: string;
+    answer: string;
+    context: string;
+}
 
 /**
  * Answer a question using local LLM with Qwen chat template
- * Automatically uses current model's context limits
+ * Enhanced with:
+ * - Strict context grounding (forbid outside knowledge)
+ * - Citation requirement (cite specific sentences)
+ * - Follow-up question support (previousConversation parameter)
+ * - Automatic uses current model's context limits
  */
 export async function answerQuestionLocal(
     question: string,
     context: string,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    previousConversation?: PreviousConversationTurn[]
 ): Promise<string> {
     const TIMEOUT_MS = 60000;  // 60 second timeout (longer for thorough mode)
 
@@ -609,11 +620,31 @@ export async function answerQuestionLocal(
     const truncatedContext = truncateInput(context, config.maxContext);
     console.log(`[LocalLLM] Generating answer with ${config.name} model: "${question.slice(0, 50)}..." with ${truncatedContext.length} chars context`);
 
-    const systemPrompt = currentModelId === 'thorough'
-        ? 'You are an expert tutor. Answer the user\'s question based ONLY on the provided context. If the question is a multiple-choice question, select the best answer, explain WHY it is correct, and cite the page number where the information is found (e.g., [Page 12]).'
-        : 'You are a helpful assistant. Answer based on context. If it is a multiple choice question, give the answer and a brief explanation with page citation.';
+    // === STRICT CONTEXT GROUNDING SYSTEM PROMPT ===
+    const systemPrompt = `You are a precise document analyzer. Follow these rules STRICTLY:
+
+RULES:
+1. ANSWER ONLY FROM PROVIDED TEXT: You must only use information from the provided context. Ignore your training data.
+2. CITE EVERYTHING: Before answering, identify and quote the exact sentences from the text that support your answer.
+3. NO OUTSIDE KNOWLEDGE: Do NOT use facts, dates, or information not in the provided context.
+4. EXPLICIT ONLY: If the answer is not explicitly or clearly implied in the text, say "Not found in provided context."
+5. MAINTAIN CONTEXT: If this is a follow-up question, use the previous conversation to understand what was already discussed.
+
+OUTPUT FORMAT:
+[CITATION]: "Exact quote from the text that answers the question"
+[ANSWER]: Your answer based ONLY on the citation above.
+[EXPLANATION]: Brief explanation of why this citation answers the question.`;
+
+    // Build previous conversation context if provided
+    let conversationHistory = '';
+    if (previousConversation && previousConversation.length > 0) {
+        conversationHistory = '\n\nPREVIOUS CONVERSATION:\n';
+        for (const turn of previousConversation) {
+            conversationHistory += `Q: ${turn.question}\nA: ${turn.answer}\n\n`;
+        }
+    }
     
-    const userPrompt = `Context:\n${truncatedContext}\n\nQuestion: ${question}\n\nInstructions:\n1. Identify the correct answer.\n2. Explain why it is correct using evidence from the text.\n3. Cite the page number (e.g., [Page 5]) for the evidence.\n\nAnswer:`;
+    const userPrompt = `${conversationHistory}DOCUMENT CONTEXT:\n${truncatedContext}\n\nNEW QUESTION: ${question}\n\nRemember: Only answer from the provided context. Start with [CITATION].`;
     const prompt = formatQwenPrompt(systemPrompt, userPrompt);
 
     console.log(`[LocalLLM] Prompt length: ${prompt.length} chars`);
