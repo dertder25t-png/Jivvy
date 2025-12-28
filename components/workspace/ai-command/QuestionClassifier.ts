@@ -105,7 +105,7 @@ const TYPE_PATTERNS: Record<QuestionType, RegExp[]> = {
         /\b(?:various|different|several|multiple)\s+\w+s?\b/i
     ],
     diagnostic: [
-        /\b(detected by|indication of|symptom|sign of|reveal|indicates)\b/i,
+        /\b(detected by|indication of|symptoms?|signs? of|reveal|indicates?)\b/i,
         /\b(troubleshoot|diagnose|failure|fault)\b/i
     ],
     mechanism: [],
@@ -268,9 +268,9 @@ export function classifyQuestion(question: string): QuestionClassification {
         ? Math.min(1, typeScores[0].score / 4)
         : 0;
 
-    // Add this condition BEFORE the final return:
-    if (/detected by|indicates|caused by|result of|sign of/i.test(question)) {
-        bestType = 'mechanism'; 
+    // Force diagnostic for specific keywords that might be masked by "What is..."
+    if (/\b(symptoms?|signs? of|detected by|troubleshoot|diagnose)\b/i.test(question)) {
+        bestType = 'diagnostic';
     }
     
     return {

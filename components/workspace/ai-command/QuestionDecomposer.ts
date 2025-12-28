@@ -46,16 +46,30 @@ const DECOMPOSITION_TEMPLATES: Record<string, (q: string, analysis: QuestionAnal
             { id: 'main', text: q, type: 'main', priority: 1 }
         ];
         
-        // NEW LOGIC: Join key terms into a single specific phrase
-        // instead of searching for them individually
-        const subject = analysis.keyTerms
-            .filter(k => k.length > 3 && !/^(what|when|where|does|how|purpose|function)$/i.test(k))
-            .join(' ');
+        // NEW LOGIC: Keep the main "Subject Phrase" intact.
+        // Instead of relying on keyTerms which splits words, we try to extract the full phrase.
+        // 1. Try to strip common question prefixes
+        let subject = q.replace(/^(what|which|explain|define|describe|meaning of)\s+(is|are|the|a|an|does|do|mean by)\s+/i, '')
+                       .replace(/\?$/, '')
+                       .trim();
+
+        // 2. If that fails or leaves too much garbage, try noun phrases
+        if (subject.length < 3 || subject.split(' ').length > 6) {
+             if (analysis.nounPhrases && analysis.nounPhrases.length > 0) {
+                 // Pick the longest noun phrase
+                 subject = analysis.nounPhrases.sort((a, b) => b.length - a.length)[0];
+             } else {
+                 // Fallback to key terms join
+                 subject = analysis.keyTerms
+                    .filter(k => k.length > 3 && !/^(what|when|where|does|how|purpose|function)$/i.test(k))
+                    .join(' ');
+             }
+        }
 
         if (subject.length > 0) {
             subQs.push({
                 id: 'def-subject',
-                text: `What is ${subject}? Detailed explanation of ${subject}`,
+                text: `What is "${subject}"? Detailed explanation of "${subject}"`,
                 type: 'definition',
                 priority: 0.9
             });

@@ -1,4 +1,4 @@
-import fs from 'fs-extra';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -8,17 +8,24 @@ const __dirname = path.dirname(__filename);
 const pdfjsDistPath = path.resolve(__dirname, '../node_modules/pdfjs-dist/build/pdf.worker.min.mjs');
 const workerDestPath = path.resolve(__dirname, '../public/pdf.worker.min.mjs');
 
-async function copyWorker() {
+function copyWorker() {
     try {
-        if (await fs.pathExists(pdfjsDistPath)) {
-            await fs.copy(pdfjsDistPath, workerDestPath, { overwrite: true });
+        // Ensure public directory exists
+        const publicDir = path.dirname(workerDestPath);
+        if (!fs.existsSync(publicDir)) {
+            fs.mkdirSync(publicDir, { recursive: true });
+        }
+
+        if (fs.existsSync(pdfjsDistPath)) {
+            fs.copyFileSync(pdfjsDistPath, workerDestPath);
             console.log('PDF worker copied successfully!');
         } else {
             console.error('PDF worker file not found at:', pdfjsDistPath);
             // Try finding .js version if .mjs missing
             const jsPath = pdfjsDistPath.replace('.mjs', '.js');
-            if (await fs.pathExists(jsPath)) {
-                await fs.copy(jsPath, workerDestPath.replace('.mjs', '.js'), { overwrite: true });
+            if (fs.existsSync(jsPath)) {
+                const destJs = workerDestPath.replace('.mjs', '.js');
+                fs.copyFileSync(jsPath, destJs);
                 console.log('PDF worker (JS) copied successfully!');
             } else {
                 console.error('Could not find PDF worker file.');

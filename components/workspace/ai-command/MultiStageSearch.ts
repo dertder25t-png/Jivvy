@@ -468,6 +468,25 @@ export async function gatherExpandedContext(
         for (const c of candidates) {
             let score = c.score;
 
+            // 1. Massive Boost for Exact Phrase Matches
+            // If the underlying search returned a very high score (indicating exact match),
+            // we amplify it significantly to ensure it overrides keyword density on TOC pages.
+            if (score >= 90) {
+                score *= 10.0; 
+                console.log(`[MultiStageSearch] Applied EXACT PHRASE boost to page ${c.page}`);
+            }
+
+            // 2. Penalty for "Garbage" Pages (TOC, Index, etc.)
+            // These pages often have high keyword density but are rarely the answer.
+            const lowerText = c.text.toLowerCase();
+            if (lowerText.includes('table of contents') || 
+                lowerText.includes('index') || 
+                (lowerText.includes('introduction') && c.page < 10)) { // Only penalize Intro if it's at the start
+                
+                score *= 0.1; // Severe penalty
+                console.log(`[MultiStageSearch] Applied TOC/Index penalty to page ${c.page}`);
+            }
+
             // TRIPLE CHECK LOGIC: Boost pages that contain both Cause AND Effect
             if (questionType === 'diagnostic') {
                 const pageText = c.text.toLowerCase(); // Using candidate text as proxy for page text
