@@ -10,7 +10,8 @@ export interface AdversarialResult {
     evidence: string;        // The specific text chunk used
     pages: number[];         // Pages where evidence was found
     matrix: {                // The full scoreboard
-        option: string;
+        letter: string;
+        text: string;
         searchQuery: string;
         evidenceFound: string;
         verdict: 'entailment' | 'contradiction' | 'neutral';
@@ -20,42 +21,44 @@ export interface AdversarialResult {
 
 export async function runAdversarialCheck(
     question: string,
-    options: string[], // ["A. Option text", "B. Option text"...]
+    options: string[], 
     searchFunction: (query: string) => Promise<SearchResult[]>
 ): Promise<AdversarialResult> {
     
-    // 1. Ensure Model Ready
     await initNLIModel();
 
-    // 2. Detect Negative Logic (NOT/EXCEPT)
     const isNegativeQuestion = /\b(not|except|false|incorrect|unlikely)\b/i.test(question);
-    
-    const matrixResults = [];
     const foundPages = new Set<number>();
+    const matrixResults = [];
 
-    // 3. Split & Search & Judge
     for (let i = 0; i < options.length; i++) {
-        const optionLetter = String.fromCharCode(65 + i); // A, B, C...
+        const optionLetter = String.fromCharCode(65 + i);
         const cleanOption = options[i].replace(/^[A-D][\.\)\s]+/, '').trim();
-        
-        // Generate Targeted Query: Question Keywords + Option Keywords
-        const qTokens = tokenizeText(question).join(' ');
-        const oTokens = tokenizeText(cleanOption).join(' ');
-        const query = `${qTokens} ${oTokens}`;
+        const isNoneOption = /none of|not required|none is/i.test(cleanOption);
 
-        // Search
+        // --- FIX 1 & 2: Smarter Search Queries ---
+        let query;
+        if (isNoneOption) {
+            // For "None", just search the question to find general context
+            query = tokenizeText(question).join(' '); 
+        } else {
+            // Targeted search
+            const qTokens = tokenizeText(question).join(' ');
+            const oTokens = tokenizeText(cleanOption).join(' ');
+            query = `${qTokens} ${oTokens}`;
+        }
+
         const searchResults = await searchFunction(query);
         
-        // Get best evidence (top result text)
-        // If no results, we have no evidence -> Neutral
         let evidenceText = "";
         if (searchResults && searchResults.length > 0) {
              searchResults.forEach(r => foundPages.add(r.page));
              evidenceText = searchResults[0].excerpt || ""; 
         }
 
-        // Judge
+        // --- FIX 3: Verdict Logic ---
         let verdict: NLIResult;
+        
         if (!evidenceText) {
             verdict = {
                 option: cleanOption,
@@ -64,8 +67,14 @@ export async function runAdversarialCheck(
                 scores: { entailment: 0, contradiction: 0, neutral: 1 }
             };
         } else {
-            // Hypothesis: The Option Text
-            verdict = await judgeOption(evidenceText, cleanOption);
+            // --- FIX 1: Combine Question + Option for Hypothesis ---
+            // "Blue" -> "What color is the sky? Blue"
+            const hypothesis = `${question} ${cleanOption}`;
+            verdict = await judgeOption(evidenceText, hypothesis);
+            
+            // Special handling for "None" options: 
+            // If the text says "Not required" and option is "None required", that is Entailment.
+            // The NLI model usually handles this, but ensuring the hypothesis is complete helps.
         }
 
         matrixResults.push({
@@ -78,55 +87,40 @@ export async function runAdversarialCheck(
         });
     }
 
-    // 4. The Solver Logic (JavaScript)
-    // const scores = results.map(r => r.label); // ['neutral', 'entailment', 'contradiction']
-
-    // Rule 1: The "Highlander" (There can be only one)
-    // If exactly one option is "Entailment" (Supported), it wins immediately.
-    const supported = matrixResults.filter(r => r.verdict === 'entailment');
+    // --- FIX 4: Robust Solver Logic ---
     
+    // Sort by Entailment (Descending)
+    const sortedByEntailment = [...matrixResults].sort((a, b) => b.scores.entailment - a.scores.entailment);
+    // Sort by Contradiction (Descending)
+    const sortedByContradiction = [...matrixResults].sort((a, b) => b.scores.contradiction - a.scores.contradiction);
+
     let winner;
     let explanation = "";
 
-    if (supported.length === 1) {
-        winner = supported[0];
-        explanation = `Adversarial Logic: Option ${winner.letter} is the only one supported by the evidence.`;
-    } 
-    // Rule 3: The "Negative Logic" Swap (Check this before Rule 2 if it's a negative question)
-    else if (isNegativeQuestion) {
-        // If question asks "Which is NOT...", we invert the logic:
-        // Look for the single "Contradiction" among "Entailments" (or just the strongest contradiction).
-        const contradicted = matrixResults.filter(r => r.verdict === 'contradiction');
-        if (contradicted.length === 1) {
-             winner = contradicted[0];
-             explanation = `Adversarial Logic (Negative): Option ${winner.letter} is the only one contradicted by the evidence.`;
+    if (isNegativeQuestion) {
+        // For "NOT" questions, the winner is the one with highest CONTRADICTION
+        winner = sortedByContradiction[0];
+        explanation = `Negative Logic: Option ${winner.letter} contradicts the evidence most strongly.`;
+    } else {
+        // Standard "Find the Truth"
+        winner = sortedByEntailment[0];
+        const runnerUp = sortedByEntailment[1];
+        
+        // Safety Check: Ambiguity
+        if (runnerUp && (winner.scores.entailment - runnerUp.scores.entailment < 0.05)) {
+             explanation = `Ambiguous Result: Options ${winner.letter} and ${runnerUp.letter} have very similar support. Selected ${winner.letter} by slight margin.`;
+        } else if (winner.scores.entailment < 0.2) {
+             // If best match is garbage, look for "None of the above"
+             const noneOption = matrixResults.find(r => /none/i.test(r.text));
+             if (noneOption) {
+                 winner = noneOption;
+                 explanation = "Process of Elimination: No strong evidence found for specific options. Defaulting to 'None'.";
+             } else {
+                 explanation = "Low Confidence: Evidence is weak for all options.";
+             }
         } else {
-            // Fallback: Pick the highest contradiction score
-            matrixResults.sort((a, b) => b.scores.contradiction - a.scores.contradiction);
-            winner = matrixResults[0];
-            explanation = `Adversarial Logic (Negative): Option ${winner.letter} has the strongest contradiction with the evidence.`;
+             explanation = `Process of Elimination: Option ${winner.letter} is the strongest match to the evidence.`;
         }
-    }
-    // Rule 2: The "Last Man Standing" (Process of Elimination)
-    // If the question is positive ("What IS...") and all other options are "Contradiction", 
-    // picking the one "Neutral" or "Entailment" option left.
-    else {
-        const contradicted = matrixResults.filter(r => r.verdict === 'contradiction');
-        if (contradicted.length === options.length - 1) {
-            winner = matrixResults.find(r => r.verdict !== 'contradiction');
-            explanation = `Adversarial Logic: All other options were contradicted by evidence. Option ${winner?.letter} remains.`;
-        } else {
-            // Fallback: Pick the highest entailment score
-            matrixResults.sort((a, b) => b.scores.entailment - a.scores.entailment);
-            winner = matrixResults[0];
-            explanation = `Adversarial Logic: Option ${winner.letter} has the strongest support from the evidence.`;
-        }
-    }
-
-    if (!winner) {
-         // Absolute fallback
-         winner = matrixResults[0];
-         explanation = "Adversarial Logic: Could not determine a clear winner. Selected best match.";
     }
 
     return {
@@ -136,12 +130,6 @@ export async function runAdversarialCheck(
         explanation: explanation,
         pages: Array.from(foundPages),
         evidence: winner.evidenceFound,
-        matrix: matrixResults.map(r => ({
-            option: r.text,
-            searchQuery: r.searchQuery,
-            evidenceFound: r.evidenceFound,
-            verdict: r.verdict,
-            scores: r.scores
-        }))
+        matrix: matrixResults
     };
 }
