@@ -155,15 +155,15 @@ class PDFWorkerClient {
       };
       this.on('page_text', handler as any);
       
-      // Increase timeout to 10 seconds - worker might be busy with other tasks
+      // Increase timeout to 15 seconds - worker might be busy with other tasks
       timeoutId = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           this.off('page_text', handler as any);
-          console.warn(`[PDFWorkerClient] getPageText timeout for page ${page} after 5s`);
+          console.warn(`[PDFWorkerClient] getPageText timeout for page ${page} after 15s`);
           resolve('');
         }
-      }, 5000); // Reduced to 5s since we are now fetching in parallel
+      }, 15000); // Increased to 15s for mobile/heavy PDFs
       
       console.log(`[PDFWorkerClient] Requesting page text for page ${page}`);
       this.worker?.postMessage({
