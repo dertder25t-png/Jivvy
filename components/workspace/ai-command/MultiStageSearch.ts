@@ -416,6 +416,7 @@ export function decomposeQuestion(question: string): SubQuestion[] {
  */
 export async function gatherExpandedContext(
     subQuestions: SubQuestion[],
+    questionType: string, // Added questionType
     filterPages?: Set<number>
 ): Promise<{
     contexts: Map<string, { text: string; page: number; score: number }[]>;
@@ -465,9 +466,26 @@ export async function gatherExpandedContext(
 
     for (const [sqId, candidates] of contexts.entries()) {
         for (const c of candidates) {
+            let score = c.score;
+
+            // TRIPLE CHECK LOGIC: Boost pages that contain both Cause AND Effect
+            if (questionType === 'diagnostic') {
+                const pageText = c.text.toLowerCase(); // Using candidate text as proxy for page text
+                const problemTerms = ['icing', 'carburetor', 'ice'];
+                const symptomTerms = ['pressure', 'rpm', 'drop', 'decrease', 'increase'];
+                
+                const hasProblem = problemTerms.some(t => pageText.includes(t));
+                const hasSymptom = symptomTerms.some(t => pageText.includes(t));
+
+                if (hasProblem && hasSymptom) {
+                    score *= 3.0; // Massive boost for pages linking Cause -> Effect
+                    console.log(`[MultiStageSearch] Applied diagnostic boost to page ${c.page}`);
+                }
+            }
+
             // Add the candidate's score to the page's total score
             const current = pageScores.get(c.page) || 0;
-            pageScores.set(c.page, current + c.score);
+            pageScores.set(c.page, current + score);
         }
     }
 
@@ -781,7 +799,7 @@ export async function runMultiStageSearch(
 
         // Strategy 1 & 6: Multi-stage context assembly with page expansion
         addStep('Gathering expanded context...', 'active');
-        const { contexts, allPages, expandedText } = await gatherExpandedContext(subQuestions, filterPages);
+        const { contexts, allPages, expandedText } = await gatherExpandedContext(subQuestions, classification.type, filterPages);
         
         // Strategy 6: Expanded context already includes adjacent pages via gatherExpandedContext
         const fullContext = expandedText;

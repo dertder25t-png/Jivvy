@@ -14,7 +14,7 @@ export interface QuestionAnalysis {
 const INTENT_PATTERNS: Array<{ intent: QuestionAnalysis['intent']; regex: RegExp }> = [
   { intent: 'definition', regex: /\b(what is|define|explain|meaning of|describe|characterized by)\b/i },
   { intent: 'procedure', regex: /\b(how do|how does|procedure|steps|process|best way|method|way to)\b/i },
-  { intent: 'diagnosis', regex: /\b(why|cause|causes|symptom|indicate|detect|diagnos|sign of|characteristic of)\b/i },
+  { intent: 'diagnosis', regex: /\b(why|cause|causes|symptom|indicate|detect|diagnos|sign of|characteristic of|detected by|indication of|reveal|troubleshoot|failure|fault)\b/i },
   { intent: 'comparison', regex: /\b(difference|compare|versus|vs\.?|better than|different from|distinguish|distinguish between)\b/i },
   { intent: 'calculation', regex: /\b(calculate|compute|determine|formula|value of|how much|how many)\b/i }
 ];

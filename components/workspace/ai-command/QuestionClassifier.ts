@@ -105,10 +105,8 @@ const TYPE_PATTERNS: Record<QuestionType, RegExp[]> = {
         /\b(?:various|different|several|multiple)\s+\w+s?\b/i
     ],
     diagnostic: [
-        /\b(?:symptom|indication|sign|diagnos|detected by|indicates)\b/i, // Added 'detected by', 'indicates'
-        /\b(?:troubleshoot|debug|fix|solve|resolve)\b/i,
-        /\b(?:error|problem|issue|fault|failure)\b/i,
-        /\b(?:what is wrong|what causes|why does.*fail)\b/i
+        /\b(detected by|indication of|symptom|sign of|reveal|indicates)\b/i,
+        /\b(troubleshoot|diagnose|failure|fault)\b/i
     ],
     mechanism: [],
     unknown: []

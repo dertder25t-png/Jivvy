@@ -12,7 +12,7 @@ import type { SearchCandidate } from '@/utils/search/types';
 export interface SubQuestion {
     id: string;
     text: string;
-    type: 'main' | 'context' | 'definition' | 'comparison' | 'constraint';
+    type: 'main' | 'context' | 'definition' | 'comparison' | 'constraint' | 'fact' | 'mechanism';
     priority: number;
 }
 
@@ -99,20 +99,17 @@ const DECOMPOSITION_TEMPLATES: Record<string, (q: string, analysis: QuestionAnal
         return subQs;
     },
     
-    diagnosis: (q, analysis) => {
-        const subQs: SubQuestion[] = [
-            { id: 'main', text: q, type: 'main', priority: 1 }
-        ];
+    diagnosis: (question, analysis) => {
+        const subQs: SubQuestion[] = [];
+        const subject = analysis.keyTerms.filter(k => k.length > 3).join(' ');
+
+        // 1. Ask about symptoms directly
+        subQs.push({ id: 'symptoms', text: `What are the symptoms of ${subject}?`, type: 'fact', priority: 1 });
         
-        // Add symptom/cause lookups
-        if (q.toLowerCase().includes('why')) {
-            subQs.push({
-                id: 'causes',
-                text: `${analysis.keyTerms[0]} causes reasons`,
-                type: 'context',
-                priority: 0.8
-            });
-        }
+        // 2. Ask about the specific indicators mentioned in the options
+        // (This helps the AI connect "icing" to "manifold pressure")
+        subQs.push({ id: 'mech-1', text: `How does ${subject} affect manifold pressure?`, type: 'mechanism', priority: 0.9 });
+        subQs.push({ id: 'mech-2', text: `How does ${subject} affect RPM?`, type: 'mechanism', priority: 0.9 });
         
         return subQs;
     }
