@@ -1,0 +1,255 @@
+This is the comprehensive, consolidated plan for the Jivvy v2 Beta. It merges all known issues (Security, Architecture, "Hollow Features", Performance, and Legacy Code) into a single execution strategy.
+
+Objective: A stable, secure, and feature-complete Beta that does not crash browsers, lose user data, or confuse users with broken buttons.
+
+🛑 Phase 1: Security & Critical Stability (The "Must Haves")
+
+These issues pose immediate security risks or cause app-breaking crashes. Fix these before any public testing.
+
+1.1 Fix API Security Holes (SSRF & Authorization)
+
+[ ] Proxy SSRF Hardening (app/api/proxy/route.ts)
+
+Set redirect: 'manual' in fetch options to prevent attackers from bypassing the blocklist via 301/302 redirects.
+
+Add [::1] to BLOCKED_HOSTS or normalize hostnames to strip brackets (IPv6 protection).
+
+[ ] Ownership Verification
+
+Notes: In saveProjectNote (app/project/actions.ts), verify project.user_id === session.user_id before saving.
+
+Flashcards: In createFlashcard, verify project ownership.
+
+[ ] Open Redirect Fix (app/auth/callback/route.ts)
+
+Validate the next param. Ensure it starts with / and does not contain //.
+
+1.2 Prevent Application Crashes
+
+[ ] Recursive Render Guard (components/views/DocView.tsx)
+
+Source: Category 3 (Recursive Risk)
+
+Add a depth counter to renderTree. Stop rendering if depth > 20 to prevent infinite loops from circular references.
+
+[ ] Grammar Checker Crash (GrammarChecker.ts)
+
+Handle empty correction strings. Use tr.delete() instead of replacing with empty text nodes (which crashes ProseMirror).
+
+[ ] LLM Null Safety (utils/local-llm.ts)
+
+Wrap nliPipeline calls in judgeOption with a try/catch or null check to prevent crashes if the model fails to load (offline/quota).
+
+1.3 Fix External Data Fetching (CORS)
+
+[ ] Client-Side Proxy Implementation (utils/local-ai-actions.ts)
+
+Source: Category 2 (Proxy Scraping)
+
+Replace direct fetch(pdfUrl) calls with /api/proxy?url=${encodedUrl}. This fixes the broken "Add PDF from URL" feature.
+
+🧠 Phase 2: Data Integrity & "Split Brain" Fix
+
+Fixing the disconnect between Supabase (Cloud) and Dexie (Local). Ensuring users see their data across devices.
+
+2.1 Database Schema Updates ("Who Am I?" Fix)
+
+[ ] Dexie Schema Upgrade (lib/db.ts)
+
+Source: Category 1 (Security Hole)
+
+Add user_id to projects and blocks tables.
+
+Add project_id index to blocks for performance.
+
+Action: Update version(X) in Dexie to apply these changes.
+
+2.2 The "Sync Hole" Repair
+
+[ ] Hydration Routine (AppShell.tsx or Dashboard.tsx)
+
+Create a useSync hook:
+
+On mount, fetch User's Projects from Supabase.
+
+db.projects.bulkPut() them into Dexie.
+
+Fetch critical blocks.
+
+[ ] Write Consistency (app/project/actions.ts)
+
+Source: Category 1 (Project Disconnect)
+
+Ensure createProject updates both Cloud (Supabase) and Local (Dexie).
+
+2.3 Query Performance ("Database Dump")
+
+[ ] Scoped Queries (app/project/[id]/page.tsx)
+
+Change db.blocks.toArray() (loads EVERYTHING) to db.blocks.where('project_id').equals(id).toArray().
+
+⚡ Phase 3: Performance & Resource Safety
+
+Preventing browser freezes and memory crashes.
+
+3.1 LLM Memory Safety
+
+[ ] Low Memory Mode (utils/local-llm.ts)
+
+Source: Category 3 (Massive Memory Spike)
+
+Implement checkStorageSpace check before loading models.
+
+If space is low (<1GB) or device is mobile, disable "Thorough Mode" or show a "Low Memory" warning.
+
+Add a UI toggle in Settings to completely disable Local LLM.
+
+3.2 Canvas Optimization
+
+[ ] Stop the Re-Render Bomb (JivvyCanvas.tsx)
+
+Source: Category 3 (Canvas Re-Render)
+
+Remove fabricCanvas.clear() from the main useEffect.
+
+Implement smart diffing: only add new blocks, remove deleted blocks, and modify changed blocks using fabricCanvas.getObjects().
+
+3.3 Worker Optimization
+
+[ ] Prevent Reload Thrashing (BlockList.tsx)
+
+Move GrammarWorker initialization to a global Context (WorkersContext). Don't kill/restart the worker every time the user navigates between projects.
+
+[ ] Memory Leak Fix (pdf-extraction.ts)
+
+Use postMessage(payload, [buffer]) (Transferable Objects) to zero-copy large PDFs to the worker.
+
+🎨 Phase 4: Feature Completion ("Hollow Shells")
+
+Connecting the UI buttons to the actual logic.
+
+4.1 Search Architecture
+
+[ ] Unify Search Engines
+
+Source: Category 1 (Broken Search)
+
+Delete simple keyword logic in local-ai-actions.ts.
+
+Route "Quick Search" and "Chat" through the robust retriever.ts (Hybrid Search).
+
+4.2 Missing Logic Implementation
+
+[ ] Smart Syllabus (PDF Parsing)
+
+Source: Category 2 (Missing)
+
+Implement extractDatesFromPdf in utils/pdf-extraction.ts. Use the LLM or Regex to find "Due: [Date]" patterns and convert them to Tasks.
+
+[ ] Automatic Quiz & Flashcard Generation
+
+Source: Category 2 (Disconnected / Hollow)
+
+Target: LectureContainerBlock.tsx and FlashcardSidebar.tsx.
+
+Action: Wire the "Generate" button to call generatePracticeQuizBlocks from utils/analytics/.
+
+Validation: Ensure the output is written to db.blocks (for quizzes) and db.flashcards (if separate table exists) so the Sidebar stops showing mock data.
+
+[ ] Design Doctor
+
+Source: Category 2 (Stubbed)
+
+Decision: Either implement a small vision model (like Moondream via WebLLM) OR hide the button for Beta. Do not leave it returning a fake error.
+
+4.3 Editor Polish
+
+[ ] Fix Cursor Jumping (BlockList.tsx)
+
+Decouple useLiveQuery from local state. Only sync DB -> Local if the update came from another device/tab.
+
+[ ] Grammar Debounce
+
+Source: Category 3 (Debounce)
+
+Lower GRAMMAR_DEBOUNCE_MS to 3000ms (3s).
+
+🧹 Phase 5: Legacy Cleanup & Code Hygiene (New)
+
+Removing "old stuff" and verifying shells.
+
+5.1 Remove Dead Code
+
+[ ] "Miner" Logic (utils/miner-logic.ts, workers/miner.worker.ts)
+
+Source: Legacy Feature
+
+Action: Delete these files if the "Miner" feature is no longer in the V2 product roadmap. If kept, verify connection to ExtractionWorkspace.tsx.
+
+[ ] Consolidate AI Actions
+
+Source: Duplicate Logic
+
+Check app/ai/actions.ts vs utils/local-ai-actions.ts. Delete the redundant file (likely app/ai/actions.ts if it's empty or just a wrapper).
+
+5.2 Validate Potential Stubs
+
+[ ] Research Tools (components/workspace/ResearchTools.tsx)
+
+Action: Verify this component actually calls the new retriever.ts search logic. If it uses hardcoded results, connect it or hide it.
+
+[ ] Adversarial Matrix (components/workspace/ai-command/AdversarialMatrix.ts)
+
+Action: Verify this file contains actual logic matching ADVERSARIAL_LOGIC_IMPLEMENTATION.md. If it's empty, implement the core matrix logic or disable the feature.
+
+📝 Execution Checklist
+
+Day 1: Security & Stability
+
+[ ] Proxy SSRF Fix
+
+[ ] Auth Open Redirect Fix
+
+[ ] Ownership Checks (Notes/Flashcards)
+
+[ ] Recursive Render Guard
+
+[ ] Move PDF Worker Init to Client
+
+Day 2: Sync & Data
+
+[ ] Dexie Schema Update (User ID/Project ID)
+
+[ ] Implement Hydration (Cloud -> Local Sync)
+
+[ ] Fix Project Creation Write Path
+
+[ ] Optimize "Database Dump" Query
+
+Day 3: Performance & Core
+
+[ ] Implement LLM Low Memory Mode
+
+[ ] Optimize Canvas (Smart Diffing)
+
+[ ] Unify Search Architecture
+
+[ ] Fix Worker Memory Leaks
+
+Day 4: Features
+
+[ ] Connect Lecture-to-Quiz & Flashcards
+
+[ ] Implement PDF Date Extraction (Syllabus)
+
+[ ] Decide on Design Doctor (Hide/Implement)
+
+[ ] Editor Polish (Cursor, Paste, Debounce)
+
+Day 5: Cleanup
+
+[ ] Delete "Miner" Logic (if unused)
+
+[ ] Consolidate AI Action Files
+
+[ ] Verify Research Tools Integration
