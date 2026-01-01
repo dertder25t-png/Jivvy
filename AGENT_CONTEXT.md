@@ -16,7 +16,7 @@ Jivvy is a "Calm, Local-First Workspace" modeled after Todoist’s structural ef
 - **Sync Engine:** Google Drive API (Client-side JSON blob sync).
 - **AI Engine:**
   - **Local:** Transformers.js (`@xenova/transformers`) via WebGPU.
-  - **Cloud fallback:** Google Gemini (`@google/generative-ai`).
+  - **Cloud fallback:** None (external AI removed; local-first only).
 - **PDF Handling:** `react-pdf` (Viewer) + `pdfjs-dist` (Extraction).
 
 ## 3. UI & Design System (The "Calm" Aesthetic)

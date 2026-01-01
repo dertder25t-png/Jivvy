@@ -1,7 +1,7 @@
 import * as chrono from 'chrono-node';
 
 export interface ParsedTask {
-    type: 'task' | 'project';
+    type: 'task' | 'project' | 'paper' | 'brainstorm';
     title: string;
     priority?: 'low' | 'medium' | 'high';
     dueDate?: Date;
@@ -11,7 +11,7 @@ export interface ParsedTask {
 
 export function parseInputString(text: string): ParsedTask {
     let cleanText = text;
-    let type: 'task' | 'project' = 'task';
+    let type: ParsedTask['type'] = 'task';
     let priority: 'low' | 'medium' | 'high' | undefined = undefined;
     let projectTag: string | undefined = undefined;
 
@@ -19,6 +19,16 @@ export function parseInputString(text: string): ParsedTask {
     if (/^(Project:|Folder:|New Project)/i.test(cleanText)) {
         type = 'project';
         cleanText = cleanText.replace(/^(Project:|Folder:|New Project\:?)\s*/i, '');
+    }
+
+    if (/^(Paper:|Essay:|Doc:|Document:)/i.test(cleanText)) {
+        type = 'paper';
+        cleanText = cleanText.replace(/^(Paper:|Essay:|Doc:|Document\:?)\s*/i, '');
+    }
+
+    if (/^(Brainstorm:|Canvas:|Board:|Note:|Notes:)/i.test(cleanText)) {
+        type = 'brainstorm';
+        cleanText = cleanText.replace(/^(Brainstorm:|Canvas:|Board:|Note\:|Notes\:?)\s*/i, '');
     }
 
     // 2. Priority Parsing

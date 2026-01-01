@@ -249,7 +249,6 @@ const DashboardView = () => {
                                     activeColor.bg,
                                     activeColor.text
                                 )}
-                                delay={0}
                             >
                                 <div className="flex justify-between items-start z-10 relative">
                                     <Link href={`/project/${activeProject.id}`}>
@@ -358,13 +357,11 @@ const DashboardView = () => {
                                     >
                                         <Link href={`/project/${project.id}`}>
                                             <TiltCard
-                                                delay={index * 50}
-                                                noTilt
                                                 className={cn(
                                                     color.bg,
-                                                    "p-5 h-40 flex flex-col justify-between group border-2 border-transparent hover:border-white/20 rounded-3xl shadow-lg transition-all hover:-translate-y-1 cursor-pointer",
+                                                    "p-5 h-40 flex flex-col justify-between group border-2 border-transparent hover:border-white/20 rounded-3xl shadow-lg transition-colors cursor-pointer",
                                                     color.text,
-                                                    activeProjectIndex === index ? "ring-4 ring-white/20 scale-[1.02]" : "opacity-90 hover:opacity-100"
+                                                    activeProjectIndex === index ? "ring-4 ring-white/20" : "opacity-90 hover:opacity-100"
                                                 )}
                                             >
                                                 <div className="flex justify-between items-start relative z-10">

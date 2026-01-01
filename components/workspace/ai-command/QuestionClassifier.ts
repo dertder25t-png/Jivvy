@@ -327,6 +327,7 @@ export function getTypeDescription(type: QuestionType): string {
         hypothetical: 'What-if scenario',
         enumerative: 'List or collection',
         diagnostic: 'Problem diagnosis',
+        mechanism: 'How something works',
         unknown: 'General question'
     };
     

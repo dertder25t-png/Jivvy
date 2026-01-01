@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Loader2, Crop, Sparkles, Upload, X, ScanEye } from "lucide-react";
-import { critiqueCrop, critiqueFullCanvas } from "@/app/critique/actions";
+import { critiqueCropLocal, critiqueFullCanvasLocal } from "@/utils/local-design-critique";
 import { cn } from "@/lib/utils";
 
 // This component will be integrated into the SmartContextBar or a new floating tool
@@ -31,16 +31,12 @@ export function DesignDoctorTool() {
         if (!image) return;
         setLoading(true);
 
-        const formData = new FormData();
-        formData.append("image", image);
-
         if (mode === "crop") {
-            formData.append("issue", issue || "General critique");
-            const res = await critiqueCrop(formData);
-            setResult(res.critique || res.error || "Error");
+            const res = await critiqueCropLocal(image, issue || "General critique");
+            setResult(res.critique || res.error?.message || "Error");
         } else {
-            const res = await critiqueFullCanvas(formData);
-            setResult(res.critique || res.error || "Error");
+            const res = await critiqueFullCanvasLocal(image);
+            setResult(res.critique || res.error?.message || "Error");
         }
 
         setLoading(false);

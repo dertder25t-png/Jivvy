@@ -516,7 +516,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                     </button>
                                     {showStyleMenu && (
                                         <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden z-20 shadow-xl">
-                                            {(['APA', 'MLA', 'Chicago'] as CitationStyle[]).map(style => (
+                                            {(['APA', 'MLA', 'Chicago', 'Turabian'] as CitationStyle[]).map(style => (
                                                 <button
                                                     key={style}
                                                     onClick={() => {
@@ -525,7 +525,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                                     }}
                                                     className={cn(
                                                         "w-full px-3 py-2 text-xs text-left hover:bg-zinc-700 transition-colors",
-                                                        citationStyle === style ? "text-violet-400 bg-zinc-700/50" : "text-zinc-300"
+                                                        citationStyle === style ? "text-blue-400 bg-zinc-700/50" : "text-zinc-300"
                                                     )}
                                                 >
                                                     {style}
@@ -540,7 +540,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setIsAddingCitation(true)}
-                                    className="flex-1 flex items-center justify-center gap-2 py-2 bg-violet-500 hover:bg-violet-400 text-white rounded-lg transition-colors text-xs font-medium"
+                                    className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors text-xs font-medium"
                                 >
                                     <Plus size={14} />
                                     Add
@@ -551,7 +551,7 @@ export function SourceDrawer({ className, pdfUrl, projectId, orientation: propOr
                                     className="flex items-center justify-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                     title="Copy all citations"
                                 >
-                                    {copySuccess === 'all' ? <Check size={14} className="text-lime-400" /> : <Copy size={14} />}
+                                    {copySuccess === 'all' ? <Check size={14} className="text-blue-400" /> : <Copy size={14} />}
                                 </button>
                                 <button
                                     onClick={handleDownloadBibliography}

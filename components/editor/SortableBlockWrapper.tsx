@@ -41,6 +41,17 @@ export function SortableBlockWrapper({ id, children }: SortableBlockWrapperProps
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
+            {/* Invisible block shell (content-first controls) */}
+            <div
+                className={cn(
+                    "pointer-events-none absolute inset-0 rounded-md",
+                    "ring-1 ring-inset ring-transparent",
+                    "group-hover/sortable:ring-border/40",
+                    "group-focus-within/sortable:ring-2 group-focus-within/sortable:ring-primary/30",
+                    isDragging && "ring-2 ring-primary/20"
+                )}
+            />
+
             {/* Drag Handle - appears on hover */}
             <div
                 {...attributes}

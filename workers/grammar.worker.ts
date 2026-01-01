@@ -1,6 +1,7 @@
 
 import { pipeline, env } from '@xenova/transformers';
 import { calcPatch } from 'fast-myers-diff';
+import { safeLogError, toAppError } from '../lib/errors';
 
 // Skip local model checks since we're running in the browser
 env.allowLocalModels = false;
@@ -22,13 +23,13 @@ class GrammarCorrectionSingleton {
 }
 
 self.addEventListener('message', async (event) => {
-  const { text, type } = event.data;
+  const { text, type, requestId } = event.data;
 
   if (type === 'check') {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const generator = await GrammarCorrectionSingleton.getInstance((data: any) => {
-          self.postMessage({ type: 'progress', data });
+          self.postMessage({ type: 'progress', data, requestId });
       });
 
       const output = await generator(text);
@@ -51,14 +52,23 @@ self.addEventListener('message', async (event) => {
 
       self.postMessage({
         type: 'result',
+        requestId,
         text: text,
         corrected: corrected,
         diffs: diffs
       });
 
     } catch (error) {
-      console.error(error);
-      self.postMessage({ type: 'error', error: String(error) });
+      safeLogError('GrammarWorker.check', error);
+      self.postMessage({
+        type: 'error',
+        requestId,
+        error: toAppError(error, {
+          code: 'WORKER_GRAMMAR_FAILED',
+          message: 'Grammar check failed',
+          retryable: true,
+        }),
+      });
     }
   }
 });

@@ -3,18 +3,21 @@
 import React, { useState, useRef } from "react";
 import { Calendar, Hash, ArrowUp, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { db, Block } from "@/lib/db";
-import { Link } from "lucide-react"; // Import issue, see below.
+import { Block } from "@/lib/db";
+import { useProjectStore } from "@/lib/store";
 
 interface SmartTaskInputProps {
     onTaskAdded?: () => void;
 }
 
 export function SmartTaskInput({ onTaskAdded }: SmartTaskInputProps) {
+    const { addBlock } = useProjectStore();
     const [input, setInput] = useState("");
     const [isFocused, setIsFocused] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [showToast, setShowToast] = useState(false);
+    const [toastVariant, setToastVariant] = useState<'success' | 'error'>('success');
+    const [toastMessage, setToastMessage] = useState<string>('');
     const inputRef = useRef<HTMLInputElement>(null);
 
     // Simple parser regex
@@ -57,6 +60,11 @@ export function SmartTaskInput({ onTaskAdded }: SmartTaskInputProps) {
                 content: input.replace(tagRegex, '').trim(), // Remove tags from content? Maybe keep them. User didn't specify. I'll keep them in content or remove? Prompt: "extract that word as a Project Tag...". Usually means relation. I will just store in metadata for now.
                 type: 'task',
                 order: Date.now(),
+                properties: {
+                    due_date: scheduledDate ?? undefined,
+                    tags: projectTag ? [projectTag.replace('#', '')] : [],
+                    checked: false,
+                },
                 metadata: {
                     status: 'todo',
                     created_at: Date.now(),
@@ -68,18 +76,30 @@ export function SmartTaskInput({ onTaskAdded }: SmartTaskInputProps) {
 
             console.log("Parsed Task:", newTask);
 
-            // 4. Save to Dexie
-            await db.blocks.add(newTask);
+            // 4. Save via store (uses DB reliability wrappers)
+            const res = await addBlock(newTask);
+            if (!res.ok) {
+                setToastVariant('error');
+                setToastMessage(res.error.message);
+                setShowToast(true);
+                setTimeout(() => setShowToast(false), 3000);
+                return;
+            }
 
             // 5. Success
             setInput("");
+            setToastVariant('success');
+            setToastMessage('Task added to Inbox');
             setShowToast(true);
             onTaskAdded?.();
             setTimeout(() => setShowToast(false), 3000);
 
         } catch (error) {
             console.error("Failed to add task:", error);
-            alert("Failed to save task. See console.");
+            setToastVariant('error');
+            setToastMessage('Failed to save task');
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 3000);
         } finally {
             setIsSaving(false);
         }
@@ -87,6 +107,7 @@ export function SmartTaskInput({ onTaskAdded }: SmartTaskInputProps) {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter") {
+            e.preventDefault();
             handleSubmit();
         }
     };
@@ -164,7 +185,7 @@ export function SmartTaskInput({ onTaskAdded }: SmartTaskInputProps) {
             {showToast && (
                 <div className="absolute bottom-full mb-2 left-0 right-0 flex justify-center z-50 pointer-events-none">
                     <div className="bg-zinc-900 text-white text-xs px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
-                        <span>Task added to Inbox</span>
+                        <span>{toastMessage || (toastVariant === 'success' ? 'Saved' : 'Something went wrong')}</span>
                     </div>
                 </div>
             )}

@@ -3,7 +3,9 @@
 import { cn } from "@/lib/utils";
 import { Check, Wand2, ChevronRight, Loader2, Sparkles, Plus, X, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { generateSpecSheet, type SpecItem } from "@/app/ai/actions";
+import { generateSpecSheet, type SpecItem } from "@/utils/local-ai-actions";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { AppError, createAppError, safeLogError, toAppError } from "@/lib/errors";
 
 interface SpecSidebarProps {
     className?: string;
@@ -24,7 +26,7 @@ export function SpecSidebar({ className, pdfUrl, onUpdate }: SpecSidebarProps) {
     const [specs, setSpecs] = useState<SpecItem[]>(DEFAULT_SPECS);
     const [collapsed, setCollapsed] = useState(false);
     const [extracting, setExtracting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<AppError | null>(null);
     const [extracted, setExtracted] = useState(false);
     const [isAddingSpec, setIsAddingSpec] = useState(false);
     const [newSpecLabel, setNewSpecLabel] = useState("");
@@ -57,7 +59,7 @@ export function SpecSidebar({ className, pdfUrl, onUpdate }: SpecSidebarProps) {
 
     const handleExtractSpecs = async () => {
         if (!pdfUrl) {
-            setError("Upload a PDF to extract specs");
+            setError(createAppError('NO_PDF', 'Upload a PDF to extract specs', { retryable: false }));
             return;
         }
 
@@ -74,11 +76,11 @@ export function SpecSidebar({ className, pdfUrl, onUpdate }: SpecSidebarProps) {
                 setExtracted(true);
                 onUpdate?.(result.specs);
             } else {
-                setError("No specs found in PDF");
+                setError(createAppError('NO_SPECS_FOUND', 'No specs found in PDF', { retryable: false }));
             }
         } catch (err) {
-            setError("Failed to extract specs");
-            console.error(err);
+            setError(toAppError(err, { code: 'SPEC_EXTRACT_FAILED', message: 'Failed to extract specs', retryable: true }));
+            safeLogError('SpecSidebar.extract', err);
         }
 
         setExtracting(false);
@@ -145,7 +147,7 @@ export function SpecSidebar({ className, pdfUrl, onUpdate }: SpecSidebarProps) {
                         </button>
 
                         {error && (
-                            <p className="text-xs text-red-400 mt-2">{error}</p>
+                            <ErrorNotice error={error} className="mt-2" />
                         )}
 
                         {extracted && !error && (

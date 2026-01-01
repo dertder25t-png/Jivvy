@@ -3,9 +3,14 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, CalendarDays, Plus } from "lucide-react";
+import { LayoutGrid, CalendarDays, Plus, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Mobile bottom navigation bar.
+ * Uses Focus Blue (blue-600) as accent per AGENT_CONTEXT color palette.
+ * Calm aesthetic: no fancy gradients or scale transforms.
+ */
 const MobileNav = () => {
     const pathname = usePathname();
 
@@ -14,44 +19,71 @@ const MobileNav = () => {
     if (isProjectPage) return null;
 
     return (
-        <nav className="lg:hidden fixed bottom-4 left-4 right-4 z-50 pointer-events-none">
-            <div className="bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 rounded-full p-1.5 flex justify-around items-center shadow-2xl relative pointer-events-auto max-w-sm mx-auto">
-                {/* Dashboard */}
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 pb-safe">
+            <div className="bg-surface dark:bg-surface-dark border-t border-border px-2 py-1 flex justify-around items-center">
+                {/* Inbox */}
                 <Link
-                    href="/"
+                    href="/inbox"
                     className={cn(
-                        "flex flex-col items-center gap-1 p-2.5 rounded-full transition-colors",
-                        pathname === "/"
-                            ? "text-lime-400"
-                            : "text-zinc-500 hover:text-white active:bg-zinc-800/50"
+                        "flex flex-col items-center gap-0.5 p-2 rounded-lg transition-colors min-w-[64px]",
+                        pathname === "/inbox" || pathname === "/"
+                            ? "text-primary"
+                            : "text-text-secondary hover:text-text-primary"
+                    )}
+                >
+                    <Inbox size={20} />
+                    <span className="text-[10px] font-medium">Inbox</span>
+                </Link>
+
+                {/* Today */}
+                <Link
+                    href="/today"
+                    className={cn(
+                        "flex flex-col items-center gap-0.5 p-2 rounded-lg transition-colors min-w-[64px]",
+                        pathname === "/today"
+                            ? "text-primary"
+                            : "text-text-secondary hover:text-text-primary"
                     )}
                 >
                     <LayoutGrid size={20} />
-                    <span className="text-[9px] font-medium">Home</span>
+                    <span className="text-[10px] font-medium">Today</span>
                 </Link>
 
-                {/* New Project - Center Button */}
-                <div className="relative -top-5 mx-2">
-                    <Link
-                        href="/project/new"
-                        className="w-14 h-14 bg-gradient-to-tr from-lime-400 to-lime-300 rounded-2xl flex items-center justify-center shadow-[0_8px_16px_-4px_rgba(163,230,53,0.5)] transform transition-transform active:scale-90 border-4 border-zinc-900 hover:scale-105"
-                    >
-                        <Plus size={24} className="text-black" />
-                    </Link>
-                </div>
-
-                {/* Calendar/Tasks */}
+                {/* New - Center Button */}
                 <Link
-                    href="/calendar"
+                    href="/project/new"
+                    className="flex items-center justify-center w-12 h-12 bg-primary text-primary-foreground rounded-xl shadow-sm"
+                    aria-label="Create new project"
+                >
+                    <Plus size={22} />
+                </Link>
+
+                {/* Upcoming */}
+                <Link
+                    href="/upcoming"
                     className={cn(
-                        "flex flex-col items-center gap-1 p-2.5 rounded-full transition-colors",
-                        pathname === "/calendar"
-                            ? "text-lime-400"
-                            : "text-zinc-500 hover:text-white active:bg-zinc-800/50"
+                        "flex flex-col items-center gap-0.5 p-2 rounded-lg transition-colors min-w-[64px]",
+                        pathname === "/upcoming"
+                            ? "text-primary"
+                            : "text-text-secondary hover:text-text-primary"
                     )}
                 >
                     <CalendarDays size={20} />
-                    <span className="text-[9px] font-medium">Tasks</span>
+                    <span className="text-[10px] font-medium">Upcoming</span>
+                </Link>
+
+                {/* Calendar */}
+                <Link
+                    href="/calendar"
+                    className={cn(
+                        "flex flex-col items-center gap-0.5 p-2 rounded-lg transition-colors min-w-[64px]",
+                        pathname === "/calendar"
+                            ? "text-primary"
+                            : "text-text-secondary hover:text-text-primary"
+                    )}
+                >
+                    <CalendarDays size={20} />
+                    <span className="text-[10px] font-medium">Calendar</span>
                 </Link>
             </div>
         </nav>

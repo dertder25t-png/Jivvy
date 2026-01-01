@@ -1,71 +1,136 @@
 "use client";
 
-import React, { useState } from "react";
-import { Sidebar } from "./Sidebar"; // Import the new Sidebar
+import React, { useState, useEffect } from "react";
+import { Sidebar } from "./Sidebar";
 import { ContextPanel } from "./ContextPanel";
 import { PDFContextPanel } from "@/components/pdf/PDFContextPanel";
+import { MobileHeader } from "./MobileHeader";
+import { MobileNav } from "./MobileNav";
 import { useProjectStore } from "@/lib/store";
-import { Menu } from "lucide-react";
+import { Menu, PanelRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * AppShell - Main layout wrapper following AGENT_CONTEXT architecture:
+ * - Persistent Sidebar (Left) - hidden on mobile, collapsible on desktop
+ * - Centered Workspace (Main) - responsive padding
+ * - Sliding Context Panel (Right) - overlay on mobile
+ * 
+ * Responsive breakpoints:
+ * - Mobile: < 768px (md) - Mobile header + bottom nav, no sidebar
+ * - Tablet: 768px - 1024px (lg) - Collapsible sidebar
+ * - Desktop: > 1024px - Full sidebar + context panel
+ */
 export function AppShell({ children }: { children: React.ReactNode }) {
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    // Responsive sidebar state - default closed on mobile
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const {
         contextPanelOpen,
         setContextPanelOpen
     } = useProjectStore();
 
-    return (
-        <div className="flex h-screen w-screen bg-surface dark:bg-background overflow-hidden font-geist">
+    // Handle responsive sidebar default state
+    useEffect(() => {
+        const mediaQuery = window.matchMedia('(min-width: 1024px)');
+        setIsSidebarOpen(mediaQuery.matches);
+        
+        const handler = (e: MediaQueryListEvent) => setIsSidebarOpen(e.matches);
+        mediaQuery.addEventListener('change', handler);
+        return () => mediaQuery.removeEventListener('change', handler);
+    }, []);
 
-            {/* SIDEBAR (Left) - Using the new separate component */}
-            <Sidebar isOpen={isSidebarOpen} />
+    // Close sidebar when clicking overlay on mobile
+    const handleOverlayClick = () => {
+        if (window.innerWidth < 1024) {
+            setIsSidebarOpen(false);
+        }
+    };
+
+    return (
+        <div className="flex h-screen w-screen bg-surface dark:bg-surface-dark overflow-hidden">
+            {/* Mobile Header - visible only on mobile */}
+            <MobileHeader />
+
+            {/* Sidebar Overlay (mobile only) */}
+            {isSidebarOpen && (
+                <div 
+                    className="lg:hidden fixed inset-0 bg-black/20 z-30"
+                    onClick={handleOverlayClick}
+                    aria-hidden="true"
+                />
+            )}
+
+            {/* SIDEBAR (Left) */}
+            <div className={cn(
+                "fixed lg:relative inset-y-0 left-0 z-40 lg:z-0",
+                "transform transition-transform duration-200 ease-out",
+                isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0 lg:w-0"
+            )}>
+                <Sidebar isOpen={isSidebarOpen} />
+            </div>
 
             {/* MAIN STAGE (Center) */}
-            <main className="flex-1 flex flex-col h-full relative z-0 overflow-hidden bg-surface transition-all duration-300">
+            <main className="flex-1 flex flex-col h-full relative z-0 overflow-hidden bg-surface dark:bg-surface-dark">
 
-                {/* Toggle Sidebar Button (Mobile/Desktop) */}
-                <div className="absolute top-4 left-4 z-40">
-                    {!isSidebarOpen && (
-                        <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-zinc-100 rounded-md">
-                            <Menu className="w-5 h-5 text-text-secondary" />
-                        </button>
-                    )}
-                    {isSidebarOpen && (
-                        <button
-                            onClick={() => setIsSidebarOpen(false)}
-                            className="p-1 text-text-secondary hover:bg-zinc-100 rounded opacity-0 group-hover:opacity-100 transition-opacity absolute top-1 right-2"
-                            title="Close Sidebar"
-                        >
-                            <Menu className="w-4 h-4" />
-                        </button>
-                    )}
+                {/* Desktop Toggle Sidebar Button */}
+                <div className="hidden lg:block absolute top-4 left-4 z-20">
+                    <button 
+                        onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+                        className="p-2 text-text-secondary hover:text-text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                        aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+                    >
+                        <Menu className="w-5 h-5" />
+                    </button>
                 </div>
 
-                {/* Content Container */}
+                {/* Mobile Toggle Sidebar (hamburger in content area) */}
+                <div className="lg:hidden absolute top-16 left-4 z-20">
+                    <button 
+                        onClick={() => setIsSidebarOpen(true)} 
+                        className="p-2 text-text-secondary hover:text-text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                        aria-label="Open menu"
+                    >
+                        <Menu className="w-5 h-5" />
+                    </button>
+                </div>
+
+                {/* Content Container - responsive padding */}
                 <div className="flex-1 overflow-y-auto">
-                    <div className="max-w-4xl mx-auto pt-16 px-6 pb-20 min-h-full">
+                    <div className={cn(
+                        "max-w-4xl mx-auto min-h-full",
+                        "pt-20 lg:pt-16", // Account for mobile header
+                        "px-4 sm:px-6 lg:px-8",
+                        "pb-24 lg:pb-8" // Account for mobile nav
+                    )}>
                         {children}
                     </div>
                 </div>
 
             </main>
 
-            {/* CONTEXT PANEL (Right) */}
+            {/* CONTEXT PANEL (Right) - slides in from right */}
             <ContextPanel isOpen={contextPanelOpen} onClose={() => setContextPanelOpen(false)}>
                 <PDFContextPanel />
             </ContextPanel>
 
-            {/* Toggle Context Panel (Debug/Dev for now) - kept from original */}
-            <div className="absolute top-4 right-4 z-40">
+            {/* Toggle Context Panel Button */}
+            <div className="hidden md:block absolute top-4 right-4 z-20">
                 <button
                     onClick={() => setContextPanelOpen(!contextPanelOpen)}
-                    className="p-2 text-text-secondary hover:bg-zinc-100 rounded-md"
+                    className={cn(
+                        "p-2 rounded-md transition-colors",
+                        contextPanelOpen 
+                            ? "text-primary bg-primary/10" 
+                            : "text-text-secondary hover:text-text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    )}
+                    aria-label={contextPanelOpen ? "Close context panel" : "Open context panel"}
                 >
-                    <Menu className="w-5 h-5" />
+                    <PanelRight className="w-5 h-5" />
                 </button>
             </div>
 
+            {/* Mobile Navigation - fixed bottom nav */}
+            <MobileNav />
         </div>
     );
 }

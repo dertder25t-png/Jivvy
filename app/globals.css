@@ -3,6 +3,14 @@
 @tailwind utilities;
 
 @layer base {
+  /* Root variables for safe areas (iOS notch/home indicator) */
+  :root {
+    --safe-area-inset-top: env(safe-area-inset-top, 0px);
+    --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-inset-left: env(safe-area-inset-left, 0px);
+    --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     -moz-text-size-adjust: 100%;
@@ -14,9 +22,34 @@
     -moz-osx-font-smoothing: grayscale;
     -webkit-font-smoothing: antialiased;
   }
+
+  /* Focus styles - consistent across all interactive elements */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary/50 ring-offset-2 ring-offset-background;
+  }
+
+  /* Reduce motion for users who prefer it */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer utilities {
+  /* Safe area padding utilities for mobile devices */
+  .pb-safe {
+    padding-bottom: max(1rem, var(--safe-area-inset-bottom));
+  }
+
+  .pt-safe {
+    padding-top: max(0.5rem, var(--safe-area-inset-top));
+  }
+
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
@@ -26,7 +59,7 @@
     scrollbar-width: none;
   }
 
-  /* Custom scrollbar for layers panel */
+  /* Custom scrollbar for layers panel - follows Calm aesthetic */
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
   }
@@ -41,5 +74,41 @@
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-zinc-400 dark:bg-zinc-500;
+  }
+
+  /* Touch-friendly tap targets (minimum 44x44px per Apple HIG) */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  @media print {
+    @page {
+      size: letter;
+      margin: 0;
+    }
+
+    html,
+    body {
+      background: white !important;
+      color: black !important;
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+
+    .jivvy-doc-toolbar {
+      display: none !important;
+    }
+
+    .jivvy-docview {
+      background: white !important;
+    }
+
+    .jivvy-doc-page {
+      box-shadow: none !important;
+      border: none !important;
+      page-break-after: always;
+      break-after: page;
+    }
   }
 }

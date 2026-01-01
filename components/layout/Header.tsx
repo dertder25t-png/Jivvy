@@ -62,7 +62,7 @@ const Header = () => {
 
         // Also listen for auth state changes
         const supabase = createClient();
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string) => {
             if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
                 const { user: userData } = await getCurrentUser();
                 setUser(userData);

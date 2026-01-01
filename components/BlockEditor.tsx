@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { useProjectStore } from '@/lib/store';
 import { cn } from "@/lib/utils";
 import { ExternalLink } from 'lucide-react';
+import { ErrorNotice } from '@/components/ui/ErrorNotice';
 
 interface BlockEditorProps {
     projectId: string;
@@ -82,7 +83,7 @@ export function BlockEditor({ projectId }: BlockEditorProps) {
         return (
             <div className="p-4 m-4 bg-red-50 text-red-600 border border-red-200 rounded-lg shadow-sm">
                 <h3 className="font-semibold">Error loading content</h3>
-                <p>{error}</p>
+                <ErrorNotice error={error} className="mt-2" />
             </div>
         );
     }

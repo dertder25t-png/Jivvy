@@ -8,11 +8,11 @@ import {
 import { cn } from '@/lib/utils';
 import { pdfWorker } from '@/utils/pdf-extraction';
 import { SmartSearchEngine, smartSearch } from '@/utils/smart-search';
-// ModeToggle removed
+import { ModeToggle } from './ModeToggle';
 import { ChapterDropdown } from './ChapterDropdown';
 import { ChatMessage } from './ChatMessage';
 import { runMultiStageSearch } from './MultiStageSearch';
-import { getPreferredMode, ensureModelLoaded, checkStorageSpace } from '@/utils/local-llm';
+import { getPreferredMode, ensureModelLoaded, checkStorageSpace, isModelCached, MODEL_CONFIGS } from '@/utils/local-llm';
 import type { ChartData } from '@/utils/local-llm';
 import type { Message, ThinkingStep, ToolMode, ChapterSelection } from './types';
 import { useProjectStore } from '@/lib/store';
@@ -34,7 +34,9 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
     const [chapterSelection, setChapterSelection] = useState<ChapterSelection[]>([]);
     const [workerStatus, setWorkerStatus] = useState({ message: '', percent: 0 });
     const [storageWarning, setStorageWarning] = useState<string | null>(null);
+    const [modelHint, setModelHint] = useState<string | null>(null);
     const [modelLoading, setModelLoading] = useState(false);
+    const [modelStatus, setModelStatus] = useState<{ message: string; percent: number } | null>(null);
     const [totalPages, setTotalPages] = useState<number>(0);
     const [focusRequired, setFocusRequired] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -139,14 +141,58 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
 
     // Check storage on mount
     useEffect(() => {
+        let mounted = true;
+
         checkStorageSpace().then(result => {
-            if (result.warning) {
-                setStorageWarning(result.warning);
-            }
+            if (!mounted) return;
+            if (result.warning) setStorageWarning(result.warning);
         });
+
+        // Inform the user when the model isn't cached yet (first-run download).
+        (async () => {
+            try {
+                const preferred = getPreferredMode();
+                const cached = await isModelCached(preferred);
+                if (!mounted) return;
+                if (!cached) {
+                    const size = MODEL_CONFIGS?.[preferred]?.estimatedSizeMB;
+                    setModelHint(
+                        `Model not cached yet. First use will download${typeof size === 'number' && size > 0 ? ` (~${size}MB)` : ''}. Keep this tab open.`
+                    );
+                }
+            } catch {
+                // Ignore
+            }
+        })();
+
+        // Listen for download/load progress from the local model loader.
+        const onDownloadProgress = (evt: Event) => {
+            const detail = (evt as CustomEvent).detail as
+                | { modelId: string; status: 'idle' | 'downloading' | 'complete' | 'error'; progress: number; error?: string }
+                | undefined;
+            if (!detail) return;
+
+            if (detail.status === 'downloading') {
+                setModelLoading(true);
+                setModelStatus({ message: `Model download: ${detail.progress}%`, percent: detail.progress });
+            } else if (detail.status === 'complete') {
+                setModelLoading(false);
+                setModelStatus({ message: 'Model ready', percent: 100 });
+                setModelHint(null);
+                setTimeout(() => setModelStatus(null), 2500);
+            } else if (detail.status === 'error') {
+                setModelLoading(false);
+                setModelStatus({ message: 'Model download failed', percent: 0 });
+                if (detail.error) setStorageWarning(detail.error);
+            }
+        };
+
+        window.addEventListener('llm-download-progress', onDownloadProgress as EventListener);
 
         // Cleanup on unmount
         return () => {
+            mounted = false;
+            window.removeEventListener('llm-download-progress', onDownloadProgress as EventListener);
             import('@/utils/local-llm').then(({ unloadCurrentModel }) => {
                 unloadCurrentModel();
             });
@@ -271,6 +317,17 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
      * Handle escalation (Keep Searching)
      */
     const handleEscalate = async (messageId: string, query: string) => {
+        // Enforce focus selection for large PDFs (avoid wasting time/compute on deep search).
+        if (focusRequired && chapterSelection.length === 0) {
+            setMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: `⚠️ This PDF has ${totalPages} pages. Please select a chapter focus (above) to narrow the search scope. This will significantly improve search speed and accuracy.`,
+                timestamp: new Date(),
+            }]);
+            return;
+        }
+
         setIsProcessing(true);
         setStatus('Deep searching...');
 
@@ -301,17 +358,6 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                 )
             );
         } catch (error) {
-        // Enforce focus selection for large PDFs
-        if (focusRequired && chapterSelection.length === 0) {
-            setMessages(prev => [...prev, {
-                id: `system-${Date.now()}`,
-                role: 'assistant',
-                content: `⚠️ This PDF has ${totalPages} pages. Please select a chapter focus (above) to narrow the search scope. This will significantly improve search speed and accuracy.`,
-                timestamp: new Date(),
-            }]);
-            return;
-        }
-
             console.error('Escalation failed', error);
         } finally {
             setIsProcessing(false);
@@ -500,7 +546,11 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
             }
         } catch (error) {
             console.error('[AICommandCenter] Error:', error);
-            const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+            const rawMessage = error instanceof Error ? error.message : 'An error occurred';
+            const errorMessage =
+                /Failed to load local LLM model|Failed to load model/i.test(rawMessage)
+                    ? 'Local model failed to load. Check storage space and keep the tab open during the first download.'
+                    : rawMessage;
 
             setMessages(prev =>
                 prev.map(m =>
@@ -555,6 +605,8 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
             {/* Mode Toggle & Chapter Selection */}
             {pdfBuffer && (
                 <div className="px-4 py-2 border-b border-border bg-surface space-y-2">
+                    <ModeToggle disabled={isProcessing} />
+                    
                     {/* Chapter/Subject Focus */}
                     <div className="flex items-center gap-2">
                         <span className="text-xs text-text-secondary whitespace-nowrap flex items-center gap-1">
@@ -571,6 +623,11 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                                 {workerStatus.message}
                             </div>
                         )}
+                        {modelStatus?.message && (
+                            <div className="text-[10px] text-text-secondary whitespace-nowrap overflow-hidden max-w-[140px] text-right">
+                                {modelStatus.message}
+                            </div>
+                        )}
                     </div>
 
                     {/* Storage Warning */}
@@ -578,6 +635,13 @@ export function AICommandCenter({ pdfBuffer, onJumpToPage, initialMessages = [],
                         <div className="flex items-center gap-2 text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1 rounded">
                             <AlertCircle size={10} />
                             {storageWarning}
+                        </div>
+                    )}
+
+                    {modelHint && !storageWarning && (
+                        <div className="flex items-center gap-2 text-[10px] text-text-secondary bg-surface-hover px-2 py-1 rounded border border-border">
+                            <Cpu size={10} />
+                            {modelHint}
                         </div>
                     )}
                 </div>

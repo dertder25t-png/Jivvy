@@ -37,6 +37,14 @@ export class InvertedIndex {
     private bigramIndex: Map<string, number[]> = new Map(); // "cable lacing" -> pageIds
     private pageText: Map<number, string> = new Map();
     private totalPages = 0;
+    private subjectPages: number[] = [];
+
+    /**
+     * Legacy hook used by older miner logic; currently informational only.
+     */
+    public setSubjectPages(pages: number[]): void {
+        this.subjectPages = Array.isArray(pages) ? pages : [];
+    }
 
     // ==========================================
     // BUILD PHASE (Happens once on upload)
@@ -50,6 +58,7 @@ export class InvertedIndex {
         this.bigramIndex.clear();
         this.pageText.clear();
         this.totalPages = 0;
+        this.subjectPages = [];
         console.log('[InvertedIndex] Cleared');
     }
 

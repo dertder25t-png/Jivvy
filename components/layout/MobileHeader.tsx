@@ -1,11 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, Menu } from "lucide-react";
 import { JivvyAvatar } from "@/components/ui/JivvyAvatar";
 import { getCurrentUser, type UserInfo } from "@/app/user/actions";
 import { createClient } from "@/utils/supabase/client";
+import { cn } from "@/lib/utils";
 
+/**
+ * Mobile header following the "Calm" aesthetic.
+ * Uses the established color palette: zinc backgrounds, blue-600 accents.
+ * No scale transforms or flashy animations per AGENT_CONTEXT design rules.
+ */
 const MobileHeader = () => {
     const [user, setUser] = useState<UserInfo | null>(null);
 
@@ -18,7 +24,7 @@ const MobileHeader = () => {
         fetchUser();
 
         const supabase = createClient();
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string) => {
             if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
                 const { user: userData } = await getCurrentUser();
                 setUser(userData);
@@ -45,33 +51,35 @@ const MobileHeader = () => {
     }, [user]);
 
     return (
-        <header className="md:hidden h-16 flex items-center justify-between px-4 border-b border-white/5 bg-background/80 backdrop-blur-xl z-50 fixed top-0 w-full">
+        <header className="lg:hidden h-14 flex items-center justify-between px-4 border-b border-border bg-surface dark:bg-surface-dark z-50 fixed top-0 w-full">
             {/* Left: Avatar & Greeting */}
             <div className="flex items-center gap-3">
-                <JivvyAvatar className="w-10 h-10" />
+                <JivvyAvatar className="w-8 h-8" />
                 <div className="flex flex-col">
-                    <h1 className="font-bold text-base leading-none tracking-tight text-white">
+                    <h1 className="font-semibold text-sm leading-none tracking-tight text-text-primary">
                         Jivvy
                     </h1>
-                    <p className="text-[10px] text-zinc-500 font-medium">
-                        {user ? `${greeting}, ${firstName}` : "Welcome to Jivvy"}
+                    <p className="text-[10px] text-text-secondary mt-0.5">
+                        {user ? `${greeting}, ${firstName}` : "Welcome"}
                     </p>
                 </div>
             </div>
 
-            {/* Right: Search & Bell */}
-            <div className="flex items-center gap-3">
-                <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-full px-3 py-1.5 gap-2 w-32">
-                    <Search size={14} className="text-zinc-500" />
-                    <input
-                        type="text"
-                        placeholder="Search..."
-                        className="bg-transparent border-none outline-none text-white placeholder-zinc-500 w-full text-xs"
-                    />
-                </div>
-                <button className="w-9 h-9 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center relative active:scale-95 transition-transform">
-                    <Bell size={16} className="text-zinc-400" />
-                    <div className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse" />
+            {/* Right: Search & Notifications */}
+            <div className="flex items-center gap-2">
+                <button 
+                    className="p-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    aria-label="Search"
+                >
+                    <Search size={18} />
+                </button>
+                <button 
+                    className="p-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors relative"
+                    aria-label="Notifications"
+                >
+                    <Bell size={18} />
+                    {/* Notification dot - uses Alert Red per AGENT_CONTEXT */}
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
                 </button>
             </div>
         </header>

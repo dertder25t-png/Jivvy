@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { db, Block, Project, BlockType, safeDbOperation } from './db';
+import { db, Block, Project, safeDbOperation, safeDbResult } from './db';
+import type { AppError } from './errors';
+import { toAppError } from './errors';
 
 type ProjectCenterMode = "canvas" | "paper" | "notes" | "extraction";
 
@@ -12,7 +14,7 @@ interface ProjectState {
     blocks: Block[];
     contextPanelOpen: boolean;
     isLoading: boolean;
-    error: string | null;
+    error: AppError | null;
 
     setActiveProjectId: (id: string | null) => void;
     setCenterMode: (mode: ProjectCenterMode) => void;
@@ -23,17 +25,17 @@ interface ProjectState {
 
     // Block Actions
     loadBlocks: (parentId: string) => Promise<void>;
-    addBlock: (block: Block) => Promise<void>;
+    addBlock: (block: Block) => Promise<{ ok: true } | { ok: false; error: AppError }>;
     updateBlock: (id: string, updates: Partial<Block>) => Promise<void>;
     deleteBlock: (id: string) => Promise<void>;
     reorderBlocks: (blocks: Block[]) => Promise<void>;
 
     // Dashboard Data
-    dashboardView: 'inbox' | 'today' | 'upcoming';
-    setDashboardView: (view: 'inbox' | 'today' | 'upcoming') => void;
+    dashboardView: 'inbox' | 'today' | 'upcoming' | 'ai-chat';
+    setDashboardView: (view: 'inbox' | 'today' | 'upcoming' | 'ai-chat') => void;
     projects: Project[];
     loadProjects: () => Promise<void>;
-    addProject: (project: Project) => Promise<void>;
+    addProject: (project: Project) => Promise<{ ok: true } | { ok: false; error: AppError }>;
     updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
     deleteProject: (id: string) => Promise<void>;
     getRecentProjects: () => Promise<Project[]>;
@@ -65,77 +67,83 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     setContextPanelOpen: (open) => set({ contextPanelOpen: open }),
 
     loadProjects: async () => {
-        try {
-            const projects = await safeDbOperation(() => db.projects.toArray());
-            set({ projects });
-        } catch (e: any) {
-            set({ error: e.message || 'Failed to load projects' });
+        const res = await safeDbResult(() => db.projects.toArray());
+        if (res.error) {
+            set({ error: res.error });
+            return;
         }
+        set({ projects: res.data ?? [] });
     },
 
     addProject: async (project) => {
-        try {
-            await safeDbOperation(() => db.projects.add(project));
-            set((state) => ({ projects: [...state.projects, project] }));
-        } catch (e: any) {
-            set({ error: e.message || 'Failed to add project' });
+        const res = await safeDbResult(() => db.projects.add(project));
+        if (res.error) {
+            set({ error: res.error });
+            return { ok: false as const, error: res.error };
         }
+        set((state) => ({ projects: [...state.projects, project] }));
+        return { ok: true as const };
     },
 
     updateProject: async (id, updates) => {
-        try {
-            await safeDbOperation(() => db.projects.update(id, updates));
-            set((state) => ({
-                projects: state.projects.map(p => p.id === id ? { ...p, ...updates } : p)
-            }));
-        } catch (e: any) {
-            set({ error: e.message || 'Failed to update project' });
+        const res = await safeDbResult(() => db.projects.update(id, updates));
+        if (res.error) {
+            set({ error: res.error });
+            return;
         }
+        set((state) => ({
+            projects: state.projects.map(p => p.id === id ? { ...p, ...updates } : p)
+        }));
     },
 
     deleteProject: async (id) => {
         console.log("Store: Deleting project", id);
-        try {
-            await safeDbOperation(() => db.projects.delete(id));
-            console.log("Store: Project deleted from DB", id);
-
-            // Refresh local state by filtering
-            set((state) => ({
-                projects: state.projects.filter(p => p.id !== id)
-            }));
-
-            // Force a re-fetch to be absolutely sure
-            const projects = await db.projects.toArray();
-            set({ projects });
-            console.log("Store: Projects state refreshed", projects.length);
-        } catch (e: any) {
-            console.error("Store: Failed to delete project", e);
-            set({ error: e.message || 'Failed to delete project' });
+        const del = await safeDbResult(() => db.projects.delete(id));
+        if (del.error) {
+            console.error("Store: Failed to delete project", del.error);
+            set({ error: del.error });
+            return;
         }
+        console.log("Store: Project deleted from DB", id);
+
+        // Refresh local state by filtering
+        set((state) => ({
+            projects: state.projects.filter(p => p.id !== id)
+        }));
+
+        // Force a re-fetch to be absolutely sure
+        const projectsRes = await safeDbResult(() => db.projects.toArray());
+        if (projectsRes.error) {
+            set({ error: projectsRes.error });
+            return;
+        }
+        set({ projects: projectsRes.data ?? [] });
+        console.log("Store: Projects state refreshed", (projectsRes.data ?? []).length);
     },
 
     clearError: () => set({ error: null }),
 
     loadBlocks: async (parentId) => {
         set({ isLoading: true, error: null });
-        try {
-            const blocks = await safeDbOperation(() =>
-                db.blocks.where('parent_id').equals(parentId).sortBy('order')
-            );
-            set({ blocks, isLoading: false });
-        } catch (e: any) {
-            set({ error: e.message || 'Failed to load blocks', isLoading: false });
+        const res = await safeDbResult(() =>
+            db.blocks.where('parent_id').equals(parentId).sortBy('order')
+        );
+        if (res.error) {
+            set({ error: res.error, isLoading: false });
+            return;
         }
+        set({ blocks: res.data ?? [], isLoading: false });
     },
 
     addBlock: async (block) => {
         const currentBlocks = get().blocks;
         set({ blocks: [...currentBlocks, block] }); // Optimistic update
-        try {
-            await safeDbOperation(() => db.blocks.add(block));
-        } catch (e: any) {
-            set({ blocks: currentBlocks, error: e.message || 'Failed to add block' });
+        const res = await safeDbResult(() => db.blocks.add(block));
+        if (res.error) {
+            set({ blocks: currentBlocks, error: res.error });
+            return { ok: false as const, error: res.error };
         }
+        return { ok: true as const };
     },
 
     updateBlock: async (id, updates) => {
@@ -143,20 +151,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         const updatedBlocks = currentBlocks.map(b => b.id === id ? { ...b, ...updates } : b);
         set({ blocks: updatedBlocks });
 
-        try {
-            await safeDbOperation(() => db.blocks.update(id, updates));
-        } catch (e: any) {
-            set({ blocks: currentBlocks, error: e.message || 'Failed to update block' });
+        const res = await safeDbResult(() => db.blocks.update(id, updates));
+        if (res.error) {
+            set({ blocks: currentBlocks, error: res.error });
         }
     },
 
     deleteBlock: async (id) => {
         const currentBlocks = get().blocks;
         set({ blocks: currentBlocks.filter(b => b.id !== id) });
-        try {
-            await safeDbOperation(() => db.blocks.delete(id));
-        } catch (e: any) {
-            set({ blocks: currentBlocks, error: e.message || 'Failed to delete block' });
+        const res = await safeDbResult(() => db.blocks.delete(id));
+        if (res.error) {
+            set({ blocks: currentBlocks, error: res.error });
         }
     },
 
@@ -174,12 +180,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
                 });
             });
         } catch (e: any) {
-            set({ error: e.message || 'Failed to reorder blocks' });
+            set({ error: toAppError(e, { code: 'DB_REORDER_FAILED', message: 'Failed to reorder blocks', retryable: true }) });
             // Reload to restore consistency
             const parentId = newBlocks[0]?.parent_id;
             if (parentId) {
-                const blocks = await db.blocks.where('parent_id').equals(parentId).sortBy('order');
-                set({ blocks });
+                const res = await safeDbResult(() => db.blocks.where('parent_id').equals(parentId).sortBy('order'));
+                if (res.error) {
+                    set({ error: res.error });
+                    return;
+                }
+                set({ blocks: res.data ?? [] });
             }
         }
     },
@@ -198,14 +208,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             const now = Date.now();
             const tomorrow = now + 24 * 60 * 60 * 1000;
 
-            // This is a naive implementation as we don't have a direct index on due_date in Block
-            // In a real app with many blocks, we should index metadata.due_date
+            // Use compound index to avoid full scans: [type + properties.due_date]
             return await safeDbOperation(async () => {
-                const tasks = await db.blocks.where('type').equals('task').toArray();
-                return tasks.filter(task => {
-                    const dueDate = task.metadata?.due_date;
-                    return dueDate && dueDate >= now && dueDate <= tomorrow;
-                });
+                return db.blocks
+                    .where('[type+properties.due_date]')
+                    .between(['task', now], ['task', tomorrow], true, true)
+                    .toArray();
             });
         } catch (e) {
             console.error('Failed to fetch upcoming tasks', e);

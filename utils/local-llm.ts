@@ -118,10 +118,10 @@ export const MODEL_CONFIGS: Record<AIMode, ModelConfig> = {
     thorough: {
         id: 'thorough',
         name: 'Think More',
-        hfPath: 'Xenova/Qwen1.5-0.5B-Chat',
+        hfPath: 'Xenova/TinyLlama-1.1B-Chat-v1.0',
         maxContext: 2048,
         maxNewTokens: 350,
-        estimatedSizeMB: 500
+        estimatedSizeMB: 640
     }
 };
 
@@ -136,6 +136,11 @@ let loadingPromise: Promise<any> | null = null;
 
 // Progress callback type
 type ProgressCallback = (progress: { status: string; progress?: number }) => void;
+
+export interface GenerateTextOptions {
+    maxNewTokens?: number;
+    temperature?: number;
+}
 
 // Storage keys
 const STORAGE_KEY_MODE = 'jivvy-ai-mode';
@@ -461,6 +466,38 @@ ${systemPrompt}<|im_end|>
 ${userPrompt}<|im_end|>
 <|im_start|>assistant
 `;
+}
+
+/**
+ * Generic local text generation helper.
+ * Intended for lightweight UI helpers (rewrite, query generation, classification).
+ */
+export async function generateTextLocal(
+    systemPrompt: string,
+    userPrompt: string,
+    options: GenerateTextOptions = {},
+    onProgress?: ProgressCallback
+): Promise<string | null> {
+    try {
+        if (!textGenerationPipeline) {
+            const ok = await ensureModelLoaded(onProgress);
+            if (!ok) return null;
+        }
+
+        if (!textGenerationPipeline) return null;
+
+        const prompt = formatQwenPrompt(systemPrompt, userPrompt);
+        const result = await textGenerationPipeline(prompt, {
+            max_new_tokens: options.maxNewTokens ?? 120,
+            temperature: options.temperature ?? 0.2,
+            return_full_text: false,
+        });
+        const text = String(result?.[0]?.generated_text ?? '').trim();
+        return text.length ? text : null;
+    } catch (e) {
+        console.warn('[LocalLLM] generateTextLocal failed:', e);
+        return null;
+    }
 }
 
 /**

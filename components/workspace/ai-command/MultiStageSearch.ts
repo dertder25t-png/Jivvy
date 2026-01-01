@@ -785,6 +785,15 @@ export async function runMultiStageSearch(
         onStepUpdate?.({ label, status: status === 'error' ? 'complete' : status, detail });
     };
 
+    // Bridge local-llm progress reporting into the existing step UI.
+    let lastProgressStatus: string | null = null;
+    const onProgress = (progress: { status: string; progress?: number }) => {
+        if (!progress?.status) return;
+        if (progress.status === lastProgressStatus) return;
+        lastProgressStatus = progress.status;
+        addStep(progress.status, 'active');
+    };
+
     try {
         // === NEW: Check for cached context for follow-up questions ===
         const cachedData = getCachedContext();

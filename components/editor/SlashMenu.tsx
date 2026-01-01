@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { Type, CheckSquare, Heading1, Heading2, List, Image, Quote } from 'lucide-react';
+import { Type, CheckSquare, Heading1, Heading2, List, Image, Quote, BookOpen } from 'lucide-react';
 
 export type SlashMenuOption = {
     label: string;
-    type: 'text' | 'task' | 'heading1' | 'heading2' | 'bullet' | 'image' | 'pdf_highlight';
+    type: 'text' | 'task' | 'heading1' | 'heading2' | 'bullet' | 'image' | 'pdf_highlight' | 'page_break' | 'lecture_container';
     icon: React.ElementType;
     description: string;
 };
@@ -14,11 +14,13 @@ export type SlashMenuOption = {
 const SLASH_MENU_OPTIONS: SlashMenuOption[] = [
     { label: 'Text', type: 'text', icon: Type, description: 'Plain text block' },
     { label: 'Task', type: 'task', icon: CheckSquare, description: 'To-do with checkbox' },
+    { label: 'Lecture', type: 'lecture_container', icon: BookOpen, description: 'Lecture section container' },
     { label: 'Heading 1', type: 'heading1', icon: Heading1, description: 'Large heading' },
     { label: 'Heading 2', type: 'heading2', icon: Heading2, description: 'Medium heading' },
     { label: 'Bullet List', type: 'bullet', icon: List, description: 'Bulleted list item' },
     { label: 'Image', type: 'image', icon: Image, description: 'Upload an image' },
     { label: 'Citation', type: 'pdf_highlight', icon: Quote, description: 'PDF quote block' },
+    { label: 'Page Break', type: 'page_break', icon: Quote, description: 'Start a new page in Doc Mode' },
 ];
 
 interface SlashMenuProps {

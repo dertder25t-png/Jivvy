@@ -1,5 +1,6 @@
 import { SearchResult } from './search-indexer';
 import { SearchCandidate } from './search/types';
+import { AppError, toAppError } from '@/lib/errors';
 
 // Defines the interface for the Worker logic
 type WorkerMessage =
@@ -8,10 +9,12 @@ type WorkerMessage =
   | { type: 'SEARCH_RESULT'; id: string; payload: SearchCandidate[] }
   | { type: 'INDEX_READY'; id: string }
   | { type: 'OUTLINE_READY'; payload: any[] }
+  | { type: 'page_text_response'; id: string; payload: { pageIndex: number; text: string } }
   | { type: 'page_text'; page: number; text: string | null }
   | { type: 'status'; status: any }
   | { type: 'info'; message: string }
-  | { type: 'error'; error: string };
+  | { type: 'error'; id?: string; error: AppError | string }
+  | { type: 'ERROR'; id?: string; error: AppError | string };
 
 class PDFWorkerClient {
   private worker: Worker | null = null;
@@ -29,6 +32,19 @@ class PDFWorkerClient {
         if (data.type === 'OUTLINE_READY') {
             this.outlineCache = data.payload;
         }
+        // Normalize legacy error event name
+        if (data.type === 'ERROR') {
+          const normalized = { ...data, type: 'error', error: toAppError(data.error, { code: 'WORKER_ERROR' }) } as any;
+          this.emit('error', normalized);
+          return;
+        }
+
+        if (data.type === 'error') {
+          const normalized = { ...data, error: toAppError(data.error, { code: 'WORKER_ERROR' }) };
+          this.emit('error', normalized);
+          return;
+        }
+
         this.emit(data.type, data);
       };
     }
@@ -66,10 +82,21 @@ class PDFWorkerClient {
         const handler = (data: { id: string }) => {
             if (data.id === id) {
                 this.off('INDEX_READY', handler as any);
+                this.off('error', onError as any);
                 resolve();
             }
         };
+
+        const onError = (data: { id?: string; error: AppError }) => {
+          if (!data.id || data.id === id) {
+            this.off('INDEX_READY', handler as any);
+            this.off('error', onError as any);
+            reject(toAppError(data.error, { code: 'PDF_INDEX_FAILED', message: 'Failed to index PDF', retryable: true }));
+          }
+        };
+
         this.on('INDEX_READY', handler as any);
+        this.on('error', onError as any);
         this.worker?.postMessage({
             type: 'INIT_INDEX',
             id,
@@ -78,16 +105,61 @@ class PDFWorkerClient {
     });
   }
 
+  async getPageText(page: number): Promise<string> {
+    return new Promise((resolve) => {
+      const requestId = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
+
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+      const handler = (data: { id: string; payload: { text: string } }) => {
+        if (data.id === requestId) {
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+          this.off('page_text_response', handler as any);
+          resolve(data.payload.text);
+        }
+      };
+      this.on('page_text_response', handler as any);
+
+      // Send BOTH names (payload + root) to be compatible with any worker/client variant.
+      this.worker?.postMessage({
+        type: 'get_page_text',
+        id: requestId,
+        payload: { pageIndex: page, page },
+        pageIndex: page,
+        page
+      });
+
+      // Timeout safety (heavy PDFs / first-run model loads)
+      timeoutHandle = setTimeout(() => {
+        const handlers = this.listeners.get('page_text_response');
+        if (handlers && handlers.includes(handler as any)) {
+          this.off('page_text_response', handler as any);
+          console.warn(`[PDFWorkerClient] Timeout for page ${page}`);
+          resolve('');
+        }
+      }, 30000);
+    });
+  }
+
   async searchCandidates(query: string, filterPages?: Set<number>): Promise<SearchCandidate[]> {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
           const id = Math.random().toString(36).substring(7);
           const handler = (data: { id: string; payload: SearchCandidate[] }) => {
               if (data.id === id) {
                   this.off('SEARCH_RESULT', handler as any);
+            this.off('error', onError as any);
                   resolve(data.payload);
               }
           };
+        const onError = (data: { id?: string; error: AppError }) => {
+        if (!data.id || data.id === id) {
+          this.off('SEARCH_RESULT', handler as any);
+          this.off('error', onError as any);
+          reject(toAppError(data.error, { code: 'PDF_SEARCH_FAILED', message: 'Search failed', retryable: true }));
+        }
+        };
           this.on('SEARCH_RESULT', handler as any);
+        this.on('error', onError as any);
           this.worker?.postMessage({
               type: 'SEARCH',
               id,
@@ -100,15 +172,24 @@ class PDFWorkerClient {
   }
 
   async rerank(query: string, texts: string[]): Promise<{ index: number, score: number }[]> {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
           const id = Math.random().toString(36).substring(7);
           const handler = (data: { id: string; payload: any[] }) => {
               if (data.id === id) {
                   this.off('RERANK_RESULT', handler as any);
+            this.off('error', onError as any);
                   resolve(data.payload);
               }
           };
+        const onError = (data: { id?: string; error: AppError }) => {
+        if (!data.id || data.id === id) {
+          this.off('RERANK_RESULT', handler as any);
+          this.off('error', onError as any);
+          reject(toAppError(data.error, { code: 'PDF_RERANK_FAILED', message: 'Rerank failed', retryable: true }));
+        }
+        };
           this.on('RERANK_RESULT', handler as any);
+        this.on('error', onError as any);
           this.worker?.postMessage({
               type: 'RERANK',
               id,
@@ -139,39 +220,7 @@ class PDFWorkerClient {
     });
   }
 
-  async getPageText(page: number): Promise<string> {
-    return new Promise((resolve) => {
-      let timeoutId: NodeJS.Timeout;
-      let resolved = false;
-      
-      const handler = (data: { page: number; text: string | null }) => {
-        if (data.page === page && !resolved) {
-          resolved = true;
-          clearTimeout(timeoutId);
-          this.off('page_text', handler as any);
-          console.log(`[PDFWorkerClient] getPageText succeeded for page ${page}, text length: ${data.text?.length || 0}`);
-          resolve(data.text || '');
-        }
-      };
-      this.on('page_text', handler as any);
-      
-      // Increase timeout to 15 seconds - worker might be busy with other tasks
-      timeoutId = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          this.off('page_text', handler as any);
-          console.warn(`[PDFWorkerClient] getPageText timeout for page ${page} after 15s`);
-          resolve('');
-        }
-      }, 15000); // Increased to 15s for mobile/heavy PDFs
-      
-      console.log(`[PDFWorkerClient] Requesting page text for page ${page}`);
-      this.worker?.postMessage({
-        type: 'get_page_text',
-        payload: { page }
-      });
-    });
-  }
+
 }
 
 // Singleton

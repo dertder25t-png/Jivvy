@@ -12,6 +12,8 @@ import {
     Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { AppError, createAppError, toAppError } from "@/lib/errors";
 // This component acts as a unified hub for all context-aware actions
 // It replaces the individual floating menus to reduce clutter
 
@@ -118,13 +120,13 @@ export function SmartContextBar({ editor, projectId, isFlashcardMode }: SmartCon
 
 // --- Sub-Components (Refactored logic from individual menus) ---
 
-import { generateSearchQueries, rewriteText } from "@/app/ai/actions";
+import { generateSearchQueries, rewriteText } from "@/utils/local-ai-actions";
 import { createFlashcard } from "@/app/flashcards/actions";
 
 function RefHunterView({ editor, onBack }: { editor: Editor, onBack: () => void }) {
     const [loading, setLoading] = useState(false);
     const [queries, setQueries] = useState<string[]>([]);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<AppError | null>(null);
 
     const handleFindRefs = async () => {
         const { from, to } = editor.state.selection;
@@ -136,8 +138,8 @@ function RefHunterView({ editor, onBack }: { editor: Editor, onBack: () => void 
             const result = await generateSearchQueries(text);
             if (result.error) setError(result.error);
             else setQueries(result.queries);
-        } catch {
-            setError("Failed to search");
+        } catch (e) {
+            setError(toAppError(e, { code: 'REF_HUNTER_FAILED', message: 'Failed to search', retryable: true }));
         } finally {
             setLoading(false);
         }
@@ -171,7 +173,7 @@ function RefHunterView({ editor, onBack }: { editor: Editor, onBack: () => void 
 
             {loading && <div className="text-zinc-400 text-xs flex items-center gap-2"><Loader2 size={12} className="animate-spin" /> Generating ideas...</div>}
 
-            {error && <div className="text-red-400 text-xs">{error}</div>}
+            {error && <ErrorNotice error={error} className="mt-1" />}
 
             {!loading && !error && queries.length > 0 && (
                 <div className="space-y-2">
@@ -203,7 +205,7 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
     const [loading, setLoading] = useState(false);
     const [showCustomInput, setShowCustomInput] = useState(false);
     const [customSample, setCustomSample] = useState("");
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<AppError | null>(null);
 
     const handleRewrite = async (tone: string) => {
         if (tone === "custom") {
@@ -224,8 +226,8 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
             } else if (result.error) {
                 setError(result.error);
             }
-        } catch {
-             setError("Failed to rewrite");
+        } catch (e) {
+             setError(toAppError(e, { code: 'TONE_TUNER_FAILED', message: 'Failed to rewrite', retryable: true }));
         } finally {
             setLoading(false);
         }
@@ -236,7 +238,7 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
         const text = editor.state.doc.textBetween(from, to, " ");
 
         if (customSample.length < 50) {
-            setError("Sample too short (min 50 chars)");
+            setError(createAppError('SAMPLE_TOO_SHORT', 'Sample too short (min 50 chars)', { retryable: false }));
             return;
         }
         if (!text) return;
@@ -250,8 +252,8 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
             } else if (result.error) {
                 setError(result.error);
             }
-        } catch {
-            setError("Failed to rewrite");
+        } catch (e) {
+            setError(toAppError(e, { code: 'TONE_TUNER_FAILED', message: 'Failed to rewrite', retryable: true }));
         } finally {
             setLoading(false);
         }
@@ -280,7 +282,7 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
                         className="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-xs text-white focus:outline-none focus:border-violet-400 resize-none h-20"
                         autoFocus
                     />
-                    {error && <p className="text-xs text-red-400">{error}</p>}
+                    {error && <ErrorNotice error={error} className="mt-1" />}
                     <div className="flex justify-between items-center mt-1">
                          <span className={cn("text-xs", customSample.length < 50 ? "text-red-400" : "text-zinc-500")}>
                             {customSample.length}/50
@@ -308,9 +310,11 @@ function ToneTunerView({ editor, onBack }: { editor: Editor, onBack: () => void 
                 </div>
             )}
 
-            {error && !showCustomInput && !loading && (
-                 <div className="px-2 py-1 text-xs text-red-400 border-t border-zinc-800 mt-1">{error}</div>
-            )}
+              {error && !showCustomInput && !loading && (
+                  <div className="px-2 py-1 border-t border-zinc-800 mt-1">
+                    <ErrorNotice error={error} />
+                  </div>
+              )}
         </div>
     )
 }

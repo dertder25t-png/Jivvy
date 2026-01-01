@@ -1,0 +1,274 @@
+# 🚀 Jivvy v2: Master Implementation Roadmap
+
+## 📋 Project Philosophy
+**"Structured Freedom"**: Jivvy combines the chaos of brainstorming (Infinite Canvas) with the rigor of academic structure (Doc Mode). All intelligence is **Local-First** (Privacy) and **Trust-Based** (No auto-magic without confirmation).
+
+---
+
+## ✅ Implementation Checklist (v2 Tracking)
+
+Legend:
+- [x] Implemented
+- [ ] Not started
+- [~] Partially implemented / follow-up needed
+
+This file is the source-of-truth checklist for the roadmap. Checkboxes below are kept in sync with the codebase.
+
+---
+
+## 🛑 Phase 0: Foundation & Local-First Migration
+**Objective:** Sever all external API dependencies and prepare the database for scale.
+
+### ✅ Robust error handling (Phase 0)
+- [x] Robust error handling: structured errors + surfaced UI messages
+    - [x] Define a shared error shape `{ code, message, detail?, retryable? }` for client actions/workers
+    - [x] Add a lightweight “Debug details” affordance (copy-to-clipboard) for errors in key surfaces
+    - [x] Ensure worker failures post back error codes (not just console logs)
+    - [x] Centralize safe logging (local-first): avoid leaking sensitive document content
+
+### 1. Local-First AI Migration
+- [~] Audit & sever Gemini server usage
+    - [x] `app/ai/actions.ts` removed from build graph (replaced with deprecated stub)
+    - [x] Remove/replace remaining Gemini server modules (e.g. `app/critique/actions.ts`)
+    - [x] Client-side local AI actions exist (see `utils/local-ai-actions.ts`)
+
+- [x] Remove unused external AI dependency
+    - [x] Remove `@google/generative-ai` from `package.json` if no longer referenced
+    - [x] Verify `npm run build` and `npm run dev` work without it
+
+- [~] Implement local-first replacements
+    - [x] **Spec Sheet:** implemented via client-side extraction + optional local refinement (`utils/local-ai-actions.ts`)
+    - [x] **Rewrite Text:** local generation helper exists (`utils/local-llm.ts`) and client wrapper (`utils/local-ai-actions.ts`)
+    - [x] **Search Queries:** local keyword extraction + optional local LLM pass (`utils/local-ai-actions.ts`)
+
+- [x] Model UX hardening (local)
+    - [x] Consistent progress reporting (download/load) everywhere local AI is used
+    - [x] Graceful fallback when model isn’t cached / storage is insufficient
+    - [x] Clear user-visible errors (e.g. “Model download blocked”, “Not enough storage”) with next-step guidance
+
+### 2. Database Optimization
+- [x] Avoid full scan in `getUpcomingTasks`
+    - [x] Updated `lib/db.ts` schema with compound index (implemented as `[type+properties.due_date]` to match current due_date storage)
+    - [x] Updated `lib/store.ts` query to use indexed `between(...)` range query
+
+- [x] Database reliability
+    - [x] Add integrity checks / migrations for partial or corrupted IndexedDB states
+    - [x] Add safe wrappers for common DB operations that return structured errors (not alerts)
+
+---
+
+## 🏗 Phase 1: Smart Creation (The "Trust" Input)
+**Objective:** A unified input bar that intelligently guesses intent but *always* asks permission.
+
+### ✅ Robust error handling (Phase 1)
+- [x] Robust error handling: creation + parsing failures are diagnosable
+    - [x] Parsing errors return `{ code: 'PARSE_FAILED' | ... }` with input snapshot
+    - [x] Create failures return `{ code: 'DB_WRITE_FAILED' | ... }` and show a non-blocking toast
+    - [x] Keyboard handling has safe guards (no double-submit / re-entrancy)
+
+### 1. The "Ghost Suggestion" UX
+- [x] Build `SmartInput` (Ghost Suggestion UX)
+    - [x] Local intent classification (regex + local AI)
+    - [x] Ghost suggestion card (no auto-create)
+    - [x] Keyboard: `[Tab]` confirm, `[Esc]` cancel
+    - [x] Manual override chips: `[Task]` `[Project]` `[Paper]` `[Brainstorm]`
+
+- [x] UX refinement (still trust-based, no auto-magic)
+    - [x] Show loading state when local intent classification is running
+    - [x] Respect dismissal: don’t re-show ghost until input changes
+    - [x] Optional: show confidence label internally for debugging (not user-facing)
+
+### 2. Smart "Auto-Filing"
+- [x] Smart auto-filing suggestion
+    - [x] Suggest parent project when match exists
+    - [x] Save acceptance preference locally (improve future guesses)
+
+- [x] Project matching rules
+    - [x] Exact match by project name
+    - [x] Fuzzy match (contains/starts-with) with explicit confirmation
+    - [x] Store per-user acceptance map locally (projectId ↔ keyword)
+
+---
+
+## 📝 Phase 2: View Engines (Doc Mode & Canvas)
+**Objective:** One data source (Blocks), three distinct ways to view it.
+
+### ✅ Robust error handling (Phase 2)
+- [x] Robust error handling: view switching + rendering failures are diagnosable
+    - [x] Canvas → Doc linearization reports how many blocks were moved/reordered
+    - [x] Doc pagination errors show a recoverable fallback (“Disable auto-pagination”) with debug details
+    - [x] Export errors return structured codes (PRINT_FAILED, NO_PAGES, etc.)
+
+### 1. "Doc Mode" (Paper Writer)
+- [~] Doc Mode (Paper Writer)
+    - [x] Component exists: `components/views/DocView.tsx`
+    - [x] Visuals: gray background + centered 8.5x11 page containers
+    - [x] Pagination: DOM measurement + overflow to next page
+    - [x] Virtual `page_break` block type supported
+    - [~] Academic formatting
+        - [x] Templates dropdown (APA/MLA/Chicago + Turabian)
+        - [x] Basic print-to-PDF export via `window.print()` + print CSS
+        - [~] Citations "References" generation
+            - [x] Inserts a references section (local formatter)
+            - [x] Switch to `citation-js` locally (if still desired)
+
+- [x] Doc Mode completeness (beta hardening)
+    - [x] Cursor/selection stability across re-pagination
+    - [x] Large document performance (avoid re-measuring everything on each keystroke)
+    - [x] Paste handling (sanitize + preserve paragraphs)
+    - [x] Predictable page-break behavior for headings and page_break blocks
+
+### 2. View Switching & Safety
+- [x] View switching & safety
+    - [x] Project view toggle supports `canvas | blocks | doc`
+    - [x] Canvas → Doc warning + optional snapshot
+    - [x] Canvas → Doc linearization by top-left ordering
+
+- [x] Snapshot management
+    - [x] UI to restore a snapshot (choose from saved snapshots)
+    - [x] Cap snapshot history size per project
+
+### 3. "Invisible" Block System
+- [x] Invisible block system (content-first controls)
+    - [x] Default: transparent border
+    - [x] Hover: drag handle + subtle border
+    - [x] Focus: blue accent border
+
+- [x] Consistent block controls across views
+    - [x] Same hover/focus affordances in Blocks view + Doc view
+    - [x] Keyboard-first editing (no required mouse actions)
+
+---
+
+## 🎓 Phase 3: Lecture Blocks & Tidying
+**Objective:** Turn messy class notes into structured data.
+
+### ✅ Robust error handling (Phase 3)
+- [x] Robust error handling: background tidying never silently fails
+    - [x] Worker timeouts return error codes + retry affordance
+    - [x] Keep original text snapshot before applying suggested formatting
+    - [x] Provide “Apply” / “Dismiss” / “Re-run” states with clear reasons
+
+### 1. The Lecture Block
+- [x] Lecture block
+    - [x] New block type: `lecture_container`
+    - [x] Auto-increment `lecture_number`
+    - [x] Default `date` to today
+    - [x] Placeholder `audio_transcription_id`
+    - [x] Cached local-AI `summary`
+
+- [x] Lecture navigation & structure
+    - [x] Quick jump between lectures
+    - [x] Collapse/expand lecture sections
+
+### 2. "Intelligent Tidying" (Background Worker)
+- [x] Intelligent tidying (trust-based)
+    - [x] Debounce after typing stops (30s)
+    - [x] Send text to `grammar.worker.ts`
+    - [x] Prompt: format Markdown + detect structure
+    - [x] UI: show apply affordance (never auto-apply)
+
+- [x] Formatting application safety
+    - [x] Diff preview (before/after) or minimal change summary
+    - [x] Undo stack integration (one-step revert)
+
+---
+
+## 🧠 Phase 4: Data-Driven "Super Learn"
+**Objective:** Analytics that guide study, not just show charts.
+
+### ✅ Robust error handling (Phase 4)
+- [~] Robust error handling: analytics & generation are debuggable
+    - [x] Concept extraction stores provenance (source block ids + excerpts)
+    - [x] Quiz generation stores generation inputs + model mode used
+    - [x] If generation fails, return a reason + suggested remediation (shorten context, switch mode)
+
+### 1. The "Super Learn" Algorithm
+- [~] Super Learn algorithm
+    - [x] Dexie table: `analytics_concepts`
+    - [x] Extract concepts from lecture blocks
+    - [x] Tag quiz questions with concepts
+    - [x] Compute score with time decay
+    - [x] Thresholds: weak < 0.4, strong > 0.8
+
+- [x] Data pipeline
+    - [x] Incremental updates (don’t re-analyze everything)
+    - [x] Background processing + status indicator
+
+### 2. Dynamic Quiz Generator
+- [x] Dynamic quiz generator (Practice Mode)
+    - [x] Fetch weak concepts
+    - [x] Locate source lecture blocks
+    - [x] Local AI generates new questions (AdversarialMatrix)
+    - [x] Save as persistent `QuizBlock`
+
+- [x] Quiz quality guardrails
+    - [x] Validate options are grounded in source text
+    - [x] Reject questions with low entailment confidence (judge model)
+
+### 3. One-Sentence Analytics
+- [x] One-sentence analytics
+    - [x] Default dashboard view: no complex charts
+    - [x] Simple text insight card
+    - [x] "Start Review" deep-links to target block
+
+- [x] Insight explainability
+    - [x] "Why this insight?" opens provenance (concept + lecture sources)
+
+---
+
+## 🌐 Phase 5: Zero-Cost Integrations
+**Objective:** Import external data without backend fees.
+
+### ✅ Robust error handling (Phase 5)
+- [x] Robust error handling: imports fail clearly and safely
+    - [x] Proxy errors: invalid URL / fetch failed / blocked host → structured error codes
+    - [x] Readability parse errors: show raw fallback or retry
+    - [x] ICS parse errors: show which event failed and why
+
+### 1. Client-Side Proxy Scraping
+- [x] Client-side proxy scraping
+    - [x] API route: `/api/proxy?url=...` returns raw HTML
+    - [x] Browser-side parsing ready (content returned as text)
+    - [x] Privacy-preserving, low-cost architecture
+
+- [x] Security hardening
+    - [x] URL allowlist/denylist (prevent SSRF-style misuse)
+    - [x] Size limits + timeouts for HTML fetch
+
+### 2. Syllabus Import
+- [x] Syllabus import (ICS)
+    - [x] Input: `.ics` feed URL
+    - [x] Parse locally via custom parser (no external deps)
+    - [x] Map event date → task `due_date`
+    - [x] Map event title → task `content`
+    - [x] Detect keywords → tag `#Urgent`
+
+- [x] Import review screen (trust-based)
+    - [x] Show preview list before creating tasks
+    - [x] Let user deselect events before import
+
+---
+
+## 🎨 Customizable Dashboard
+- [x] Robust error handling (Dashboard)
+    - [x] Widget failures show isolated error states (don't break the whole dashboard)
+    - [x] Persist layout errors are surfaced with debug details
+
+- [x] Dashboard grid + widgets
+    - [x] Grid system: CSS Grid (simpler than react-grid-layout for MVP)
+    - [x] Widgets: Recent Docs
+    - [x] Widgets: Super Learn Insight
+    - [x] Widgets: Upcoming Tasks
+    - [x] Widgets: Quick Capture
+    - [x] Persist layout JSON in localStorage
+
+- [x] Validation & diagnostics (dashboard-level)
+    - [x] Add a local "Health" panel (optional) that lists: DB status, worker status, model cache status
+
+---
+
+## 🧾 Notes / Deltas (keep honest)
+- Due dates: implemented as `block.properties.due_date` (not `metadata.due_date`) to match current storage and avoid migration.
+- Doc citations: references/footnotes are generated locally via `utils/citation-formatter.ts` using `citation-js` for bibliography formatting.
+- Local-first AI: `app/ai/actions.ts` is stubbed; critique Gemini has been removed/stubbed (`app/critique/actions.ts`).

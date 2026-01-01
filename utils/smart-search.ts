@@ -316,6 +316,57 @@ export class SmartSearchEngine {
         }
     }
 
+    /**
+     * Script/utility helper: Solve a detected quiz against a plain-text document.
+     * This avoids worker/index dependencies and keeps dev scripts compiling.
+     */
+    static solveQuiz(quiz: DetectedQuiz, documentText: string): SmartSearchResult {
+        if (!quiz?.isQuiz || !quiz.options?.length) {
+            return {
+                answer: '',
+                explanation: 'Not a quiz question.',
+                confidence: 0,
+                evidence: ''
+            };
+        }
+
+        const text = String(documentText ?? '');
+        const scored = quiz.options.map((opt, idx) => {
+            const combinedQuery = `${quiz.question} ${opt.text} ${opt.text}`;
+            const detail = scoreCandidate(text, combinedQuery);
+            const scoreNorm = Math.max(0, Math.min(1, detail.score / 100));
+            return {
+                letter: opt.letter || String.fromCharCode(65 + idx),
+                score: scoreNorm,
+                evidence: detail.excerpt
+            };
+        });
+
+        // For NOT/EXCEPT: choose the *least supported* option.
+        scored.sort((a, b) => (quiz.isNegative ? a.score - b.score : b.score - a.score));
+        const winner = scored[0];
+
+        if (!winner || winner.score < 0.05) {
+            return {
+                answer: '',
+                explanation: 'Could not find strong evidence for any option in the provided text.',
+                confidence: winner?.score ?? 0,
+                evidence: ''
+            };
+        }
+
+        const explanation = quiz.isNegative
+            ? `Negative question detected. **${winner.letter}** appears least supported by the text.`
+            : `It matches **${winner.letter}** because the document states:\n\n> "...${winner.evidence}..."`;
+
+        return {
+            answer: winner.letter,
+            explanation,
+            confidence: winner.score,
+            evidence: winner.evidence
+        };
+    }
+
     // ==========================================
     // SEARCH METHODS
     // ==========================================

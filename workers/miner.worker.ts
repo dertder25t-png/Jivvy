@@ -19,6 +19,7 @@ import { findCandidates, findHybridCandidates } from '../utils/search/retriever'
 import { IndexStructure, ChunkData } from '../utils/search/types';
 import { parseLayout, LayoutBlock } from '../utils/search/layout-parser';
 import { extractKeywords } from '../utils/search/keyword-extractor';
+import { safeLogError, toAppError } from '../lib/errors';
 
 // Configure Transformers.js
 env.allowLocalModels = false;
@@ -74,7 +75,12 @@ interface TopicMap {
 
 // Configure PDF.js Worker
 // Use a relative path that works in both dev and prod (copied to public/)
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+// Use absolute path to ensure it works within Blob workers
+const workerUrl = typeof self !== 'undefined' && self.location 
+    ? new URL('/pdf.worker.min.mjs', self.location.origin).href 
+    : '/pdf.worker.min.mjs';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 // Lazy load reranker
 async function getReranker() {
@@ -171,14 +177,46 @@ ctx.onmessage = async (event: MessageEvent) => {
         break;
 
       case 'get_page_text':
-        const cachedText = pageTextCache.get(payload.page);
-        console.log(`[MinerWorker] get_page_text request for page ${payload.page}, cache has: ${cachedText ? 'YES (' + cachedText.length + ' chars)' : 'NO'}`);
-        ctx.postMessage({ type: 'page_text', page: payload.page, text: cachedText ?? null });
+                // Support both 'page' and 'pageIndex' from either `payload` or the root message.
+                // Some callers historically sent `{ page }` without nesting under `payload`.
+                const root = (event.data ?? {}) as any;
+                const pl = (payload ?? {}) as any;
+                const pIndex = pl.pageIndex ?? pl.page ?? root.pageIndex ?? root.page;
+
+                if (typeof pIndex !== 'number' || Number.isNaN(pIndex)) {
+                    console.warn('[MinerWorker] get_page_text missing page/pageIndex', { id, payload: pl, rootKeys: Object.keys(root || {}) });
+                    ctx.postMessage({
+                        type: 'page_text_response',
+                        id,
+                        payload: { pageIndex: -1, text: '' }
+                    });
+                    break;
+                }
+
+                console.log(`[MinerWorker] Request: Get text for page ${pIndex} (ID: ${id})`);
+
+                const text = pageTextCache.get(pIndex) || '';
+
+                // CRITICAL: Send back the SAME ID so the client can match it.
+                ctx.postMessage({
+                    type: 'page_text_response',
+                    id,
+                    payload: {
+                        pageIndex: pIndex,
+                        text
+                    }
+                });
         break;
     }
   } catch (error: any) {
-    console.error('[MinerWorker] Error:', error);
-    ctx.postMessage({ type: 'ERROR', id, error: error.message });
+        safeLogError('MinerWorker.onmessage', error, { messageType: type, id });
+        const appError = toAppError(error, {
+                code: 'WORKER_MINER_FAILED',
+                message: 'Miner worker failed',
+                retryable: true,
+                detail: { messageType: type, id }
+        });
+        ctx.postMessage({ type: 'error', id, error: appError });
   }
 };
 
