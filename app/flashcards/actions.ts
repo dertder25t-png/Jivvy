@@ -25,6 +25,18 @@ export async function createFlashcard(
         return { success: false, error: "Not authenticated" };
     }
 
+    // Verify ownership
+    const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('id', projectId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (projectError || !project) {
+        return { success: false, error: "Project not found or access denied" };
+    }
+
     const { error } = await supabase
         .from('flashcards')
         .insert({

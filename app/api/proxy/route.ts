@@ -29,6 +29,7 @@ const BLOCKED_HOSTS = [
     '127.0.0.1',
     '0.0.0.0',
     '::1',
+    '[::1]',
     '10.',
     '172.16.',
     '172.17.',
@@ -88,6 +89,7 @@ function isValidUrl(urlString: string): { valid: boolean; url?: URL; error?: str
 
         // Check for blocked hosts
         if (isBlockedHost(url.hostname)) {
+            console.warn(`[Proxy] Blocked SSRF attempt to host: ${url.hostname}`);
             return { valid: false, error: 'This host is not allowed' };
         }
 
@@ -143,7 +145,7 @@ export async function GET(request: NextRequest) {
                     'User-Agent': 'Mozilla/5.0 (compatible; JivvyBot/1.0; +https://jivvy.app)',
                     'Accept': 'text/html,text/plain,text/calendar,application/json,*/*',
                 },
-                redirect: 'follow',
+                redirect: 'manual',
             });
 
             clearTimeout(timeoutId);

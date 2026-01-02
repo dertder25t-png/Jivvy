@@ -211,6 +211,23 @@ export async function getProjectNotes(projectId: string): Promise<{ notes: Note[
  */
 export async function saveProjectNote(projectId: string, content: string, noteOrder: number): Promise<{ success: boolean; error: string | null }> {
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { success: false, error: "Not authenticated" };
+    }
+
+    // Verify ownership
+    const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('id', projectId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (projectError || !project) {
+        return { success: false, error: "Project not found or access denied" };
+    }
 
     // Check if note exists
     const { data: existingNotes, error: fetchError } = await supabase

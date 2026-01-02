@@ -5,7 +5,13 @@ export async function GET(request: Request) {
     const { searchParams, origin } = new URL(request.url);
     const code = searchParams.get("code");
     // if "next" is in param, use it as the redirect URL
-    const next = searchParams.get("next") ?? "/";
+    let next = searchParams.get("next") ?? "/";
+
+    // Security: Validate 'next' param to prevent open redirects
+    // Ensure it starts with / and doesn't contain // (protocol relative)
+    if (!next.startsWith('/') || next.includes('//')) {
+        next = '/';
+    }
 
     if (code) {
         const supabase = createClient();

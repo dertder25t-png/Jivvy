@@ -8,19 +8,19 @@ These issues pose immediate security risks or cause app-breaking crashes. Fix th
 
 1.1 Fix API Security Holes (SSRF & Authorization)
 
-[ ] Proxy SSRF Hardening (app/api/proxy/route.ts)
+[x] Proxy SSRF Hardening (app/api/proxy/route.ts)
 
 Set redirect: 'manual' in fetch options to prevent attackers from bypassing the blocklist via 301/302 redirects.
 
 Add [::1] to BLOCKED_HOSTS or normalize hostnames to strip brackets (IPv6 protection).
 
-[ ] Ownership Verification
+[x] Ownership Verification
 
 Notes: In saveProjectNote (app/project/actions.ts), verify project.user_id === session.user_id before saving.
 
 Flashcards: In createFlashcard, verify project ownership.
 
-[ ] Open Redirect Fix (app/auth/callback/route.ts)
+[x] Open Redirect Fix (app/auth/callback/route.ts)
 
 Validate the next param. Ensure it starts with / and does not contain //.
 
