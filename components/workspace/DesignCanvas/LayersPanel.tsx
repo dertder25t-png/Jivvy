@@ -164,8 +164,8 @@ export function LayersPanel({ canvas }: LayersPanelProps) {
                 <input
                   type="text"
                   value={layer.name}
-                  onChange={(e) => renameLayer(layer, e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => renameLayer(layer, e.target.value)}
+                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
                   className="flex-1 bg-transparent text-sm text-white font-medium focus:outline-none"
                 />
                 <span className="text-xs text-zinc-500 uppercase ml-2">{layer.type}</span>

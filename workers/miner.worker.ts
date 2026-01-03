@@ -76,8 +76,9 @@ interface TopicMap {
 // Configure PDF.js Worker
 // Use a relative path that works in both dev and prod (copied to public/)
 // Use absolute path to ensure it works within Blob workers
+// Ensure path doesn't break if base path is not root
 const workerUrl = typeof self !== 'undefined' && self.location 
-    ? new URL('/pdf.worker.min.mjs', self.location.origin).href 
+    ? new URL('/pdf.worker.min.mjs', self.location.href.substring(0, self.location.href.lastIndexOf('/'))).href
     : '/pdf.worker.min.mjs';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -280,6 +281,8 @@ async function handleInitIndex(pdfData: ArrayBuffer) {
         // Report progress every 10 pages
         if (i % 10 === 0) {
              ctx.postMessage({ type: 'progress', message: `Indexing page ${i}/${totalPages}`, percent: (i / totalPages) * 100 });
+             // Yield to event loop to prevent freezing
+             await new Promise(resolve => setTimeout(resolve, 0));
         }
     }
 
