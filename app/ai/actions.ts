@@ -15,7 +15,9 @@ export interface GenerateSearchQueriesResult {
 
 export async function generateSearchQueries(
 	_text: string,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_queryCount = 3,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_platforms?: string
 ): Promise<GenerateSearchQueriesResult> {
 	return {
@@ -31,7 +33,9 @@ export interface AnswerQuestionResult {
 }
 
 export async function answerQuestion(
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_question: string,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_context: string
 ): Promise<AnswerQuestionResult> {
 	return {

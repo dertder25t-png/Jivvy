@@ -681,9 +681,15 @@ export function DocView({ projectId }: { projectId: string }) {
         );
     }, [focusedBlockId, handleContentChange, handleDeleteBlock, handleKeyDown, handleUpdateBlock]);
 
-    const renderTreeInternal = useCallback((parentId: string | null, depth: number, collectRefs: boolean) => {
+    const renderTreeInternal = useCallback((parentId: string | null, depth: number, collectRefs: boolean): React.ReactNode => {
+        if (depth > 20) {
+            console.warn('[DocView] Maximum recursion depth exceeded');
+            return null;
+        }
+
         if (parentId) {
             const parent = blockById.get(parentId);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if (parent?.type === 'lecture_container' && (parent.metadata as any)?.collapsed) {
                 return null;
             }
@@ -711,7 +717,7 @@ export function DocView({ projectId }: { projectId: string }) {
                 ))}
             </div>
         );
-    }, [childrenByParent, renderBlock]);
+    }, [blockById, childrenByParent, renderBlock]);
 
     const renderTree = useCallback((parentId: string | null, depth = 0) => {
         return renderTreeInternal(parentId, depth, true);

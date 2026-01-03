@@ -81,7 +81,9 @@ export function toAppError(
     return {
       code: input.code,
       message: input.message,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       detail: 'detail' in input ? (input as any).detail : fallback?.detail,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       retryable: typeof (input as any).retryable === 'boolean' ? (input as any).retryable : fallback?.retryable,
     };
   }

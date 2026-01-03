@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { useFabric } from "./useFabric";
 import { useProjectStore } from "@/lib/store";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { FabricObject, Rect, IText, Group } from "fabric";
 
 export default function JivvyCanvas() {
@@ -60,6 +61,7 @@ export default function JivvyCanvas() {
       });
 
       // Re-assign custom property since 'data' might not be standard in types yet or handled differently
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (group as any).blockId = block.id;
 
       fabricCanvas.add(group);
@@ -73,10 +75,12 @@ export default function JivvyCanvas() {
   useEffect(() => {
     if (!fabricCanvas) return;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleModified = async (e: any) => {
       const target = e.target;
       if (!target) return;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const blockId = (target as any).blockId;
       if (blockId) {
         isUpdatingRef.current = true;

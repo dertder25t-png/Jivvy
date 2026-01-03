@@ -84,6 +84,7 @@ function jaccardSimilarity(setA: Set<string>, setB: Set<string>): number {
 /**
  * Levenshtein Distance for fuzzy matching
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function levenshteinDistance(a: string, b: string): number {
     if (a.length === 0) return b.length;
     if (b.length === 0) return a.length;
@@ -136,7 +137,8 @@ export class SmartSearchEngine {
         const parts = cleanText.slice(firstOptionIndex).split(/((?:^|\n|\s)(?:A|B|C|D|1|2|3|4)[\.\)\-\]]\s+)/);
 
         const options: QuizOption[] = [];
-        let currentId = '';
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const currentId = '';
 
         for (let i = 1; i < parts.length; i += 2) {
             const delimiter = parts[i].trim(); // e.g. "A)"

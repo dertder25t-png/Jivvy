@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { Loader2, FileText, ExternalLink, RotateCw, ChevronLeft, ChevronRight, Quote, MessageSquare, ZoomIn, ZoomOut } from "lucide-react";
+import { Loader2, FileText, ExternalLink, ChevronLeft, ChevronRight, Quote, MessageSquare, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProjectStore } from "@/lib/store";
 import { db, Block } from "@/lib/db";

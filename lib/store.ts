@@ -179,7 +179,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
                     }
                 });
             });
-        } catch (e: any) {
+        } catch (e: unknown) {
             set({ error: toAppError(e, { code: 'DB_REORDER_FAILED', message: 'Failed to reorder blocks', retryable: true }) });
             // Reload to restore consistency
             const parentId = newBlocks[0]?.parent_id;

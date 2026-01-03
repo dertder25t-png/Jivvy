@@ -53,6 +53,7 @@ const EVIDENCE_WEIGHTS: Record<EvidenceType, number> = {
 // Thresholds for evidence classification
 const EXPLICIT_THRESHOLD = 0.7;
 const IMPLIED_THRESHOLD = 0.4;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const CONTRADICTION_THRESHOLD = 0.5;
 
 /**

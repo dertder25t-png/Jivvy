@@ -31,7 +31,10 @@ export interface SearchQueryResult {
 async function extractPdfTextFromUrl(pdfUrl: string, maxPages = 3): Promise<string> {
     initPDFWorker();
 
-    const res = await fetch(pdfUrl);
+    // Use proxy to avoid CORS issues
+    const proxyUrl = `/api/proxy?url=${encodeURIComponent(pdfUrl)}`;
+
+    const res = await fetch(proxyUrl);
     if (!res.ok) {
         throw createAppError('PDF_FETCH_FAILED', 'Failed to fetch PDF', {
             retryable: true,

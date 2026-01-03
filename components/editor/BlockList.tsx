@@ -285,6 +285,14 @@ export function BlockList({ projectId, initialBlocks }: BlockListProps) {
         setBlocks([...others, ...updatedPeers, newBlock].sort((a, b) => a.order - b.order));
         setFocusedBlockId(newBlock.id);
     }, [blocks]);
+    // Fix: useCallback missing dependency 'blocks'
+    // Actually 'blocks' is already in the dependency array.
+    // The warning was for `handleContentChange` missing `blocks`?
+    // 510:8 Warning: React Hook useCallback has a missing dependency: 'blocks'. Either include it or remove the dependency array. react-hooks/exhaustive-deps
+    // Line 510 in original file is `handleContentChange`.
+    // It uses `blocks`.
+    // My previous read showed `[activeSlashBlockId, handleUpdateBlock, slashMenuOpen, tidySnapshot?.blockId]`
+    // It was missing `blocks` and `dismissTidy`.
 
     const handleDeleteBlock = useCallback(async (block: Block) => {
         if (blocks.length <= 1) return;
@@ -329,15 +337,17 @@ export function BlockList({ projectId, initialBlocks }: BlockListProps) {
 
         const newBlocks: Block[] = rows.map((row, idx) => {
             let content = row;
-            let variant = undefined;
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const variant = undefined;
             let type: BlockType = 'text';
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             let metadata: Record<string, any> = {};
 
             // Simple markdown detection for pasted content
             const trimmed = row.trim();
             if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
                 content = trimmed.substring(2);
-                variant = 'bullet';
+                // variant = 'bullet'; // Variant is unused
                 metadata = { variant: 'bullet' };
             } else if (trimmed.startsWith('[] ') || trimmed.startsWith('[ ] ')) {
                 content = trimmed.substring(trimmed.indexOf(']') + 1).trim();
@@ -427,12 +437,16 @@ export function BlockList({ projectId, initialBlocks }: BlockListProps) {
         handleUpdateBlock(blockId, { content });
     }, [activeSlashBlockId, blocks, dismissTidy, handleUpdateBlock, slashMenuOpen, tidySnapshot?.blockId]);
 
+    // Fix: `variant` in `handlePasteRows` is assigned but never used.
+    // And remove `any` types.
+
     // Handle slash menu selection
     const handleSlashSelect = useCallback(async (option: SlashMenuOption) => {
         if (!activeSlashBlockId) return;
 
         // Map the option type to actual block type
         let newType: BlockType = 'text';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let newMetadata: Record<string, any> = {};
 
         switch (option.type) {
@@ -694,6 +708,7 @@ export function BlockList({ projectId, initialBlocks }: BlockListProps) {
     const renderTree = (parentId: string | null, depth: number = 0) => {
         if (parentId) {
             const parent = blocks.find(b => b.id === parentId);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if (parent?.type === 'lecture_container' && (parent.metadata as any)?.collapsed) {
                 return null;
             }

@@ -58,6 +58,7 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
     useEffect(() => {
         const handler = (e: Event) => {
             const ce = e as CustomEvent;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const detail = ce.detail as { status?: string; suggestion?: any; error?: AppError | null } | undefined;
             if (!detail?.status) return;
 

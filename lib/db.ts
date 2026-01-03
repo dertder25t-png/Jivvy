@@ -42,6 +42,8 @@ export interface AnalyticsQuizGeneration {
 export interface Block {
     id: string;
     parent_id: string | null;
+    project_id?: string; // Added for scoping
+    user_id?: string; // Added for ownership
     content: string;
     type: BlockType;
     // New fields for Smart Capture
@@ -57,12 +59,14 @@ export interface Block {
         audio_transcription_id?: string | null;
         summary?: string;
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     metadata?: Record<string, any>;
     order: number;
 }
 
 export interface Project {
     id: string;
+    user_id?: string; // Added for ownership
     name: string;
     created_at: number;
     updated_at: number;
@@ -71,6 +75,7 @@ export interface Project {
     due_date?: number;
     color?: string;
     tags?: string[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     metadata?: Record<string, any>;
 }
 
@@ -122,6 +127,14 @@ export class JivvyDB extends Dexie {
             analytics_concepts: 'id, project_id, concept, score, updated_at, last_seen_at, [project_id+concept], [project_id+score]',
             analytics_quiz_generations: 'id, project_id, created_at, generator, model_mode, context_hash, [project_id+created_at]'
         });
+
+        // Phase 2 Fix: Add user_id and project_id indices for better scoping
+        this.version(7).stores({
+            blocks: 'id, parent_id, order, type, project_id, user_id, properties.due_date, properties.priority, properties.tags, [type+properties.due_date]',
+            projects: 'id, updated_at, due_date, priority, user_id',
+            analytics_concepts: 'id, project_id, concept, score, updated_at, last_seen_at, [project_id+concept], [project_id+score]',
+            analytics_quiz_generations: 'id, project_id, created_at, generator, model_mode, context_hash, [project_id+created_at]'
+        });
     }
 }
 
@@ -140,10 +153,12 @@ async function ensureDbIntegrityOnce(): Promise<{ ok: true } | { ok: false; erro
         await db.projects.limit(1).toArray();
         await db.blocks.limit(1).toArray();
         // Newer schemas include analytics tables; a missing table (upgrade issue) should surface clearly.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((db as any).analytics_concepts) {
             await db.analytics_concepts.limit(1).toArray();
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((db as any).analytics_quiz_generations) {
             await db.analytics_quiz_generations.limit(1).toArray();
         }
@@ -172,6 +187,7 @@ async function ensureDbIntegrityOnce(): Promise<{ ok: true } | { ok: false; erro
 }
 
 function mapDbError(error: unknown): AppError {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const err = error as any;
     const name = typeof err?.name === 'string' ? err.name : '';
     const message = typeof err?.message === 'string' ? err.message : '';
@@ -233,6 +249,7 @@ export async function ensureDbReady(): Promise<{ ok: true } | { ok: false; error
                 {
                     retryable: mapped.retryable,
                     detail: {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         ...(typeof mapped.detail === 'object' && mapped.detail ? (mapped.detail as any) : {}),
                         guidance:
                             'Try reloading the page. If this persists, your browser may be blocking storage (private mode) or storage may be full.',

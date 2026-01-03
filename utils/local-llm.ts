@@ -67,27 +67,41 @@ export interface NLIResult {
  * Compare a Premise (PDF Text) against a Hypothesis (Option)
  */
 export async function judgeOption(premise: string, hypothesis: string): Promise<NLIResult> {
-    if (!nliPipeline) await initNLIModel();
-
-    // The model returns scores for "entailment", "neutral", "contradiction"
-    // We strictly look at Entailment (True) vs Contradiction (False)
-    const result = await nliPipeline(premise, [hypothesis]);
-    
-    // Deberta v3 labels usually come back as entailment/neutral/contradiction
-    const entailmentIdx = result.labels.indexOf('entailment');
-    const contradictionIdx = result.labels.indexOf('contradiction');
-    const neutralIdx = result.labels.indexOf('neutral');
-
-    return {
-        option: hypothesis,
-        score: result.scores[entailmentIdx], // The confidence that this is TRUE
-        label: result.labels[0], // The top label
-        scores: {
-            entailment: result.scores[entailmentIdx],
-            contradiction: result.scores[contradictionIdx],
-            neutral: result.scores[neutralIdx]
+    try {
+        if (!nliPipeline) {
+            const success = await initNLIModel();
+            if (!success) throw new Error('NLI model failed to initialize');
         }
-    };
+
+        // The model returns scores for "entailment", "neutral", "contradiction"
+        // We strictly look at Entailment (True) vs Contradiction (False)
+        const result = await nliPipeline(premise, [hypothesis]);
+
+        // Deberta v3 labels usually come back as entailment/neutral/contradiction
+        const entailmentIdx = result.labels.indexOf('entailment');
+        const contradictionIdx = result.labels.indexOf('contradiction');
+        const neutralIdx = result.labels.indexOf('neutral');
+
+        return {
+            option: hypothesis,
+            score: result.scores[entailmentIdx], // The confidence that this is TRUE
+            label: result.labels[0], // The top label
+            scores: {
+                entailment: result.scores[entailmentIdx],
+                contradiction: result.scores[contradictionIdx],
+                neutral: result.scores[neutralIdx]
+            }
+        };
+    } catch (error) {
+        console.error('[LocalLLM] NLI judge error:', error);
+        // Fail safe - return neutral
+        return {
+            option: hypothesis,
+            score: 0,
+            label: 'neutral',
+            scores: { entailment: 0, contradiction: 0, neutral: 1 }
+        };
+    }
 }
 
 

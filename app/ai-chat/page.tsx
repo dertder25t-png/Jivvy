@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { AICommandCenter } from "@/components/workspace/AICommandCenter";
-import { Upload, FileText, X, Loader2, MessageSquare, Plus, Trash2, History } from "lucide-react";
+import { Upload, FileText, X, Plus, Trash2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { pdfWorker } from "@/utils/pdf-extraction";
 import type { Message } from "@/components/workspace/ai-command/types";

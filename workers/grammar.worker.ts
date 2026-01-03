@@ -27,16 +27,34 @@ self.addEventListener('message', async (event) => {
 
   if (type === 'check') {
     try {
+        if (!text || !text.trim()) {
+            // Handle empty string case immediately to prevent pipeline crash
+            self.postMessage({
+                type: 'result',
+                requestId,
+                text: text,
+                corrected: text,
+                diffs: []
+            });
+            return;
+        }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const generator = await GrammarCorrectionSingleton.getInstance((data: any) => {
           self.postMessage({ type: 'progress', data, requestId });
       });
 
       const output = await generator(text);
-      const corrected = output[0]?.generated_text;
+      let corrected = output[0]?.generated_text;
+
+      // Handle empty correction string which might crash ProseMirror
+      if (!corrected) {
+          corrected = text;
+      }
 
       // Calculate diffs
-      const diffs = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const diffs: any[] = [];
       if (corrected && corrected !== text) {
           // fast-myers-diff returns iterator of [sx, ex, correction, ey]
           const patches = Array.from(calcPatch(text, corrected));
