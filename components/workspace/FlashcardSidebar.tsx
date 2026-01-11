@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     SquareStack,
     ChevronLeft,
@@ -8,60 +8,67 @@ import {
     Shuffle,
     CheckCircle2,
     XCircle,
-    Sparkles
+    Sparkles,
+    Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface Flashcard {
-    id: string;
-    front: string;
-    back: string;
-    color?: string;
-}
+import { db, Flashcard } from "@/lib/db";
+import { useLiveQuery } from "dexie-react-hooks";
+import { v4 as uuidv4 } from "uuid";
 
 interface FlashcardSidebarProps {
     className?: string;
     projectId?: string;
 }
 
-// Mock flashcards - in real app, fetch from database
-const MOCK_FLASHCARDS: Flashcard[] = [
-    {
-        id: "1",
-        front: "What is the rule of thirds?",
-        back: "A compositional guideline that divides an image into 9 equal parts using 2 horizontal and 2 vertical lines.",
-        color: "lime"
-    },
-    {
-        id: "2",
-        front: "Define kerning",
-        back: "The adjustment of space between individual letter pairs in typography.",
-        color: "violet"
-    },
-    {
-        id: "3",
-        front: "What is a complementary color scheme?",
-        back: "Colors that are opposite each other on the color wheel (e.g., blue and orange).",
-        color: "amber"
-    },
-];
+export function FlashcardSidebar({ className, projectId }: FlashcardSidebarProps) {
+    // Fetch flashcards from Dexie based on projectId
+    const dbCards = useLiveQuery(
+        async () => {
+            if (!projectId) return [];
+            return db.flashcards
+                .where('project_id')
+                .equals(projectId)
+                .sortBy('created_at');
+        },
+        [projectId],
+        []
+    );
 
-export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
-    const [cards, setCards] = useState<Flashcard[]>(MOCK_FLASHCARDS);
     const [collapsed, setCollapsed] = useState(false);
     const [isReviewing, setIsReviewing] = useState(false);
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
     const [stats, setStats] = useState({ correct: 0, incorrect: 0 });
+    const [shuffledCards, setShuffledCards] = useState<Flashcard[]>([]);
 
+    // Sync shuffled cards when dbCards changes
+    useEffect(() => {
+        if (dbCards && dbCards.length > 0) {
+            setShuffledCards([...dbCards]);
+        } else {
+            setShuffledCards([]);
+        }
+    }, [dbCards]);
+
+    const cards = shuffledCards;
     const currentCard = cards[currentCardIndex];
 
-    const handleNextCard = (correct: boolean) => {
+    const handleNextCard = async (correct: boolean) => {
         setStats(prev => ({
             correct: prev.correct + (correct ? 1 : 0),
             incorrect: prev.incorrect + (correct ? 0 : 1)
         }));
         setIsFlipped(false);
+
+        // Update the card's review stats in the database
+        if (currentCard) {
+            const newReviewCount = (currentCard.review_count || 0) + 1;
+            await db.flashcards.update(currentCard.id, {
+                last_reviewed_at: Date.now(),
+                review_count: newReviewCount,
+            });
+        }
 
         if (currentCardIndex < cards.length - 1) {
             setTimeout(() => setCurrentCardIndex(prev => prev + 1), 200);
@@ -74,7 +81,7 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
 
     const shuffleCards = () => {
         const shuffled = [...cards].sort(() => Math.random() - 0.5);
-        setCards(shuffled);
+        setShuffledCards(shuffled);
         setCurrentCardIndex(0);
         setStats({ correct: 0, incorrect: 0 });
     };
@@ -83,6 +90,22 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
         setCurrentCardIndex(0);
         setStats({ correct: 0, incorrect: 0 });
         setIsFlipped(false);
+    };
+
+    // Create a new flashcard
+    const createFlashcard = async () => {
+        if (!projectId) return;
+        
+        const newCard: Flashcard = {
+            id: uuidv4(),
+            project_id: projectId,
+            front: "New question...",
+            back: "Answer...",
+            color: ["lime", "violet", "amber", "rose"][Math.floor(Math.random() * 4)],
+            created_at: Date.now(),
+        };
+        
+        await db.flashcards.add(newCard);
     };
 
     const getCardColor = (color?: string) => {
@@ -252,16 +275,25 @@ export function FlashcardSidebar({ className }: FlashcardSidebarProps) {
                         )}
                     </div>
 
-                    {/* Stats */}
-                    {cards.length > 0 && (
-                        <div className="p-3 border-t border-zinc-800 bg-zinc-900/50">
+                    {/* Stats & Add Button */}
+                    <div className="p-3 border-t border-zinc-800 bg-zinc-900/50 space-y-2">
+                        {cards.length > 0 && (
                             <div className="text-center">
                                 <p className="text-xs text-zinc-500">
                                     {cards.length} cards in deck
                                 </p>
                             </div>
-                        </div>
-                    )}
+                        )}
+                        {projectId && (
+                            <button
+                                onClick={createFlashcard}
+                                className="w-full flex items-center justify-center gap-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-xl text-xs transition-colors"
+                            >
+                                <Plus size={14} />
+                                Add Card
+                            </button>
+                        )}
+                    </div>
                 </>
             )}
         </div>

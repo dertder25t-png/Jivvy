@@ -41,6 +41,24 @@
 }
 
 @layer utilities {
+  /* Flashcard 3D flip utilities */
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
+  
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  
+  .transform-style-3d {
+    transform-style: preserve-3d;
+  }
+  
+  .backface-hidden {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+
   /* Safe area padding utilities for mobile devices */
   .pb-safe {
     padding-bottom: max(1rem, var(--safe-area-inset-bottom));

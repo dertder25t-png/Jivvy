@@ -10,7 +10,9 @@ import {
     FolderPlus,
     X,
     CheckCircle2,
-    AlertCircle
+    AlertCircle,
+    Sparkles,
+    Wand2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -19,6 +21,10 @@ import { parseInputString, ParsedTask } from "@/lib/SmartParser";
 import { useProjectStore } from "@/lib/store";
 import { classifyIntentLocal, type SmartCreateType } from "@/utils/local-intent";
 import { createAppError, toAppError, type AppError } from "@/lib/errors";
+
+// Storage key for smart mode preference
+const SMART_MODE_KEY = 'jivvy:smartModeEnabled:v1';
+const BETA_FEATURES_KEY = 'jivvy:betaFeaturesEnabled:v1';
 
 interface QuickAddProps {
     onTaskAdded?: () => void;
@@ -35,6 +41,11 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
     const [toastKind, setToastKind] = useState<SmartCreateType>('task');
     const [toastVariant, setToastVariant] = useState<'success' | 'error'>('success');
     const [toastMessage, setToastMessage] = useState<string>('');
+
+    // Smart Mode Toggle - Default to MANUAL (false) for Beta
+    const [smartModeEnabled, setSmartModeEnabled] = useState<boolean>(false);
+    // Beta Features Toggle - Hidden by default
+    const [betaFeaturesEnabled, setBetaFeaturesEnabled] = useState<boolean>(false);
 
     // Parsed State
     const [parsed, setParsed] = useState<ParsedTask>({ type: 'task', title: '' });
@@ -61,6 +72,60 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
     const [manualProject, setManualProject] = useState<string | null>(null); // By ID or Name
 
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Load smart mode preference from localStorage
+    useEffect(() => {
+        try {
+            const savedSmartMode = localStorage.getItem(SMART_MODE_KEY);
+            if (savedSmartMode !== null) {
+                setSmartModeEnabled(JSON.parse(savedSmartMode));
+            }
+            const savedBetaFeatures = localStorage.getItem(BETA_FEATURES_KEY);
+            if (savedBetaFeatures !== null) {
+                setBetaFeaturesEnabled(JSON.parse(savedBetaFeatures));
+            }
+        } catch {
+            // Ignore localStorage errors
+        }
+    }, []);
+
+    // Toggle smart mode and persist
+    const toggleSmartMode = () => {
+        const newValue = !smartModeEnabled;
+        setSmartModeEnabled(newValue);
+        try {
+            localStorage.setItem(SMART_MODE_KEY, JSON.stringify(newValue));
+        } catch {
+            // Ignore
+        }
+    };
+
+    // Enable beta features (hidden function - can be called from console)
+    // Usage: window.__enableJivvyBeta?.()
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            (window as any).__enableJivvyBeta = () => {
+                setBetaFeaturesEnabled(true);
+                try {
+                    localStorage.setItem(BETA_FEATURES_KEY, 'true');
+                } catch { }
+                console.log('✨ Jivvy Beta features enabled!');
+            };
+            (window as any).__disableJivvyBeta = () => {
+                setBetaFeaturesEnabled(false);
+                try {
+                    localStorage.setItem(BETA_FEATURES_KEY, 'false');
+                } catch { }
+                console.log('Beta features disabled.');
+            };
+        }
+        return () => {
+            if (typeof window !== 'undefined') {
+                delete (window as any).__enableJivvyBeta;
+                delete (window as any).__disableJivvyBeta;
+            }
+        };
+    }, []);
 
     useEffect(() => {
         // Ensure projects are available for matching.
@@ -185,7 +250,7 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
         setTimeout(() => setShowToast(false), 3000);
     };
 
-    // Local intent classification (debounced)
+    // Local intent classification (debounced) - only runs when smart mode is enabled
     useEffect(() => {
         const trimmed = input.trim();
 
@@ -209,9 +274,17 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
             return;
         }
 
+        // If user has forced a kind, use it
         if (forcedKind) {
             setSuggestedKind(forcedKind);
             setSuggestedConfidence('explicit');
+            return;
+        }
+
+        // In manual mode, default to 'task' - user must explicitly select type
+        if (!smartModeEnabled) {
+            setSuggestedKind('task');
+            setSuggestedConfidence(null);
             return;
         }
 
@@ -222,6 +295,7 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
             return;
         }
 
+        // Smart mode: run AI classification
         const handle = window.setTimeout(async () => {
             const seq = (classifySeqRef.current += 1);
             setIsClassifying(true);
@@ -237,12 +311,13 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
         }, 250);
 
         return () => window.clearTimeout(handle);
-    }, [input, forcedKind, parsed.type]);
+    }, [input, forcedKind, parsed.type, smartModeEnabled]);
 
     // Compute suggested parent project (trust-based; applied only on explicit confirm)
+    // Only runs when smart mode is enabled
     useEffect(() => {
         const trimmed = input.trim();
-        if (!trimmed || ghostDismissed) {
+        if (!trimmed || ghostDismissed || !smartModeEnabled) {
             setSuggestedProjectId(null);
             setSuggestedProjectLabel(null);
             setSuggestedProjectKeyword(null);
@@ -266,7 +341,7 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
         setSuggestedProjectKeyword(suggestion?.keyword ?? null);
         setSuggestedProjectIsExplicit(Boolean(suggestion?.isExplicit));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [input, projects, ghostDismissed, forcedKind, suggestedKind, parsed.projectTag]);
+    }, [input, projects, ghostDismissed, forcedKind, suggestedKind, parsed.projectTag, smartModeEnabled]);
 
     // Computed Values (Manual overrides Parsed)
     const finalPriority = manualPriority || parsed.priority;
@@ -395,13 +470,17 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
         }
     };
 
+    // Determine the effective kind based on mode
+    const effectiveKind: SmartCreateType = forcedKind ?? (smartModeEnabled ? suggestedKind : 'task');
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (isSaving) return;
 
         if (e.key === "Tab") {
-            if (!input.trim() || ghostDismissed) return;
+            // Tab only works in smart mode for accepting suggestions
+            if (!smartModeEnabled || !input.trim() || ghostDismissed) return;
             e.preventDefault();
-            handleCreate(suggestedKind, { acceptSuggestions: true });
+            handleCreate(effectiveKind, { acceptSuggestions: true });
             return;
         }
 
@@ -414,8 +493,9 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
 
         if (e.key === "Enter") {
             e.preventDefault();
-            // Enter confirms creation, but does NOT auto-file unless the user provided an explicit tag.
-            handleCreate(suggestedKind, { acceptSuggestions: false });
+            // Enter confirms creation using the effective kind
+            // In manual mode, user must have selected a type (defaults to task)
+            handleCreate(effectiveKind, { acceptSuggestions: smartModeEnabled });
         }
     };
 
@@ -453,28 +533,31 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
                     onBlur={() => setIsFocused(false)}
                     onKeyDown={handleKeyDown}
                     disabled={isSaving}
-                    placeholder="Describe a task or type 'Project: Name'..."
+                    placeholder={smartModeEnabled ? "Describe a task or type 'Project: Name'..." : "Enter a task, project, paper, or note..."}
                     className="w-full bg-transparent px-4 py-4 text-base placeholder:text-text-secondary/50 focus:outline-none disabled:opacity-50"
                 />
 
-                {/* Mode Chips (Manual Override) */}
+                {/* Mode Selection Area */}
                 {(isFocused || input.trim()) && (
-                    <div className="px-4 -mt-1 pb-2 flex flex-wrap gap-2 text-xs">
+                    <div className="px-4 -mt-1 pb-2 flex flex-wrap items-center gap-2 text-xs">
+                        {/* Item Type Chips (always visible - user must select) */}
                         {([
                             { kind: 'task', label: 'Task' },
                             { kind: 'project', label: 'Project' },
                             { kind: 'paper', label: 'Paper' },
                             { kind: 'brainstorm', label: 'Brainstorm' },
                         ] as const).map((chip) => {
-                            const active = forcedKind === chip.kind;
+                            // In manual mode, show forced kind OR default to task for first chip
+                            const isActive = forcedKind === chip.kind || 
+                                (!forcedKind && !smartModeEnabled && chip.kind === 'task');
                             return (
                                 <button
                                     key={chip.kind}
                                     type="button"
-                                    onClick={() => setForcedKind(active ? null : chip.kind)}
+                                    onClick={() => setForcedKind(isActive && forcedKind === chip.kind ? null : chip.kind)}
                                     className={cn(
                                         "px-2 py-1 rounded-md border text-text-secondary transition-colors",
-                                        active
+                                        isActive
                                             ? "border-primary/30 bg-primary/10 text-primary"
                                             : "border-border bg-transparent hover:bg-zinc-50 dark:hover:bg-zinc-900"
                                     )}
@@ -483,11 +566,40 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
                                 </button>
                             );
                         })}
+
+                        {/* Smart Mode Toggle - Only visible if beta features enabled */}
+                        {betaFeaturesEnabled && (
+                            <div className="ml-auto flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={toggleSmartMode}
+                                    className={cn(
+                                        "flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] transition-colors",
+                                        smartModeEnabled
+                                            ? "border-violet-300 bg-violet-50 text-violet-600 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-400"
+                                            : "border-border text-text-secondary hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                                    )}
+                                    title={smartModeEnabled ? "Smart mode: Auto-detects item type" : "Manual mode: You select item type"}
+                                >
+                                    {smartModeEnabled ? (
+                                        <>
+                                            <Sparkles className="w-3 h-3" />
+                                            Smart
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Wand2 className="w-3 h-3" />
+                                            Manual
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
-                {/* Ghost Suggestion (Trust-Based) */}
-                {input.trim() && !ghostDismissed && (
+                {/* Ghost Suggestion (Trust-Based) - Only shows in Smart Mode */}
+                {smartModeEnabled && input.trim() && !ghostDismissed && (
                     <div className="px-4 pb-2">
                         <div className="rounded-lg border border-border bg-zinc-50/60 dark:bg-zinc-900/30 px-3 py-2">
                             <div className="text-sm text-text-primary">
@@ -627,7 +739,7 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
                         )}
 
                         <button
-                            onClick={() => handleCreate(suggestedKind, { acceptSuggestions: true })}
+                            onClick={() => handleCreate(effectiveKind, { acceptSuggestions: smartModeEnabled })}
                             disabled={(!parsed.title && !input.trim()) || isSaving}
                             className={cn(
                                 "h-8 px-3 rounded-lg transition-all flex items-center gap-2 text-xs font-semibold shadow-sm",
@@ -637,11 +749,11 @@ export function QuickAdd({ onTaskAdded }: QuickAddProps) {
                             )}
                         >
                             <span>
-                                {suggestedKind === 'paper'
+                                {effectiveKind === 'paper'
                                     ? 'Create Paper'
-                                    : suggestedKind === 'brainstorm'
+                                    : effectiveKind === 'brainstorm'
                                         ? 'Create Brainstorm'
-                                        : suggestedKind === 'project'
+                                        : effectiveKind === 'project'
                                             ? 'Create Project'
                                             : 'Add Task'}
                             </span>

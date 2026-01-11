@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { GripVertical } from 'lucide-react';
 
-import { db, Block, BlockType, Project } from '@/lib/db';
+import { db, deleteBlockRecursively, Block, BlockType, Project } from '@/lib/db';
 import { cn } from '@/lib/utils';
 import { SlashMenu, SlashMenuOption } from '@/components/editor/SlashMenu';
 
@@ -23,7 +23,6 @@ import {
     type Citation,
 } from '@/utils/citation-formatter';
 import { createAppError, safeJsonStringify, safeLogError, type AppError, toAppError } from '@/lib/errors';
-import { tidyMarkdown } from '@/utils/tidy-markdown';
 
 type DocTemplate = CitationStyle; // keep templates in sync with citation styles for now
 
@@ -46,6 +45,9 @@ type PdfHighlightCitationMetadata = {
 const PAGE_WIDTH_PX = 816; // 8.5in @ 96dpi
 const PAGE_HEIGHT_PX = 1056; // 11in @ 96dpi
 const PAGE_PADDING_PX = 96; // 1in @ 96dpi
+
+// Recursive render guard: prevent infinite loops from circular references
+const MAX_RENDER_DEPTH = 20;
 
 function BlockShell({ children }: { children: React.ReactNode }) {
     return (
@@ -126,7 +128,11 @@ function uniqueCitations(citations: Citation[]): Citation[] {
 
 export function DocView({ projectId }: { projectId: string }) {
     const project = useLiveQuery(() => db.projects.get(projectId), [projectId]);
-    const allBlocks = useLiveQuery(() => db.blocks.toArray(), []);
+    // Scoped query: only load blocks for this project instead of all blocks
+    const allBlocks = useLiveQuery(
+        () => db.blocks.where('parent_id').equals(projectId).toArray(),
+        [projectId]
+    );
 
     const [localTemplate, setLocalTemplate] = useState<DocTemplate>('APA');
 
@@ -140,32 +146,6 @@ export function DocView({ projectId }: { projectId: string }) {
     const docRootRef = useRef<HTMLDivElement | null>(null);
     const isEditorFocusedRef = useRef(false);
     const paginationPendingWhileEditingRef = useRef(false);
-
-    // Intelligent Tidying (trust-based)
-    const TIDY_DEBOUNCE_MS = 30_000;
-    const TIDY_TIMEOUT_MS = 20_000;
-    const tidyWorkerRef = useRef<Worker | null>(null);
-    const tidyPendingRequestIdRef = useRef<string | null>(null);
-
-    const [tidyStatus, setTidyStatus] = useState<'idle' | 'pending' | 'ready' | 'error' | 'applied'>('idle');
-    const [tidyError, setTidyError] = useState<AppError | null>(null);
-    const [tidySnapshot, setTidySnapshot] = useState<{ blockId: string; originalText: string; correctedText: string } | null>(null);
-    const [lastEdited, setLastEdited] = useState<{ blockId: string; text: string } | null>(null);
-
-    useEffect(() => {
-        tidyWorkerRef.current = new Worker(new URL('../../workers/grammar.worker.ts', import.meta.url), { type: 'module' });
-        return () => {
-            try { tidyWorkerRef.current?.terminate(); } catch { /* ignore */ }
-            tidyWorkerRef.current = null;
-        };
-    }, []);
-
-    const dismissTidy = useCallback(() => {
-        setTidyStatus('idle');
-        setTidyError(null);
-        setTidySnapshot(null);
-        tidyPendingRequestIdRef.current = null;
-    }, []);
 
     const lectureContainers = useMemo(() => {
         const lectures = blocks.filter(b => b.type === 'lecture_container');
@@ -262,127 +242,6 @@ export function DocView({ projectId }: { projectId: string }) {
         await db.projects.update(projectId, { updated_at: Date.now() });
     }, [projectId]);
 
-    const runTidyForBlock = useCallback(async (blockId: string, rawText: string) => {
-        const worker = tidyWorkerRef.current;
-        const block = blockById.get(blockId);
-        if (!worker || !block) return;
-        if (block.type !== 'text' && block.type !== 'quiz') return;
-
-        if ((rawText || '').trim().length < 20) {
-            dismissTidy();
-            return;
-        }
-
-        if ((block.content || '') !== rawText) return;
-
-        const requestId = uuidv4();
-        tidyPendingRequestIdRef.current = requestId;
-
-        setTidyStatus('pending');
-        setTidyError(null);
-
-        const originalText = rawText;
-        const structured = tidyMarkdown(rawText);
-        const textForWorker = structured || rawText;
-
-        await new Promise<void>((resolve) => {
-            const timeout = window.setTimeout(() => {
-                if (tidyPendingRequestIdRef.current !== requestId) {
-                    resolve();
-                    return;
-                }
-
-                tidyPendingRequestIdRef.current = null;
-                setTidyStatus('error');
-                setTidyError(createAppError('WORKER_TIMEOUT', 'Tidying timed out', { retryable: true }));
-
-                try {
-                    tidyWorkerRef.current?.terminate();
-                } catch { /* ignore */ }
-
-                tidyWorkerRef.current = new Worker(new URL('../../workers/grammar.worker.ts', import.meta.url), { type: 'module' });
-                resolve();
-            }, TIDY_TIMEOUT_MS);
-
-            const onMessage = (event: MessageEvent) => {
-                const data = event.data;
-                if (!data || data.requestId !== requestId) return;
-                if (data.type === 'progress') return;
-
-                window.clearTimeout(timeout);
-                worker.removeEventListener('message', onMessage);
-                worker.removeEventListener('error', onError);
-
-                if (tidyPendingRequestIdRef.current === requestId) tidyPendingRequestIdRef.current = null;
-
-                if (data.type === 'result') {
-                    const latest = blockById.get(blockId);
-                    if (!latest) {
-                        resolve();
-                        return;
-                    }
-                    if ((latest.content || '') !== originalText) {
-                        resolve();
-                        return;
-                    }
-
-                    const corrected = (data.corrected ?? data.text ?? '') as string;
-                    const suggestedText = String(corrected || textForWorker);
-
-                    if (suggestedText && suggestedText !== latest.content) {
-                        setTidySnapshot({ blockId, originalText: latest.content || '', correctedText: suggestedText });
-                        setTidyStatus('ready');
-                    } else {
-                        dismissTidy();
-                    }
-                    resolve();
-                    return;
-                }
-
-                if (data.type === 'error') {
-                    const err = data.error ? (data.error as AppError) : toAppError(new Error('Tidying failed'), {
-                        code: 'WORKER_GRAMMAR_FAILED',
-                        message: 'Tidying failed',
-                        retryable: true,
-                    });
-                    safeLogError('DocView.tidy', err);
-                    setTidyError(err);
-                    setTidyStatus('error');
-                    resolve();
-                }
-            };
-
-            const onError = (error: unknown) => {
-                window.clearTimeout(timeout);
-                worker.removeEventListener('message', onMessage);
-                worker.removeEventListener('error', onError as any);
-
-                if (tidyPendingRequestIdRef.current === requestId) tidyPendingRequestIdRef.current = null;
-                const err = toAppError(error, {
-                    code: 'WORKER_GRAMMAR_FAILED',
-                    message: 'Tidying failed',
-                    retryable: true,
-                });
-                safeLogError('DocView.tidy', err);
-                setTidyError(err);
-                setTidyStatus('error');
-                resolve();
-            };
-
-            worker.addEventListener('message', onMessage);
-            worker.addEventListener('error', onError as any);
-            worker.postMessage({ type: 'check', text: textForWorker, requestId });
-        });
-    }, [blockById, dismissTidy]);
-
-    useEffect(() => {
-        if (!lastEdited) return;
-        const handle = window.setTimeout(() => {
-            runTidyForBlock(lastEdited.blockId, lastEdited.text);
-        }, TIDY_DEBOUNCE_MS);
-        return () => window.clearTimeout(handle);
-    }, [lastEdited, runTidyForBlock]);
-
     const handleJumpToLecture = useCallback((lectureId: string) => {
         if (!lectureId) return;
         const el = blockRefs.current.get(lectureId);
@@ -395,11 +254,6 @@ export function DocView({ projectId }: { projectId: string }) {
     const handleContentChange = useCallback((blockId: string, content: string) => {
         const block = blockById.get(blockId);
         if (!block) return;
-
-        if (block.type === 'text' || block.type === 'quiz') {
-            if (tidySnapshot?.blockId === blockId) dismissTidy();
-            setLastEdited({ blockId, text: content });
-        }
 
         // Slash menu trigger: "/" at start
         if (content === '/') {
@@ -419,7 +273,7 @@ export function DocView({ projectId }: { projectId: string }) {
         }
 
         handleUpdateBlock(blockId, { content });
-    }, [activeSlashBlockId, blockById, dismissTidy, handleUpdateBlock, slashMenuOpen, tidySnapshot?.blockId]);
+    }, [activeSlashBlockId, blockById, handleUpdateBlock, slashMenuOpen]);
 
     const createSiblingBlockAfter = useCallback(async (currentBlock: Block) => {
         setSlashMenuOpen(false);
@@ -458,8 +312,12 @@ export function DocView({ projectId }: { projectId: string }) {
         const idx = siblings.findIndex(b => b.id === block.id);
         const prev = idx > 0 ? siblings[idx - 1] : undefined;
 
-        await db.blocks.delete(block.id);
-        setBlocks(prevBlocks => prevBlocks.filter(b => b.id !== block.id));
+        // Recursive delete to ensure no orphaned children (Shadow Realm fix)
+        const deletedIds = await deleteBlockRecursively(block.id);
+        const deletedSet = new Set(deletedIds);
+        
+        setBlocks(prevBlocks => prevBlocks.filter(b => !deletedSet.has(b.id)));
+        
         if (prev) setFocusedBlockId(prev.id);
 
         if (activeSlashBlockId === block.id) {
@@ -682,6 +540,12 @@ export function DocView({ projectId }: { projectId: string }) {
     }, [focusedBlockId, handleContentChange, handleDeleteBlock, handleKeyDown, handleUpdateBlock]);
 
     const renderTreeInternal = useCallback((parentId: string | null, depth: number, collectRefs: boolean) => {
+        // Recursive render guard: prevent infinite loops from circular references
+        if (depth > MAX_RENDER_DEPTH) {
+            console.warn(`[DocView] Render depth exceeded ${MAX_RENDER_DEPTH} at parentId=${parentId}. Stopping to prevent infinite loop.`);
+            return null;
+        }
+
         if (parentId) {
             const parent = blockById.get(parentId);
             if (parent?.type === 'lecture_container' && (parent.metadata as any)?.collapsed) {
@@ -1216,122 +1080,6 @@ export function DocView({ projectId }: { projectId: string }) {
                                 Dismiss
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Trust-based tidying banner (Phase 3) */}
-            {tidyStatus !== 'idle' && (
-                <div className="mx-auto max-w-[980px] px-6 pt-3">
-                    <div className={cn(
-                        'rounded-md border px-3 py-2 text-xs flex flex-col gap-2',
-                        tidyStatus === 'error'
-                            ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-200'
-                            : tidyStatus === 'ready'
-                                ? 'border-lime-500/30 bg-lime-500/10 text-lime-800 dark:text-lime-200'
-                                : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200'
-                    )}>
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                                {tidyStatus === 'pending' && <span>Checking for tidying suggestions…</span>}
-                                {tidyStatus === 'ready' && <span>Tidying suggestion ready (not applied).</span>}
-                                {tidyStatus === 'applied' && <span>Tidying applied.</span>}
-                                {tidyStatus === 'error' && (
-                                    <span>
-                                        Tidying failed{tidyError?.message ? `: ${tidyError.message}` : ''}
-                                    </span>
-                                )}
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                                {tidyStatus === 'ready' && tidySnapshot && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={async () => {
-                                                await handleUpdateBlock(tidySnapshot.blockId, { content: tidySnapshot.correctedText });
-                                                setFocusedBlockId(tidySnapshot.blockId);
-                                                setTidyStatus('applied');
-                                            }}
-                                            className="px-2 py-1 rounded-md bg-lime-500/20 text-lime-800 dark:text-lime-200 hover:bg-lime-500/30"
-                                        >
-                                            Apply
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={dismissTidy}
-                                            className="px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                                        >
-                                            Dismiss
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const latest = blockById.get(tidySnapshot.blockId);
-                                                if (latest) runTidyForBlock(latest.id, latest.content || '');
-                                            }}
-                                            className="px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                                        >
-                                            Re-run
-                                        </button>
-                                    </>
-                                )}
-
-                                {tidyStatus === 'applied' && tidySnapshot && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={async () => {
-                                                await handleUpdateBlock(tidySnapshot.blockId, { content: tidySnapshot.originalText });
-                                                setFocusedBlockId(tidySnapshot.blockId);
-                                                dismissTidy();
-                                            }}
-                                            className="px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                                        >
-                                            Undo
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={dismissTidy}
-                                            className="px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                                        >
-                                            Dismiss
-                                        </button>
-                                    </>
-                                )}
-
-                                {tidyStatus === 'error' && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const targetId = tidySnapshot?.blockId ?? focusedBlockId;
-                                                if (!targetId) return;
-                                                const latest = blockById.get(targetId);
-                                                if (latest) runTidyForBlock(latest.id, latest.content || '');
-                                            }}
-                                            className="px-2 py-1 rounded-md bg-red-500/20 text-red-700 dark:text-red-200 hover:bg-red-500/30"
-                                        >
-                                            Retry
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={dismissTidy}
-                                            className="px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                                        >
-                                            Dismiss
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        {(tidyStatus === 'ready' || tidyStatus === 'applied') && tidySnapshot && (
-                            <div className="text-[11px] text-zinc-600 dark:text-zinc-300/90">
-                                <div className="truncate">Original: {tidySnapshot.originalText}</div>
-                                <div className="truncate">Suggested: {tidySnapshot.correctedText}</div>
-                            </div>
-                        )}
                     </div>
                 </div>
             )}

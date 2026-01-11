@@ -10,7 +10,6 @@ import { SmartContextBar } from "./SmartContextBar";
 import Highlight from "@tiptap/extension-highlight";
 import DOMPurify from "isomorphic-dompurify";
 import { GrammarChecker } from "@/components/editor/extensions/GrammarChecker";
-import type { AppError } from "@/lib/errors";
 
 interface NotebookProps {
     className?: string;
@@ -28,58 +27,8 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
     const [saving, setSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [isFlashcardMode, setIsFlashcardMode] = useState(false);
-    const [grammarEnabled, setGrammarEnabled] = useState(false);
-
-    const [tidyStatus, setTidyStatus] = useState<'idle' | 'pending' | 'ready' | 'error'>('idle');
-    const [tidyError, setTidyError] = useState<AppError | null>(null);
-    const [tidySnapshot, setTidySnapshot] = useState<{ originalText: string; correctedText: string } | null>(null);
-
-    useEffect(() => {
-        const checkGrammarSetting = () => {
-            const stored = localStorage.getItem('jivvy-grammar-enabled');
-            setGrammarEnabled(stored === 'true');
-        };
-
-        checkGrammarSetting();
-
-        const handleSettingsChange = (e: CustomEvent) => {
-            if (e.detail?.grammarEnabled !== undefined) {
-                setGrammarEnabled(e.detail.grammarEnabled);
-            } else {
-                checkGrammarSetting();
-            }
-        };
-
-        window.addEventListener('jivvy-settings-changed', handleSettingsChange as EventListener);
-        return () => window.removeEventListener('jivvy-settings-changed', handleSettingsChange as EventListener);
-    }, []);
-
-    // Listen for trust-based tidying state from GrammarChecker
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const ce = e as CustomEvent;
-            const detail = ce.detail as { status?: string; suggestion?: any; error?: AppError | null } | undefined;
-            if (!detail?.status) return;
-
-            if (detail.status === 'pending' || detail.status === 'ready' || detail.status === 'error' || detail.status === 'idle') {
-                setTidyStatus(detail.status);
-            }
-
-            setTidyError(detail.error ?? null);
-
-            if (detail.suggestion?.originalText && detail.suggestion?.correctedText) {
-                setTidySnapshot({
-                    originalText: String(detail.suggestion.originalText),
-                    correctedText: String(detail.suggestion.correctedText),
-                });
-            } else if (detail.status === 'idle') {
-                setTidySnapshot(null);
-            }
-        };
-
-        window.addEventListener('jivvy:tidy-state', handler as EventListener);
-        return () => window.removeEventListener('jivvy:tidy-state', handler as EventListener);
-    }, []);
+    // Grammar is disabled - keeping state for future re-enablement
+    const [grammarEnabled] = useState(false);
 
     const placeholderText = mode === "paper" ? "Start writing your paper..." : "Start taking lecture notes...";
 
@@ -104,14 +53,6 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
             },
         },
     });
-
-    // Update extension when state changes
-    useEffect(() => {
-        if (editor && !editor.isDestroyed) {
-            // Use the command to toggle instead of recreating the editor
-            editor.commands.setGrammarEnabled(grammarEnabled);
-        }
-    }, [grammarEnabled, editor]);
 
     // Listen for chart data insertion from DataVisualizer
     useEffect(() => {
@@ -265,88 +206,6 @@ export function Notebook({ className, projectId, initialContent = "", onSave, mo
                     </span>
                 )}
             </div>
-
-            {/* Trust-based tidying banner (Phase 3) */}
-            {grammarEnabled && tidyStatus !== 'idle' && (
-                <div className={cn(
-                    "mx-3 mt-3 rounded-lg border px-3 py-2 text-xs",
-                    tidyStatus === 'error'
-                        ? "border-red-500/30 bg-red-500/10 text-red-200"
-                        : tidyStatus === 'ready'
-                            ? "border-lime-500/30 bg-lime-500/10 text-lime-200"
-                            : "border-white/10 bg-zinc-900/40 text-zinc-300"
-                )}>
-                    <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                            {tidyStatus === 'pending' && (
-                                <span className="flex items-center gap-2">
-                                    <Loader2 className="animate-spin" size={14} />
-                                    Checking for tidying suggestions…
-                                </span>
-                            )}
-                            {tidyStatus === 'ready' && (
-                                <span>
-                                    Tidying suggestion ready (not applied).
-                                </span>
-                            )}
-                            {tidyStatus === 'error' && (
-                                <span>
-                                    Tidying failed{tidyError?.message ? `: ${tidyError.message}` : ''}
-                                </span>
-                            )}
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                            {tidyStatus === 'ready' && (
-                                <>
-                                    <button
-                                        onClick={() => editor.commands.applyGrammarSuggestions()}
-                                        className="px-2 py-1 rounded-md bg-lime-400/20 text-lime-300 hover:bg-lime-400/30"
-                                    >
-                                        Apply
-                                    </button>
-                                    <button
-                                        onClick={() => editor.commands.dismissGrammarSuggestions()}
-                                        className="px-2 py-1 rounded-md bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                                    >
-                                        Dismiss
-                                    </button>
-                                    <button
-                                        onClick={() => editor.commands.rerunGrammarCheck()}
-                                        className="px-2 py-1 rounded-md bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                                    >
-                                        Re-run
-                                    </button>
-                                </>
-                            )}
-                            {tidyStatus === 'error' && (
-                                <>
-                                    <button
-                                        onClick={() => editor.commands.rerunGrammarCheck()}
-                                        className="px-2 py-1 rounded-md bg-red-500/20 text-red-200 hover:bg-red-500/30"
-                                    >
-                                        Retry
-                                    </button>
-                                    <button
-                                        onClick={() => editor.commands.dismissGrammarSuggestions()}
-                                        className="px-2 py-1 rounded-md bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                                    >
-                                        Dismiss
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Snapshot kept before apply (for safety/debug) */}
-                    {tidyStatus === 'ready' && tidySnapshot && (
-                        <div className="mt-2 text-[11px] text-zinc-300/90">
-                            <div className="truncate">Original: {tidySnapshot.originalText}</div>
-                            <div className="truncate">Suggested: {tidySnapshot.correctedText}</div>
-                        </div>
-                    )}
-                </div>
-            )}
 
             {/* Editor Content */}
             <div className={cn("flex-1 overflow-auto pb-20 lg:pb-0", mode === "paper" && "flex justify-center bg-[#1a1a1d]")}>

@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { initPDFWorker } from '@/lib/pdf-init';
+import { WorkersProvider } from '@/lib/WorkersContext';
 
 // CALL IT OUTSIDE THE COMPONENT to run immediately on load
 if (typeof window !== 'undefined') {
@@ -23,7 +24,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn(GeistSans.variable, GeistMono.variable)}>
       <body className="font-sans bg-background text-text-primary antialiased">
-        {children}
+        <WorkersProvider>
+          {children}
+        </WorkersProvider>
       </body>
     </html>
   );

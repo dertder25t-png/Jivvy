@@ -111,13 +111,18 @@ export const LectureContainerBlock: React.FC<LectureContainerBlockProps> = ({
                     onKeyDown={(e) => onKeyDown(e, block)}
                     onPaste={handlePaste}
                     rows={1}
-                    placeholder="Lecture title (optional)"
+                    placeholder="Lecture title (e.g. Introduction to Psychology)... Press Enter to add notes"
                     className={cn(
                         'w-full bg-transparent resize-none border-none outline-none px-2 py-1',
                         'text-xl font-semibold tracking-tight',
                         'placeholder:text-zinc-300 text-text-primary'
                     )}
                 />
+            </div>
+            
+            {/* Visual indicator for drag handle (invisible UI pattern) */}
+             <div className="absolute left-[-24px] top-6 p-0.5 rounded opacity-0 group-hover:opacity-100 cursor-grab text-zinc-300 hover:text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-opacity">
+                <GripVertical size={14} />
             </div>
         </div>
     );

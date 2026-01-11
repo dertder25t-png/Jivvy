@@ -7,7 +7,8 @@ import { PDFContextPanel } from "@/components/pdf/PDFContextPanel";
 import { MobileHeader } from "./MobileHeader";
 import { MobileNav } from "./MobileNav";
 import { useProjectStore } from "@/lib/store";
-import { Menu, PanelRight, X } from "lucide-react";
+import { useSync } from "@/lib/useSync";
+import { Menu, PanelRight, X, Cloud, CloudOff, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,6 +29,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         contextPanelOpen,
         setContextPanelOpen
     } = useProjectStore();
+
+    // Cloud-to-local sync on mount
+    const { status: syncStatus, isOnline } = useSync({ enabled: true });
 
     // Handle responsive sidebar default state
     useEffect(() => {
@@ -113,8 +117,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <PDFContextPanel />
             </ContextPanel>
 
-            {/* Toggle Context Panel Button */}
-            <div className="hidden md:block absolute top-4 right-4 z-20">
+            {/* Sync Status Indicator + Toggle Context Panel Button */}
+            <div className="hidden md:flex items-center gap-2 absolute top-4 right-4 z-20">
+                {/* Sync Status */}
+                <div className={cn(
+                    "p-2 rounded-md text-xs flex items-center gap-1.5",
+                    syncStatus === 'syncing' && "text-blue-500",
+                    syncStatus === 'synced' && "text-green-500",
+                    syncStatus === 'error' && "text-red-500",
+                    syncStatus === 'offline' && "text-yellow-500",
+                    syncStatus === 'idle' && "text-text-secondary"
+                )}>
+                    {syncStatus === 'syncing' && <Loader2 className="w-3 h-3 animate-spin" />}
+                    {syncStatus === 'synced' && <Cloud className="w-3 h-3" />}
+                    {syncStatus === 'offline' && <CloudOff className="w-3 h-3" />}
+                    {!isOnline && <span className="text-[10px]">Offline</span>}
+                </div>
+
                 <button
                     onClick={() => setContextPanelOpen(!contextPanelOpen)}
                     className={cn(

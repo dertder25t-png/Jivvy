@@ -67,27 +67,73 @@ export interface NLIResult {
  * Compare a Premise (PDF Text) against a Hypothesis (Option)
  */
 export async function judgeOption(premise: string, hypothesis: string): Promise<NLIResult> {
-    if (!nliPipeline) await initNLIModel();
-
-    // The model returns scores for "entailment", "neutral", "contradiction"
-    // We strictly look at Entailment (True) vs Contradiction (False)
-    const result = await nliPipeline(premise, [hypothesis]);
-    
-    // Deberta v3 labels usually come back as entailment/neutral/contradiction
-    const entailmentIdx = result.labels.indexOf('entailment');
-    const contradictionIdx = result.labels.indexOf('contradiction');
-    const neutralIdx = result.labels.indexOf('neutral');
-
-    return {
-        option: hypothesis,
-        score: result.scores[entailmentIdx], // The confidence that this is TRUE
-        label: result.labels[0], // The top label
-        scores: {
-            entailment: result.scores[entailmentIdx],
-            contradiction: result.scores[contradictionIdx],
-            neutral: result.scores[neutralIdx]
+    try {
+        if (!nliPipeline) {
+            const loaded = await initNLIModel();
+            if (!loaded || !nliPipeline) {
+                // Return a neutral result if model fails to load (offline/quota)
+                console.warn('[LocalLLM] NLI model not available, returning neutral result');
+                return {
+                    option: hypothesis,
+                    score: 0.33,
+                    label: 'neutral',
+                    scores: {
+                        entailment: 0.33,
+                        contradiction: 0.33,
+                        neutral: 0.34
+                    }
+                };
+            }
         }
-    };
+
+        // The model returns scores for "entailment", "neutral", "contradiction"
+        // We strictly look at Entailment (True) vs Contradiction (False)
+        const result = await nliPipeline(premise, [hypothesis]);
+        
+        // Safety check: ensure result has expected structure
+        if (!result || !result.labels || !result.scores) {
+            console.warn('[LocalLLM] NLI returned unexpected result format');
+            return {
+                option: hypothesis,
+                score: 0.33,
+                label: 'neutral',
+                scores: {
+                    entailment: 0.33,
+                    contradiction: 0.33,
+                    neutral: 0.34
+                }
+            };
+        }
+        
+        // Deberta v3 labels usually come back as entailment/neutral/contradiction
+        const entailmentIdx = result.labels.indexOf('entailment');
+        const contradictionIdx = result.labels.indexOf('contradiction');
+        const neutralIdx = result.labels.indexOf('neutral');
+
+        return {
+            option: hypothesis,
+            score: result.scores[entailmentIdx] ?? 0.33, // The confidence that this is TRUE
+            label: result.labels[0] ?? 'neutral', // The top label
+            scores: {
+                entailment: result.scores[entailmentIdx] ?? 0.33,
+                contradiction: result.scores[contradictionIdx] ?? 0.33,
+                neutral: result.scores[neutralIdx] ?? 0.34
+            }
+        };
+    } catch (error) {
+        console.error('[LocalLLM] judgeOption failed:', error);
+        // Return a neutral result on error to prevent crashes
+        return {
+            option: hypothesis,
+            score: 0.33,
+            label: 'neutral',
+            scores: {
+                entailment: 0.33,
+                contradiction: 0.33,
+                neutral: 0.34
+            }
+        };
+    }
 }
 
 
@@ -145,6 +191,7 @@ export interface GenerateTextOptions {
 // Storage keys
 const STORAGE_KEY_MODE = 'jivvy-ai-mode';
 const STORAGE_KEY_KEEP_BOTH = 'jivvy-ai-keep-both';
+const STORAGE_KEY_LLM_DISABLED = 'jivvy-ai-disabled'; // UI toggle to completely disable local LLM
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -161,6 +208,27 @@ export interface QuizQuestionResult {
     correctIndex: number;        // 0-3 mapping from A/B/C/D
     correctLetter: string;       // A, B, C, or D
     sourceQuote: string;
+}
+
+// ============================================================================
+// LOCAL LLM ENABLE/DISABLE TOGGLE
+// ============================================================================
+
+/**
+ * Check if Local LLM is disabled by user preference
+ */
+export function isLocalLLMDisabled(): boolean {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(STORAGE_KEY_LLM_DISABLED) === 'true';
+}
+
+/**
+ * Set Local LLM enabled/disabled state
+ */
+export function setLocalLLMDisabled(disabled: boolean): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEY_LLM_DISABLED, String(disabled));
+    console.log(`[LocalLLM] Local AI ${disabled ? 'disabled' : 'enabled'} by user preference`);
 }
 
 // ============================================================================
@@ -346,6 +414,38 @@ export async function loadModel(mode: AIMode, onProgress?: ProgressCallback): Pr
         return true;
     }
 
+    // Check storage space before loading (Low Memory Mode)
+    const storageCheck = await checkStorageSpace();
+    if (!storageCheck.available) {
+        const msg = `Insufficient storage space (${storageCheck.freeSpaceFormatted} available). Need at least 500MB.`;
+        console.warn(`[LocalLLM] ${msg}`);
+        onProgress?.({ status: msg, progress: 0 });
+        emitDownloadProgress(mode, 'error', 0, msg);
+        return false;
+    }
+    
+    // Warn if low on space
+    if (storageCheck.warning) {
+        console.warn(`[LocalLLM] ${storageCheck.warning}`);
+        onProgress?.({ status: storageCheck.warning, progress: 0 });
+    }
+
+    // Check if running on mobile or low-memory device
+    const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isLowMemory = storageCheck.freeSpaceMB < 1000; // Less than 1GB free
+    
+    // In low memory mode, only allow 'quick' model
+    if ((isMobile || isLowMemory) && mode === 'thorough') {
+        const msg = isMobile 
+            ? 'Thorough mode disabled on mobile devices to prevent crashes.'
+            : 'Thorough mode disabled due to low available storage.';
+        console.warn(`[LocalLLM] ${msg}`);
+        onProgress?.({ status: msg, progress: 0 });
+        
+        // Fallback to quick mode
+        return loadModel('quick', onProgress);
+    }
+
     // If different model loaded, unload it first
     if (textGenerationPipeline && currentModelId !== mode) {
         await unloadCurrentModel();
@@ -403,6 +503,13 @@ export async function loadModel(mode: AIMode, onProgress?: ProgressCallback): Pr
  * Ensure the preferred model is loaded (lazy load on first use)
  */
 export async function ensureModelLoaded(onProgress?: ProgressCallback): Promise<boolean> {
+    // Check if user has disabled Local LLM
+    if (isLocalLLMDisabled()) {
+        console.log('[LocalLLM] Local AI is disabled by user preference');
+        onProgress?.({ status: 'Local AI is disabled in settings', progress: 0 });
+        return false;
+    }
+    
     const preferredMode = getPreferredMode();
     return loadModel(preferredMode, onProgress);
 }

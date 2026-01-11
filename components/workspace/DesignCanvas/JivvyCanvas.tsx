@@ -10,61 +10,105 @@ export default function JivvyCanvas() {
   const { canvasRef, fabricCanvas } = useFabric(containerRef);
   const { blocks, updateBlock } = useProjectStore();
   const isUpdatingRef = useRef(false);
+  const prevBlockIdsRef = useRef<Set<string>>(new Set());
 
-  // Sync Blocks to Canvas
+  // Sync Blocks to Canvas with smart diffing (avoid clear() on every render)
   useEffect(() => {
     if (!fabricCanvas) return;
     if (isUpdatingRef.current) return;
 
-    // Clear existing (simple approach for now, in real app we'd diff)
-    fabricCanvas.clear();
-    fabricCanvas.backgroundColor = "#18181b";
+    // Initialize background only once
+    if (!fabricCanvas.backgroundColor) {
+      fabricCanvas.backgroundColor = "#18181b";
+    }
 
-    blocks.forEach((block) => {
-      // Default position if not set
-      const left = block.metadata?.position?.x || Math.random() * 400 + 50;
-      const top = block.metadata?.position?.y || Math.random() * 400 + 50;
+    const currentBlockIds = new Set(blocks.map(b => b.id));
+    const prevBlockIds = prevBlockIdsRef.current;
 
-      // Create Card
-      const rect = new Rect({
-        width: 200,
-        height: 100,
-        fill: '#27272a', // zinc-800
-        rx: 10,
-        ry: 10,
-        stroke: '#3f3f46', // zinc-700
-        strokeWidth: 1
-      });
-
-      // Create Text
-      // Truncate content
-      const textContent = block.content.length > 50 ? block.content.substring(0, 50) + "..." : block.content;
-
-      const text = new IText(textContent || "Empty Block", {
-        fontFamily: 'Inter, sans-serif',
-        fontSize: 14,
-        fill: '#e4e4e7', // zinc-200
-        width: 180,
-        left: 10,
-        top: 10,
-        splitByGrapheme: true
-      });
-
-      const group = new Group([rect, text], {
-        left,
-        top,
-        subTargetCheck: true,
-        hasControls: false, // Disable scaling/rotation for now
-        hasBorders: true,
-        lockRotation: true
-      });
-
-      // Re-assign custom property since 'data' might not be standard in types yet or handled differently
-      (group as any).blockId = block.id;
-
-      fabricCanvas.add(group);
+    // Get existing canvas objects mapped by blockId
+    const canvasObjects = fabricCanvas.getObjects() as (FabricObject & { blockId?: string })[];
+    const objectsByBlockId = new Map<string, FabricObject>();
+    canvasObjects.forEach(obj => {
+      const blockId = (obj as any).blockId;
+      if (blockId) objectsByBlockId.set(blockId, obj);
     });
 
+    // Remove deleted blocks from canvas
+    prevBlockIds.forEach(id => {
+      if (!currentBlockIds.has(id)) {
+        const obj = objectsByBlockId.get(id);
+        if (obj) {
+          fabricCanvas.remove(obj);
+        }
+      }
+    });
+
+    // Add new blocks or update existing ones
+    blocks.forEach((block) => {
+      const existingObj = objectsByBlockId.get(block.id);
+
+      if (existingObj) {
+        // Update existing object position if metadata changed
+        const expectedLeft = block.metadata?.position?.x;
+        const expectedTop = block.metadata?.position?.y;
+        if (expectedLeft !== undefined && expectedTop !== undefined) {
+          if (existingObj.left !== expectedLeft || existingObj.top !== expectedTop) {
+            existingObj.set({ left: expectedLeft, top: expectedTop });
+            existingObj.setCoords();
+          }
+        }
+
+        // Update text content if changed
+        if (existingObj instanceof Group) {
+          const textObj = existingObj.getObjects().find(o => o instanceof IText) as IText | undefined;
+          if (textObj) {
+            const textContent = block.content.length > 50 ? block.content.substring(0, 50) + "..." : block.content;
+            if (textObj.text !== textContent) {
+              textObj.set({ text: textContent || "Empty Block" });
+            }
+          }
+        }
+      } else {
+        // Create new block card
+        const left = block.metadata?.position?.x || Math.random() * 400 + 50;
+        const top = block.metadata?.position?.y || Math.random() * 400 + 50;
+
+        const rect = new Rect({
+          width: 200,
+          height: 100,
+          fill: '#27272a',
+          rx: 10,
+          ry: 10,
+          stroke: '#3f3f46',
+          strokeWidth: 1
+        });
+
+        const textContent = block.content.length > 50 ? block.content.substring(0, 50) + "..." : block.content;
+        const text = new IText(textContent || "Empty Block", {
+          fontFamily: 'Inter, sans-serif',
+          fontSize: 14,
+          fill: '#e4e4e7',
+          width: 180,
+          left: 10,
+          top: 10,
+          splitByGrapheme: true
+        });
+
+        const group = new Group([rect, text], {
+          left,
+          top,
+          subTargetCheck: true,
+          hasControls: false,
+          hasBorders: true,
+          lockRotation: true
+        });
+
+        (group as any).blockId = block.id;
+        fabricCanvas.add(group);
+      }
+    });
+
+    prevBlockIdsRef.current = currentBlockIds;
     fabricCanvas.renderAll();
 
   }, [fabricCanvas, blocks]);

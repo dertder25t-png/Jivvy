@@ -97,11 +97,17 @@ class PDFWorkerClient {
 
         this.on('INDEX_READY', handler as any);
         this.on('error', onError as any);
-        this.worker?.postMessage({
+        
+        // Use Transferable Objects to zero-copy large PDFs to the worker
+        // This prevents memory duplication and improves performance
+        const message = {
             type: 'INIT_INDEX',
             id,
             payload: { pdfData }
-        });
+        };
+        
+        // Transfer the ArrayBuffer to the worker (zero-copy)
+        this.worker?.postMessage(message, [pdfData]);
     });
   }
 
@@ -275,3 +281,140 @@ export async function extractSpecificPages(
   );
   return results;
 }
+
+/**
+ * Smart Syllabus Parser
+ * Extracts due dates from PDFs using regex patterns for common academic date formats.
+ * Converts them to task-like objects that can be imported into the calendar.
+ */
+export interface ExtractedDate {
+  title: string;
+  dueDate: Date;
+  page: number;
+  rawText: string;
+}
+
+const DATE_PATTERNS = [
+  // "Due: January 15, 2025" or "Due Date: Jan 15"
+  /(?:due|deadline|submit\s*by)[:.\s]+([A-Za-z]+\.?\s+\d{1,2}(?:,?\s*\d{4})?)/gi,
+  // "Assignment 1 - Due 01/15/2025" 
+  /([A-Za-z\s]+)\s*[-–—]\s*(?:due|deadline)[:.\s]*(\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?)/gi,
+  // "Week 3 (Jan 20): Essay Due"
+  /(?:week\s*\d+)?\s*\(([A-Za-z]+\.?\s+\d{1,2})\)[:\s]*([^.]+(?:due|deadline|submit))/gi,
+  // "Exam 1: February 10"
+  /(exam|quiz|test|assignment|project|paper|homework|hw)\s*(?:#?\d*)[:.\s]+([A-Za-z]+\.?\s+\d{1,2}(?:,?\s*\d{4})?)/gi,
+  // "MM/DD/YYYY" or "MM-DD-YYYY" followed by assignment name
+  /(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\s*[-–—:]?\s*([A-Za-z][A-Za-z\s]{3,})/gi,
+];
+
+function parseFlexibleDate(dateStr: string): Date | null {
+  const cleaned = dateStr.replace(/\s+/g, ' ').trim();
+  
+  // Try native Date parsing first
+  const parsed = new Date(cleaned);
+  if (!isNaN(parsed.getTime())) {
+    return parsed;
+  }
+  
+  // Handle "Jan 15" without year - assume current academic year
+  const monthDayMatch = cleaned.match(/^([A-Za-z]+)\.?\s+(\d{1,2})$/);
+  if (monthDayMatch) {
+    const now = new Date();
+    const year = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear(); // Academic year logic
+    const withYear = `${monthDayMatch[1]} ${monthDayMatch[2]}, ${year}`;
+    const parsedWithYear = new Date(withYear);
+    if (!isNaN(parsedWithYear.getTime())) {
+      return parsedWithYear;
+    }
+  }
+  
+  // Handle MM/DD/YYYY or MM-DD-YYYY
+  const numericMatch = cleaned.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if (numericMatch) {
+    let [, month, day, year] = numericMatch;
+    if (year.length === 2) {
+      year = `20${year}`;
+    }
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  }
+  
+  return null;
+}
+
+export async function extractDatesFromPdf(
+  pdfData: ArrayBuffer,
+  options: { maxPages?: number } = {}
+): Promise<ExtractedDate[]> {
+  const maxPages = options.maxPages ?? 10; // Usually syllabus is in first 10 pages
+  const results: ExtractedDate[] = [];
+  const seenDates = new Set<string>();
+  
+  // Initialize the worker with the PDF
+  await pdfWorker.initIndex(pdfData);
+  
+  // Extract text from relevant pages
+  const pagesToScan = Array.from({ length: maxPages }, (_, i) => i + 1);
+  const pageTexts = await extractSpecificPages(pdfData, pagesToScan);
+  
+  for (const { page, content } of pageTexts) {
+    if (!content) continue;
+    
+    for (const pattern of DATE_PATTERNS) {
+      // Reset lastIndex for global regex
+      pattern.lastIndex = 0;
+      let match;
+      
+      while ((match = pattern.exec(content)) !== null) {
+        const fullMatch = match[0];
+        let title = '';
+        let dateStr = '';
+        
+        // Extract title and date based on capture groups
+        if (match.length >= 3) {
+          // Pattern has both title and date captures
+          title = match[1]?.trim() || '';
+          dateStr = match[2]?.trim() || match[1]?.trim() || '';
+          
+          // Swap if date looks like the first capture
+          if (/\d/.test(title) && !/\d/.test(dateStr)) {
+            [title, dateStr] = [dateStr, title];
+          }
+        } else if (match.length === 2) {
+          dateStr = match[1]?.trim() || '';
+          // Try to extract title from context
+          const contextBefore = content.slice(Math.max(0, match.index - 50), match.index);
+          const titleMatch = contextBefore.match(/([A-Za-z][A-Za-z\s]{3,})$/);
+          title = titleMatch?.[1]?.trim() || 'Assignment';
+        }
+        
+        const parsedDate = parseFlexibleDate(dateStr);
+        if (!parsedDate) continue;
+        
+        // Create unique key to avoid duplicates
+        const key = `${title.toLowerCase()}-${parsedDate.toISOString().split('T')[0]}`;
+        if (seenDates.has(key)) continue;
+        seenDates.add(key);
+        
+        // Clean up title
+        if (!title || title.length < 3) {
+          title = 'Due Date';
+        }
+        title = title.replace(/[-–—:]+$/, '').trim();
+        title = title.charAt(0).toUpperCase() + title.slice(1);
+        
+        results.push({
+          title,
+          dueDate: parsedDate,
+          page,
+          rawText: fullMatch.slice(0, 100),
+        });
+      }
+    }
+  }
+  
+  // Sort by date
+  results.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+  
+  return results;
+}
+

@@ -3,7 +3,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
 import { initPDFWorker } from '@/lib/pdf-init';
-import { extractKeywords, generateTextLocal } from '@/utils/local-llm';
+import { llmClient } from '@/utils/llm-worker-client';
 import { AppError, createAppError, toAppError } from '@/lib/errors';
 
 export interface SpecItem {
@@ -28,14 +28,49 @@ export interface SearchQueryResult {
     error?: AppError;
 }
 
+export interface FlashcardGenerationResult {
+    flashcards: { front: string; back: string }[];
+    error?: AppError;
+}
+
+/**
+ * Extracts key terms using simple heuristics to avoid LLM overhead.
+ */
+async function extractKeywords(text: string): Promise<string[]> {
+    const stopWords = new Set([
+        'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'a', 'an', 
+        'is', 'are', 'was', 'were', 'it', 'this', 'that', 'from', 'by', 'as', 'be', 'have',
+        'has', 'had', 'do', 'does', 'did', 'not', 'can', 'could', 'will', 'would'
+    ]);
+    
+    const words = text.toLowerCase().match(/[a-z0-9]+/g) || [];
+    const counts = new Map<string, number>();
+    
+    for (const w of words) {
+        if (w.length > 3 && !stopWords.has(w) && !/^\d+$/.test(w)) {
+            counts.set(w, (counts.get(w) || 0) + 1);
+        }
+    }
+    
+    // Sort by frequency
+    return Array.from(counts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(e => e[0]);
+}
+
 async function extractPdfTextFromUrl(pdfUrl: string, maxPages = 3): Promise<string> {
     initPDFWorker();
 
-    const res = await fetch(pdfUrl);
+    // Use proxy to avoid CORS issues when fetching external PDFs
+    const encodedUrl = encodeURIComponent(pdfUrl);
+    const proxyUrl = `/api/proxy?url=${encodedUrl}`;
+    
+    const res = await fetch(proxyUrl);
     if (!res.ok) {
         throw createAppError('PDF_FETCH_FAILED', 'Failed to fetch PDF', {
             retryable: true,
-            detail: { status: res.status }
+            detail: { status: res.status, url: pdfUrl }
         });
     }
 
@@ -87,20 +122,25 @@ export async function generateSpecSheet(pdfUrl: string): Promise<GenerateSpecRes
         const pdfText = await extractPdfTextFromUrl(pdfUrl, 3);
         const baseline = extractSpecsRegex(pdfText);
 
-        // Optional LLM pass to refine labels/categories.
-        const llm = await generateTextLocal(
-            'You extract concise specification checklist items from text. Output 6-12 short bullet items. No markdown, one item per line.',
-            `Extract technical specs and constraints from this PDF text (may be partial):\n\n${pdfText.slice(0, 12000)}`,
-            { maxNewTokens: 180, temperature: 0.2 }
-        );
+        // Uses specialized 77M model for fast extraction
+        const prompt = `Extract checklist items from text.
+Output: Item 1 | Item 2 | Item 3
+Text:
+${pdfText.slice(0, 1000)}`;
 
-        if (!llm) return { specs: baseline };
-
-        const lines = llm
-            .split('\n')
-            .map(l => l.replace(/^[-•\s]+/, '').trim())
-            .filter(Boolean)
-            .slice(0, 12);
+        const llm = await llmClient.generate(pdfText.slice(0, 1000), 'flashcard-fast', prompt);
+        
+        let lines: string[] = [];
+        if (llm) {
+             // Handle "Item | Item" format
+             if (llm.includes('|')) {
+                 lines = llm.split('|').map(l => l.trim());
+             } else {
+                 lines = llm.split('\n').map(l => l.replace(/^[-•\d.\s]+/, '').trim());
+             }
+        }
+        
+        lines = lines.filter(l => l.length > 3).slice(0, 12);
 
         const specs: SpecItem[] = [
             ...baseline,
@@ -140,14 +180,15 @@ export async function rewriteText(text: string, tone: string, sampleText?: strin
             return { rewrittenText: null, error: createAppError('NO_TEXT', 'No text provided', { retryable: false }) };
         }
 
-        const system = 'You are a writing assistant. Preserve meaning. Improve clarity and grammar. Output only the rewritten text.';
+        const prompt = tone === 'custom' && sampleText
+            ? `Rewrite to match style.
+Sample: ${sampleText.slice(0,100)}...
+Text: ${text}`
+            : `Rewrite in ${tone} tone: ${text}`;
 
-        const user =
-            tone === 'custom' && sampleText
-                ? `Rewrite the target text to match the tone, sentence structure, and style of the sample text.\n\nSample Text:\n${sampleText}\n\nTarget Text:\n${text}`
-                : `Rewrite the following text to have a "${tone}" tone:\n\n${text}`;
-
-        const out = await generateTextLocal(system, user, { maxNewTokens: 220, temperature: 0.3 });
+        // Use balanced model (248M) for writing tasks
+        const out = await llmClient.generate(text, 'flashcard-balanced', prompt);
+        
         return { rewrittenText: out?.trim() ?? null };
     } catch (e) {
         return {
@@ -177,17 +218,15 @@ export async function generateSearchQueries(text: string): Promise<SearchQueryRe
             `${base.slice(0, 2).join(' ')} practice questions`,
         ].filter(q => q.trim().length > 0);
 
-        // LLM refinement: ask for 3-6 crisp queries
-        const llm = await generateTextLocal(
-            'You generate concise web search queries. Output 3-6 lines. No numbering.',
-            `Create search queries for this text:\n${text}\n\nKeywords: ${keywords.join(', ')}`,
-            { maxNewTokens: 120, temperature: 0.2 }
-        );
+        const prompt = `Generate 3 search queries for: ${keywords.slice(0, 5).join(', ')}`;
+        
+        // Use fast model for queries
+        const llm = await llmClient.generate(text, 'flashcard-fast', prompt);
 
         const llmQueries = (llm || '')
-            .split('\n')
-            .map(l => l.replace(/^\d+[.)]\s*/, '').trim())
-            .filter(Boolean)
+            .split(/[\n|]/)
+            .map(l => l.replace(/^\d+[.)]\s*|^Q:\s*/, '').trim())
+            .filter(l => l.length > 5)
             .slice(0, 6);
 
         const merged = [...heuristic, ...llmQueries];
@@ -210,4 +249,115 @@ export async function generateSearchQueries(text: string): Promise<SearchQueryRe
             })
         };
     }
+}
+
+/**
+ * Generate flashcards from lecture notes.
+ * 
+ * Uses Web Worker to prevent UI lag.
+ * Models: LaMini-Flan-T5-77M (Fast) or 248M (Balanced)
+ */
+export async function generateFlashcardsFromNotes(notes: string): Promise<FlashcardGenerationResult> {
+    try {
+        if (!notes || notes.trim().length < 20) {
+            return { flashcards: [] };
+        }
+
+        // Prompt optimized for Flan-T5 models
+        const prompt = `Task: Create 3 study questions and answers based on the text.
+Format:
+Q: [Question]
+A: [Answer]
+
+Text:
+${notes.slice(0, 1000)}`;
+
+        // Use 'flashcard-balanced' (248M) for better quality
+        const llmOutput = await llmClient.generate(notes, 'flashcard-balanced', prompt);
+
+        if (!llmOutput) {
+            return { flashcards: [] };
+        }
+
+        const flashcards = parseFlashcardsFromLLM(llmOutput);
+        return { flashcards };
+
+    } catch (e) {
+        console.error('[generateFlashcardsFromNotes] Failed:', e);
+        // Fallback to empty, don't crash
+        return { flashcards: [] };
+    }
+}
+
+function parseFlashcardsFromLLM(output: string): { front: string; back: string }[] {
+    const cards: { front: string; back: string }[] = [];
+    const cleaned = output.replace(/```/g, '').trim();
+    
+    // 1. Pipe Format: "Question | Answer"
+    const lines = cleaned.split('\n');
+    for (const line of lines) {
+        // Filter out instruction echoes
+        if (line.toLowerCase().startsWith('format:') || 
+            line.toLowerCase().startsWith('instructions:') || 
+            line.toLowerCase().startsWith('extract') ||
+            line.includes('Format:')) {
+            continue;
+        }
+
+        if (line.includes('|')) {
+            const parts = line.split('|');
+            if (parts.length >= 2) {
+                const f = parts[0].trim();
+                const b = parts.slice(1).join('|').trim();
+                
+                // Extra validation to avoid parsing instructions "Question | Answer"
+                if (f.toLowerCase() === 'question' && b.toLowerCase() === 'answer') continue;
+
+                if (f.length > 2 && b.length > 2) {
+                     cards.push({ front: f.slice(0, 200), back: b.slice(0, 500) });
+                }
+            }
+        }
+    }
+    
+    // 2. Q/A Format: "Q: ... A: ..."
+    if (cards.length === 0) {
+        let currentQuestion: string | null = null;
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            
+            // Match "Q:" or "Question:"
+            if (trimmed.match(/^(Q:|Question:)/i)) {
+                currentQuestion = trimmed.replace(/^(Q:|Question:)\s*/i, '');
+            } 
+            // Match "A:" or "Answer:"
+            else if (trimmed.match(/^(A:|Answer:)/i) && currentQuestion) {
+                const answer = trimmed.replace(/^(A:|Answer:)\s*/i, '');
+                cards.push({
+                    front: currentQuestion.slice(0, 200),
+                    back: answer.slice(0, 500)
+                });
+                currentQuestion = null;
+            }
+        }
+    }
+
+    // 3. JSON Fallback
+    if (cards.length === 0) {
+        try {
+            const match = cleaned.match(/\[.*\]/s);
+            if (match) {
+                const arr = JSON.parse(match[0]);
+                if (Array.isArray(arr)) {
+                    arr.forEach((x: any) => {
+                        if (x.front && x.back) cards.push({ front: x.front, back: x.back });
+                    });
+                }
+            }
+        } catch (e) {}
+    }
+
+    return cards.slice(0, 5);
 }

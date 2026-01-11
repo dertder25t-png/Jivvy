@@ -14,7 +14,19 @@ export function BlockEditor({ projectId }: BlockEditorProps) {
     const { blocks, loadBlocks, isLoading, error, addBlock, activePdfUrl, setContextPanelOpen, setPdfUrl } = useProjectStore();
 
     const [slashMenuOpen, setSlashMenuOpen] = React.useState(false);
+    const [editingBlockId, setEditingBlockId] = React.useState<string | null>(null);
+    const textareaRef = React.useRef<HTMLTextAreaElement>(null);
     const [slashMenuPosition, setSlashMenuPosition] = React.useState({ top: 0, left: 0 });
+
+    // Auto-resize textarea
+    useEffect(() => {
+        if (editingBlockId && textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+            textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+            textareaRef.current.focus();
+        }
+    }, [editingBlockId]);
+
     const editorRef = React.useRef<HTMLDivElement>(null);
     const workerRef = React.useRef<Worker | null>(null);
 
@@ -104,6 +116,22 @@ export function BlockEditor({ projectId }: BlockEditorProps) {
         }
     };
 
+    const [editingContent, setEditingContent] = React.useState<string>("");
+
+    const handleBlockClick = (id: string, currentContent: string) => {
+        setEditingBlockId(id);
+        setEditingContent(currentContent);
+    };
+
+    const handleBlockBlur = async (id: string) => {
+        setEditingBlockId(null);
+        await useProjectStore.getState().updateBlock(id, { content: editingContent });
+    };
+
+    const handleBlockChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+         setEditingContent(e.target.value);
+    };
+
     const runAICommand = (command: string) => {
         setSlashMenuOpen(false);
         // Gather context (last 3 blocks for simplicity)
@@ -171,7 +199,13 @@ export function BlockEditor({ projectId }: BlockEditorProps) {
                     blocks.map((block) => (
                         <div
                             key={block.id}
-                            className="p-4 border border-gray-100 rounded-lg hover:border-blue-200 hover:shadow-sm transition-all group relative"
+                            className={cn(
+                                "p-4 border rounded-lg transition-all group relative",
+                                editingBlockId === block.id 
+                                    ? "border-blue-400 ring-2 ring-blue-100 shadow-md bg-white" 
+                                    : "border-gray-100 hover:border-blue-200 hover:shadow-sm"
+                            )}
+                            onClick={() => !editingBlockId && handleBlockClick(block.id, block.content)}
                         >
                             <div className="flex items-center justify-between mb-2">
                                 <span className={cn(
@@ -184,13 +218,27 @@ export function BlockEditor({ projectId }: BlockEditorProps) {
                                     ID: {block.id.slice(0, 8)}
                                 </span>
                             </div>
-                            <div className="prose prose-slate max-w-none">
-                                {block.content || <span className="text-gray-300 italic">Empty block</span>}
-                            </div>
+                            
+                            {editingBlockId === block.id ? (
+                                <textarea
+                                    ref={textareaRef}
+                                    value={editingContent}
+                                    onChange={handleBlockChange}
+                                    onBlur={() => handleBlockBlur(block.id)}
+                                    className="w-full min-h-[100px] resize-none outline-none text-gray-800 leading-relaxed font-mono text-sm bg-transparent"
+                                    placeholder="Type here..."
+                                />
+                            ) : (
+                                <div className="prose prose-slate max-w-none whitespace-pre-wrap">
+                                    {block.content || <span className="text-gray-300 italic">Empty block</span>}
+                                </div>
+                            )}
+
                             {block.type === 'pdf_highlight' && block.metadata?.source_url && (
                                 <div className="mt-2 pt-2 border-t border-gray-50 flex items-center gap-2">
                                     <button
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                            e.stopPropagation();
                                             if (block.metadata?.source_url) {
                                                 setPdfUrl(block.metadata.source_url);
                                                 setContextPanelOpen(true);

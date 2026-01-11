@@ -44,6 +44,8 @@ export interface Block {
     parent_id: string | null;
     content: string;
     type: BlockType;
+    user_id?: string; // Added for multi-user support
+    project_id?: string; // Added for scoped queries
     // New fields for Smart Capture
     properties?: {
         priority?: 'low' | 'medium' | 'high';
@@ -61,11 +63,26 @@ export interface Block {
     order: number;
 }
 
+export interface Flashcard {
+    id: string;
+    project_id: string;
+    source_block_id?: string; // Link to specific lecture block
+    front: string;
+    back: string;
+    color?: string;
+    created_at: number;
+    last_reviewed_at?: number;
+    review_count?: number;
+    ease_factor?: number; // For spaced repetition
+    interval?: number; // Days until next review
+}
+
 export interface Project {
     id: string;
     name: string;
     created_at: number;
     updated_at: number;
+    user_id?: string; // Added for multi-user support
     // New fields
     priority?: 'low' | 'medium' | 'high';
     due_date?: number;
@@ -77,6 +94,7 @@ export interface Project {
 export class JivvyDB extends Dexie {
     blocks!: Table<Block>;
     projects!: Table<Project>;
+    flashcards!: Table<Flashcard>;
     analytics_concepts!: Table<AnalyticsConcept>;
     analytics_quiz_generations!: Table<AnalyticsQuizGeneration>;
 
@@ -119,6 +137,33 @@ export class JivvyDB extends Dexie {
         this.version(6).stores({
             blocks: 'id, parent_id, order, type, properties.due_date, properties.priority, properties.tags, [type+properties.due_date]',
             projects: 'id, updated_at, due_date, priority',
+            analytics_concepts: 'id, project_id, concept, score, updated_at, last_seen_at, [project_id+concept], [project_id+score]',
+            analytics_quiz_generations: 'id, project_id, created_at, generator, model_mode, context_hash, [project_id+created_at]'
+        });
+
+        // v7: Add user_id to projects and blocks for multi-user support and data isolation
+        // Add project_id index to blocks for scoped queries (avoid full table scans)
+        this.version(7).stores({
+            blocks: 'id, parent_id, order, type, properties.due_date, properties.priority, properties.tags, [type+properties.due_date], user_id, project_id',
+            projects: 'id, updated_at, due_date, priority, user_id',
+            analytics_concepts: 'id, project_id, concept, score, updated_at, last_seen_at, [project_id+concept], [project_id+score]',
+            analytics_quiz_generations: 'id, project_id, created_at, generator, model_mode, context_hash, [project_id+created_at]'
+        });
+
+        // v8: Add flashcards table for study card feature
+        this.version(8).stores({
+            blocks: 'id, parent_id, order, type, properties.due_date, properties.priority, properties.tags, [type+properties.due_date], user_id, project_id',
+            projects: 'id, updated_at, due_date, priority, user_id',
+            flashcards: 'id, project_id, created_at, last_reviewed_at, [project_id+created_at]',
+            analytics_concepts: 'id, project_id, concept, score, updated_at, last_seen_at, [project_id+concept], [project_id+score]',
+            analytics_quiz_generations: 'id, project_id, created_at, generator, model_mode, context_hash, [project_id+created_at]'
+        });
+
+        // v9: Add source_block_id to flashcards for lecture-specific study
+        this.version(9).stores({
+            blocks: 'id, parent_id, order, type, properties.due_date, properties.priority, properties.tags, [type+properties.due_date], user_id, project_id',
+            projects: 'id, updated_at, due_date, priority, user_id',
+            flashcards: 'id, project_id, source_block_id, created_at, last_reviewed_at, [project_id+created_at]',
             analytics_concepts: 'id, project_id, concept, score, updated_at, last_seen_at, [project_id+concept], [project_id+score]',
             analytics_quiz_generations: 'id, project_id, created_at, generator, model_mode, context_hash, [project_id+created_at]'
         });
@@ -272,3 +317,35 @@ export async function safeDbOperation<T>(operation: () => Promise<T>, fallback?:
         throw error;
     }
 }
+
+/**
+ * Recursively deletes a block and all its descendants.
+ * Returns an array of ALL deleted block IDs (including the target block).
+ * Used to ensure UI state can be updated correctly without leaving "shadow" children.
+ */
+export async function deleteBlockRecursively(blockId: string): Promise<string[]> {
+    return await db.transaction('rw', db.blocks, async () => {
+        const deletedIds: string[] = [];
+        
+        // Helper to collect all descendants
+        // We use an iterative approach with a queue to avoid stack overflow on deep trees
+        const queue = [blockId];
+        const toDelete = new Set<string>();
+        
+        while (queue.length > 0) {
+            const currentId = queue.shift()!;
+            toDelete.add(currentId);
+            
+            const children = await db.blocks.where('parent_id').equals(currentId).primaryKeys();
+            for (const childId of children) {
+                queue.push(childId as string);
+            }
+        }
+        
+        const allIds = Array.from(toDelete);
+        await db.blocks.bulkDelete(allIds);
+        
+        return allIds;
+    });
+}
+

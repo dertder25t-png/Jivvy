@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { db, Block, Project, safeDbOperation, safeDbResult } from './db';
 import type { AppError } from './errors';
-import { toAppError } from './errors';
+import { toAppError, createAppError } from './errors';
+import { createClient } from '@/utils/supabase/client';
 
 type ProjectCenterMode = "canvas" | "paper" | "notes" | "extraction";
 
@@ -13,6 +14,7 @@ interface ProjectState {
     pdfHighlightRanges: Array<{ startPage: number; endPage: number | null }>;
     blocks: Block[];
     contextPanelOpen: boolean;
+    contextPanelView: 'flashcards' | 'chat';
     isLoading: boolean;
     error: AppError | null;
 
@@ -22,6 +24,7 @@ interface ProjectState {
     setPdfUrl: (url: string | null) => void;
     setPdfHighlightRanges: (ranges: Array<{ startPage: number; endPage: number | null }>) => void;
     setContextPanelOpen: (open: boolean) => void;
+    setContextPanelView: (view: 'flashcards' | 'chat') => void;
 
     // Block Actions
     loadBlocks: (parentId: string) => Promise<void>;
@@ -53,6 +56,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     pdfHighlightRanges: [],
     blocks: [],
     contextPanelOpen: false,
+    contextPanelView: 'flashcards',
     dashboardView: 'inbox',
     projects: [],
     isLoading: false,
@@ -65,6 +69,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     setPdfUrl: (url) => set({ activePdfUrl: url }),
     setPdfHighlightRanges: (ranges) => set({ pdfHighlightRanges: ranges }),
     setContextPanelOpen: (open) => set({ contextPanelOpen: open }),
+    setContextPanelView: (view) => set({ contextPanelView: view }),
 
     loadProjects: async () => {
         const res = await safeDbResult(() => db.projects.toArray());
@@ -76,12 +81,37 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     },
 
     addProject: async (project) => {
+        // Write to Local (Dexie) first for immediate offline support
         const res = await safeDbResult(() => db.projects.add(project));
         if (res.error) {
             set({ error: res.error });
             return { ok: false as const, error: res.error };
         }
         set((state) => ({ projects: [...state.projects, project] }));
+        
+        // Sync to Cloud (Supabase) in background - don't block on this
+        try {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (user) {
+                await supabase.from('projects').upsert({
+                    id: project.id,
+                    user_id: user.id,
+                    title: project.name,
+                    category: (project.metadata as any)?.category || 'General',
+                    pdf_url: (project.metadata as any)?.pdf_url || null,
+                    extracted_constraints: project.metadata || {},
+                    created_at: new Date(project.created_at).toISOString(),
+                    updated_at: new Date(project.updated_at).toISOString(),
+                });
+                console.log('[Store] Project synced to cloud:', project.id);
+            }
+        } catch (cloudError) {
+            // Log but don't fail - local save succeeded
+            console.warn('[Store] Failed to sync project to cloud:', cloudError);
+        }
+        
         return { ok: true as const };
     },
 

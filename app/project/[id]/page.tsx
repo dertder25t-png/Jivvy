@@ -7,6 +7,9 @@ import { db, Block } from "@/lib/db";
 import { BlockList } from "@/components/editor/BlockList";
 import { DocView } from "@/components/views/DocView";
 import { InfiniteCanvas } from "@/components/workspace/InfiniteCanvas";
+import { ContextPanel } from "@/components/layout/ContextPanel";
+import { FlashcardSidebar } from "@/components/workspace/FlashcardSidebar";
+import { StudySession } from "@/components/workspace/StudySession";
 import { useProjectStore } from "@/lib/store";
 import { v4 as uuidv4 } from "uuid";
 import { ArrowLeft, Clock, MoreHorizontal, Star, Share2 } from "lucide-react";
@@ -54,7 +57,7 @@ export default function ProjectPage() {
 
     const view = (searchParams.get('view') || 'blocks') as 'blocks' | 'doc' | 'canvas';
 
-    const { setActiveProjectId, loadBlocks, setCenterMode } = useProjectStore();
+    const { setActiveProjectId, loadBlocks, setCenterMode, contextPanelOpen, setContextPanelOpen, contextPanelView } = useProjectStore();
 
     const MAX_CANVAS_SNAPSHOTS = 10;
 
@@ -247,8 +250,12 @@ export default function ProjectPage() {
     // Fetch Project with live updates
     const project = useLiveQuery(() => db.projects.get(projectId), [projectId]);
 
-    // Fetch Blocks for this project
-    const allBlocks = useLiveQuery(() => db.blocks.toArray());
+    // Fetch Blocks for this project - scoped query to avoid loading all blocks
+    // We need to query by parent_id since blocks use parent_id to reference their project
+    const allBlocks = useLiveQuery(
+        () => db.blocks.where('parent_id').equals(projectId).toArray(),
+        [projectId]
+    );
 
     // Sync local title with project name
     useEffect(() => {
@@ -288,6 +295,7 @@ export default function ProjectPage() {
     const [superLearnStatus, setSuperLearnStatus] = useState<SuperLearnStatus>('idle');
     const [superLearnInsight, setSuperLearnInsight] = useState<SuperLearnInsight | null>(null);
     const [superLearnError, setSuperLearnError] = useState<any>(null);
+    const [isStudySessionOpen, setIsStudySessionOpen] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -579,16 +587,26 @@ export default function ProjectPage() {
                                             : superLearnInsight?.sentence || 'No concepts yet. Add lecture notes to start.'}
                                 </div>
                             </div>
-
-                            {superLearnInsight?.targetBlockId && superLearnStatus !== 'analyzing' && (
+                            
+                            <div className="flex gap-2 items-center">
                                 <button
                                     type="button"
-                                    onClick={() => router.replace(`/project/${projectId}?view=blocks&focus=${encodeURIComponent(superLearnInsight.targetBlockId!)}`)}
-                                    className="shrink-0 h-8 px-3 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-950/30 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-white dark:hover:bg-zinc-900"
+                                    onClick={() => setIsStudySessionOpen(true)}
+                                    className="shrink-0 h-8 px-3 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-950/30 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-white dark:hover:bg-zinc-900 flex items-center gap-1.5 transition-colors"
                                 >
-                                    Start Review
+                                    <span className="text-purple-500">🧠</span> Study
                                 </button>
-                            )}
+                                
+                                {superLearnInsight?.targetBlockId && superLearnStatus !== 'analyzing' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => router.replace(`/project/${projectId}?view=blocks&focus=${encodeURIComponent(superLearnInsight.targetBlockId!)}`)}
+                                        className="shrink-0 h-8 px-3 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-950/30 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-white dark:hover:bg-zinc-900"
+                                    >
+                                        Focus
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {superLearnError && (
@@ -625,6 +643,15 @@ export default function ProjectPage() {
                     </div>
                 )}
             </main>
+            <ContextPanel isOpen={contextPanelOpen} onClose={() => setContextPanelOpen(false)}>
+                {contextPanelView === 'flashcards' && <FlashcardSidebar projectId={projectId} />}
+            </ContextPanel>
+
+            <StudySession 
+                projectId={projectId} 
+                isOpen={isStudySessionOpen} 
+                onClose={() => setIsStudySessionOpen(false)} 
+            />
         </div>
     );
 }
