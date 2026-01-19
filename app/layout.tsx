@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter } from "next/font/google"; // Use Inter
 import "./globals.css";
-import { Header } from "@/components/layout/Header";
-import { MobileHeader } from "@/components/layout/MobileHeader";
-import { MobileNav } from "@/components/layout/MobileNav";
-import { cn } from "@/lib/utils";
+import { AppLayout } from "@/components/layout/AppLayout";
+import { AuthProvider } from "@/components/providers/AuthProvider";
+import { SyncProvider } from "@/components/providers/SyncProvider";
+import { ConvexClientProvider } from "@/components/providers/ConvexClientProvider";
+import Script from "next/script";
+import { AuthGuard } from "@/components/providers/AuthGuard";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"] }); // Initialize Inter
 
 export const metadata: Metadata = {
-  title: "Jivvy | Soft Pop Studio",
-  description: "Neo-Brutalist Knowledge Engine",
+  title: "Jivvy",
+  description: "Advanced Academic Workspace",
 };
 
 export default function RootLayout({
@@ -19,26 +21,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={cn(inter.className, "bg-background text-foreground overflow-hidden grain-overlay selection:bg-lime-400 selection:text-black")}>
-
-        {/* New Header */}
-        <Header />
-        <MobileHeader />
-
-        {/* Main Layout Shell */}
-        <div className="h-screen w-screen flex flex-col pt-20">
-
-          {/* Main Content Area */}
-          <main className="flex-1 relative h-full w-full overflow-hidden">
-            {children}
-          </main>
-
-          {/* Mobile Navigation */}
-          <MobileNav />
-
-        </div>
-
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} antialiased`} suppressHydrationWarning>
+        <Script src="https://accounts.google.com/gsi/client" strategy="beforeInteractive" />
+        <ConvexClientProvider>
+          <AuthProvider>
+            <AuthGuard>
+              <SyncProvider>
+                <AppLayout>{children}</AppLayout>
+              </SyncProvider>
+            </AuthGuard>
+          </AuthProvider>
+        </ConvexClientProvider>
       </body>
     </html>
   );
