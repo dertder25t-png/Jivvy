@@ -56,6 +56,12 @@ export function useDriveSync() {
         } catch (err: any) {
             console.error("Sync Error:", err);
             setError(err.message || "Unknown sync error");
+
+            if (err.message?.includes('401') || err.message?.includes('403') || err.status === 403) {
+                console.warn("Drive token expired during sync. Disconnecting.");
+                setAccessToken(null);
+                sessionStorage.removeItem('jivvy_google_token');
+            }
         } finally {
             setIsSyncing(false);
         }

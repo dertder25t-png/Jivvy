@@ -4,8 +4,9 @@ import "./globals.css";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { SyncProvider } from "@/components/providers/SyncProvider";
-import ConvexClientProvider from "@/components/providers/ConvexClientProvider"; // Add this
+import { ConvexClientProvider } from "@/components/providers/ConvexClientProvider";
 import Script from "next/script";
+import { AuthGuard } from "@/components/providers/AuthGuard";
 
 const inter = Inter({ subsets: ["latin"] }); // Initialize Inter
 
@@ -25,9 +26,11 @@ export default function RootLayout({
         <Script src="https://accounts.google.com/gsi/client" strategy="beforeInteractive" />
         <ConvexClientProvider>
           <AuthProvider>
-            <SyncProvider>
-              <AppLayout>{children}</AppLayout>
-            </SyncProvider>
+            <AuthGuard>
+              <SyncProvider>
+                <AppLayout>{children}</AppLayout>
+              </SyncProvider>
+            </AuthGuard>
           </AuthProvider>
         </ConvexClientProvider>
       </body>

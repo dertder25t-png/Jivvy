@@ -8,8 +8,13 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
+import type * as backup from "../backup.js";
 import type * as calendar from "../calendar.js";
+import type * as debug from "../debug.js";
+import type * as http from "../http.js";
 import type * as sync from "../sync.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -18,8 +23,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
+  backup: typeof backup;
   calendar: typeof calendar;
+  debug: typeof debug;
+  http: typeof http;
   sync: typeof sync;
+  users: typeof users;
 }>;
 
 /**

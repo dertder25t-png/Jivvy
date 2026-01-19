@@ -94,7 +94,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     addBlock: async (block: Block) => {
         // Optimistic
-        set(state => ({
+        et(state => ({
             blocks: [...state.blocks, block].sort((a, b) => a.order - b.order)
         }));
         await db.blocks.add(block);

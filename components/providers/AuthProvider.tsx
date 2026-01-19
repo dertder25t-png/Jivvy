@@ -1,11 +1,14 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { User } from '@supabase/supabase-js';
+import React, { createContext, useContext, useState } from 'react';
+import { useConvexAuth, useQuery } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useRouter } from 'next/navigation';
+import { db } from '@/lib/db';
+import { api } from "@/convex/_generated/api";
 
 interface AuthContextType {
-    user: User | null;
+    user: any | null;
     loading: boolean;
     isGuest: boolean;
     signInWithGoogle: () => Promise<void>;
@@ -23,22 +26,53 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    // For Local-First / Convex migration, we default to Guest/Anonymous for now.
-    // Real auth can be re-introduced via Convex Auth later.
-    const user = null;
-    const loading = false;
-    const isGuest = true;
+    const { isAuthenticated, isLoading } = useConvexAuth();
+    const { signOut: convexSignOut } = useAuthActions();
+    const [isGuest, setIsGuest] = useState(false);
+    const router = useRouter();
+
+    const userData = useQuery(api.users.viewer);
+
+    // If authenticated, use the data from the server.
+    const user = isAuthenticated && userData ? {
+        id: userData.subject,
+        email: userData.email,
+        name: userData.name,
+        image: userData.pictureUrl
+    } : null;
+
+    // We can also check if we are in "Guest Mode" via local state if we implement that later.
 
     const signInWithGoogle = async () => {
-        console.log("Sign in with Google (Not implemented for Auth, usage for Drive only)");
+        // Handled by ConvexAuthActions in the Login page usually.
+        // This function is kept for compatibility but might warn or redirect.
+        console.warn("Use the Sign In page for authentication.");
+        router.push("/auth");
     };
 
     const signOut = async () => {
-        console.log("Sign out");
+        try {
+            // 1. Clear session marker
+            sessionStorage.removeItem('jivvy_has_session');
+
+            // 2. Nuclear Clean: Wipe local DB to prevent data leaks between users
+            await db.delete();
+
+            // 3. Sign out of Convex
+            await convexSignOut();
+
+            // 4. Force redirect to auth (db.delete might require a reload to re-open properly on next login)
+            window.location.href = "/auth";
+        } catch (error) {
+            console.error("Logout failed:", error);
+            sessionStorage.removeItem('jivvy_has_session');
+            // Force redirect anyway
+            window.location.href = "/auth";
+        }
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, isGuest, signInWithGoogle, signOut }}>
+        <AuthContext.Provider value={{ user, loading: isLoading, isGuest, signInWithGoogle, signOut }}>
             {children}
         </AuthContext.Provider>
     );

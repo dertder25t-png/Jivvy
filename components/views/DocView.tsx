@@ -238,7 +238,7 @@ export function DocView({ projectId }: { projectId: string }) {
 
     const handleUpdateBlock = useCallback(async (id: string, updates: Partial<Block>) => {
         setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
-        await db.blocks.update(id, updates);
+        await db.blocks.update(id, updates as any);
         await db.projects.update(projectId, { updated_at: Date.now() });
     }, [projectId]);
 

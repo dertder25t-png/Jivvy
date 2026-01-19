@@ -41,65 +41,38 @@ export function useLectureOffloader() {
     const processOffloading = useCallback(async (blocks: Block[]) => {
         if (!blocks || blocks.length === 0) return;
 
-        // We need a token.
-        // If we are not connected, we can't offload. 
-        // We silently fail/skip (data stays local/convex until connected).
-        // But we need the token. `useSync` doesn't expose token directly for security/complexity.
-        // We'll convert `authenticateGoogleDrive` to a cached internal utility or just call it 
-        // (it handles token reuse/refresh if GIS used correctly, though `initTokenClient` prompts UI... 
-        // actually `requestAccessToken` with `prompt: ''` might work if already granted?)
-        // The `lib/drive.ts` implementation calls `initTokenClient` every time which pops up UI. 
-        // We need a silent way.
-        // GIS `initTokenClient` is for user interaction. 
-        // We should store the `access_token` in memory in `SyncProvider` context and expose it?
-        // Or store in localStorage (with expiry).
-        // Let's assume the user just clicked "Connect" recently.
-
-        // REALITY CHECK: Automated background uploads with Google Identity Services (GIS) on client-side 
-        // REQUIRE a valid access token. GIS tokens expire in 1 hour. Refreshing requires user interaction 
-        // (or at least `prompt: 'none'` in hidden iframe, which GIS abstracts).
-        // If the token is expired, this background process will trigger a popup! That is BAD UX.
-
-        // SOLUTION: Only run offloading when we explicitly have a valid token (e.g. valid for X mins).
-        // Or let the `SyncProvider` manage the "Session".
-
-        // For this Prototype: We will skip the automated offloader if we don't have a fresh token.
-        // We'll rely on the "Sync Now" button or simple checks.
-
-        // However, the prompt says "automatically".
-        // Let's try to get a token. If it requires prompt, it might be annoying.
-        // We'll use a `sessionStorage` token if available.
-
         const token = sessionStorage.getItem('jivvy_google_token');
         if (!token) return;
 
         for (const block of blocks) {
-            // Check ancestry (expensive?)
-            // Let's look up parent.
+            // Check ancestry
             if (block.parent_id) {
                 const parent = await db.blocks.get(block.parent_id);
-                // Assumption: Lecture Container has type 'lecture_container'
                 if (parent && parent.type === 'lecture_container') {
-                    // It's a target!
                     if (block.content && block.content.length > 0) {
                         try {
                             const filename = `lecture_block_${block.id}.txt`;
                             const driveId = await uploadTextAsset(token, block.content, filename);
 
-                            // Update local block: Strip content, add driveId reference
+                            // Update local block
                             await db.blocks.update(block.id, {
-                                content: '', // Strip!
+                                content: '',
                                 metadata: {
                                     ...block.metadata,
                                     driveId: driveId,
                                     isOffloaded: true
                                 },
-                                // Keep sync_status dirty so the METADATA update syncs to Convex
                                 sync_status: 'dirty'
                             });
                             console.log(`Offloaded block ${block.id} to Drive: ${driveId}`);
-                        } catch (e) {
+                        } catch (e: any) {
                             console.error("Offload failed", e);
+                            // Auto-disconnect on Auth Error
+                            if (e.message?.includes('401') || e.message?.includes('403') || e.status === 403 || e.status === 401) {
+                                console.warn("Google Drive token expired. Disconnecting offloader.");
+                                sessionStorage.removeItem('jivvy_google_token');
+                                return; // Stop processing remaining blocks
+                            }
                         }
                     }
                 }
@@ -108,7 +81,7 @@ export function useLectureOffloader() {
     }, []);
 
     useEffect(() => {
-        if (dirtyBlocks) {
+        if (dirtyBlocks && dirtyBlocks.length > 0) {
             processOffloading(dirtyBlocks);
         }
     }, [dirtyBlocks, processOffloading]);

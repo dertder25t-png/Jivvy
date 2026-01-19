@@ -1,6 +1,30 @@
-import Dexie, { type Table } from 'dexie';
 
-export type SyncStatus = 'clean' | 'dirty' | 'synced';
+import Dexie, { Table } from 'dexie';
+
+
+export type BlockType = 'task' | 'note' | 'heading' | 'page' | 'project' | 'event' | string;
+
+export interface DbBlock {
+    id: string;
+    parent_id?: string;
+    type: BlockType;
+    content: string;
+    order: number;
+    metadata?: {
+        status?: 'todo' | 'done' | 'in-progress' | string;
+        due_date?: number;
+        color?: string;
+        project?: string;
+        priority?: string;
+        [key: string]: any;
+    };
+    updated_at: number;
+    sync_status?: 'dirty' | 'synced';
+}
+
+export interface Block extends DbBlock {
+    children?: Block[];
+}
 
 export interface Project {
     id: string;
@@ -8,37 +32,11 @@ export interface Project {
     parent_project_id?: string;
     created_at: number;
     updated_at: number;
-    sync_status: SyncStatus;
     is_archived: boolean;
     color?: string;
-    metadata?: Record<string, any>;
-}
-
-export type BlockType = 'text' | 'task' | 'event' | 'header' | 'page_break' | 'pdf_highlight' | 'flashcard_candidate' | 'lecture_container' | 'image' | 'subpage';
-
-export interface Block {
-    id: string;
-    parent_id: string;
-    type: BlockType;
-    content: string;
-    order: number;
-    due_date?: number;
-    is_complete?: boolean;
-    metadata?: Record<string, any>;
-    updated_at: number;
-    sync_status: SyncStatus;
-}
-
-export interface Citation {
-    id: string;
-    project_id: string;
-    type: 'article' | 'book' | 'website' | 'pdf';
-    title: string;
-    author: string;
-    year?: string;
-    url?: string;
-    updated_at: number;
-    sync_status: SyncStatus;
+    metadata?: any;
+    userId?: string;
+    sync_status?: 'dirty' | 'synced';
 }
 
 export interface Flashcard {
@@ -47,9 +45,8 @@ export interface Flashcard {
     lecture_id?: string;
     front: string;
     back: string;
-    next_review: number;
     updated_at: number;
-    sync_status: SyncStatus;
+    sync_status?: 'dirty' | 'synced';
 }
 
 export interface CalendarSource {
@@ -57,80 +54,78 @@ export interface CalendarSource {
     userId: string;
     url: string;
     name: string;
-    color?: string;
-    last_synced_at?: number;
-    etag?: string;
+    last_synced_at: number;
     updated_at: number;
-    sync_status: SyncStatus;
+    sync_status?: 'dirty' | 'synced';
 }
 
-export class JivvyDatabase extends Dexie {
+export interface Citation {
+    id: string;
+    project_id: string;
+    type: string;
+    title: string;
+    author: string;
+    year?: string;
+    url?: string;
+    userId: string;
+    updated_at: number;
+    sync_status?: 'dirty' | 'synced';
+}
+
+export class JivvyDB extends Dexie {
+    blocks!: Table<DbBlock>;
     projects!: Table<Project>;
-    blocks!: Table<Block>;
-    citations!: Table<Citation>;
     flashcards!: Table<Flashcard>;
+    citations!: Table<Citation>;
     calendar_sources!: Table<CalendarSource>;
 
     constructor() {
-        super('JivvyCleanDB_v2');
-
-        // Version 1: Explicit string keys (no auto-increment) for UUIDs
+        super('JivvyDB');
         this.version(1).stores({
-            projects: 'id, title, parent_project_id, created_at, updated_at, sync_status, is_archived',
-            blocks: 'id, parent_id, type, content, order, due_date, is_complete, updated_at, sync_status, [parent_id+order]',
-            citations: 'id, project_id, type, title, author, year, url, updated_at, sync_status',
-            flashcards: 'id, project_id, front, back, next_review, updated_at, sync_status'
+            blocks: 'id, parent_id, type, order, updated_at',
+            projects: 'id, parent_project_id, updated_at'
         });
 
-        // Version 2: Add lecture_id index
         this.version(2).stores({
-            flashcards: 'id, project_id, lecture_id, front, back, next_review, updated_at, sync_status'
+            blocks: 'id, parent_id, type, order, updated_at, sync_status',
+            projects: 'id, parent_project_id, updated_at, sync_status'
         });
 
-        // Version 3: Add calendar_sources
         this.version(3).stores({
-            calendar_sources: 'id, userId, url, name, updated_at, sync_status'
+            flashcards: 'id, project_id, lecture_id, updated_at, sync_status'
         });
 
-        // Middleware to track changes
-        this.use({
-            stack: 'dbcore',
-            name: 'SyncStatusMiddleware',
-            create: (downlevelDatabase) => {
-                return {
-                    ...downlevelDatabase,
-                    table: (tableName) => {
-                        const downlevelTable = downlevelDatabase.table(tableName);
-                        return {
-                            ...downlevelTable,
-                            mutate: (req) => {
-                                if (req.type === 'add' || req.type === 'put') {
-                                    const values = req.values.map(val => ({
-                                        ...val,
-                                        updated_at: Date.now(),
-                                        sync_status: 'dirty'
-                                    }));
-                                    return downlevelTable.mutate({ ...req, values });
-                                }
-                                return downlevelTable.mutate(req);
-                            }
-                        };
-                    }
-                };
-            }
+        this.version(4).stores({
+            calendar_sources: 'id, userId, sync_status'
+        });
+
+        this.version(5).stores({
+            citations: 'id, project_id, updated_at, sync_status'
         });
     }
+
 }
 
-export const db = (typeof window !== 'undefined' ? new JivvyDatabase() : undefined) as JivvyDatabase;
+export const db = new JivvyDB();
 
 export async function deleteBlockRecursively(blockId: string): Promise<string[]> {
-    const children = await db.blocks.where('parent_id').equals(blockId).toArray();
-    let deletedIds = [blockId];
-    for (const child of children) {
-        const childDeletedIds = await deleteBlockRecursively(child.id);
-        deletedIds = [...deletedIds, ...childDeletedIds];
+    const deletedIds: string[] = [];
+
+    // 1. Gather all descendants
+    const queue = [blockId];
+    while (queue.length > 0) {
+        const currentId = queue.pop();
+        if (currentId) {
+            deletedIds.push(currentId);
+            const children = await db.blocks.where('parent_id').equals(currentId).toArray();
+            for (const child of children) {
+                queue.push(child.id);
+            }
+        }
     }
-    await db.blocks.delete(blockId);
+
+    // 2. Delete them all
+    await db.blocks.bulkDelete(deletedIds);
+
     return deletedIds;
 }

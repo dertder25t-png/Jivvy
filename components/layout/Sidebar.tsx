@@ -19,7 +19,8 @@ import {
     MessageSquare,
     Zap,
     X,
-    Edit2
+    Edit2,
+    LogOut
 } from "lucide-react";
 import { cn, getRandomPaletteColor, PASTEL_PALETTE } from "@/lib/utils";
 import { CalendarSettings } from "@/components/settings/CalendarSettings";
@@ -227,10 +228,13 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
     const pathname = usePathname();
     const [projectsExpanded, setProjectsExpanded] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+    const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
     const [settingsTab, setSettingsTab] = useState<'sync' | 'calendar'>('sync');
 
     const { dashboardView, setDashboardView } = useStore();
-    const { user, isGuest } = useAuth();
+    const { user, isGuest, signOut } = useAuth();
+    console.log("Sidebar Render - User:", user);
 
     // Live Query for Projects
     const projects = useLiveQuery(() => db.projects.toArray()) || [];
@@ -256,13 +260,7 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
 
     const handleDeleteProject = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (confirm("Delete this project?")) {
-            await db.projects.delete(id);
-            // also delete blocks
-            // const blocks = await db.blocks.where('parent_id').equals(id).toArray(); 
-            // TODO: Implement cascade delete
-            router.push('/inbox');
-        }
+        setProjectToDelete(id);
     }
 
     return (
@@ -276,11 +274,11 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
             <div className="h-14 flex items-center px-4 mb-2">
                 <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-xs text-white font-medium">
-                        {user ? user.email?.[0].toUpperCase() : 'G'}
+                        {(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}
                     </div>
                     <div className="flex flex-col overflow-hidden">
                         <span className="text-sm font-medium text-text-primary truncate">
-                            {user ? user.email : 'Guest Workspace'}
+                            {user?.name || user?.email || 'User'}
                         </span>
                         {isGuest && <span className="text-[10px] text-zinc-500">Offline Mode</span>}
                     </div>
@@ -381,7 +379,41 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
                     label="Settings"
                     onClick={() => setShowSettings(true)}
                 />
+                <SidebarItem
+                    icon={LogOut}
+                    label="Log Out"
+                    onClick={() => setShowLogoutConfirm(true)}
+                />
             </div>
+
+            {/* Logout Confirmation Modal */}
+            {showLogoutConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowLogoutConfirm(false)}>
+                    <div className="bg-background border border-border rounded-lg shadow-xl w-full max-w-sm overflow-hidden relative p-6" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-text-primary mb-2">Log Out</h3>
+                        <p className="text-sm text-text-secondary mb-6">
+                            Are you sure you want to log out? This will clear your local data and session.
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowLogoutConfirm(false)}
+                                className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    setShowLogoutConfirm(false);
+                                    await signOut();
+                                }}
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors shadow-sm"
+                            >
+                                Log Out
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Settings Modal */}
             {showSettings && (
@@ -426,6 +458,41 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
                     </div>
                 </div>
             )}
-        </aside>
+
+            {/* Project Delete Confirmation Modal */}
+            {
+                projectToDelete && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setProjectToDelete(null)}>
+                        <div className="bg-background border border-border rounded-lg shadow-xl w-full max-w-sm overflow-hidden relative p-6" onClick={e => e.stopPropagation()}>
+                            <h3 className="text-lg font-semibold text-text-primary mb-2">Delete Project</h3>
+                            <p className="text-sm text-text-secondary mb-6">
+                                Are you sure you want to delete this project? This action cannot be undone.
+                            </p>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setProjectToDelete(null)}
+                                    className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (projectToDelete) {
+                                            await db.projects.delete(projectToDelete);
+                                            // TODO: Implement cascade delete for blocks if needed
+                                            setProjectToDelete(null);
+                                            router.push('/inbox');
+                                        }
+                                    }}
+                                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors shadow-sm"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </aside >
     );
 }

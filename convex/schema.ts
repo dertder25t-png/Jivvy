@@ -1,7 +1,9 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
+    ...authTables,
     projects: defineTable({
         id: v.string(), // UUID from Dexie
         title: v.string(),
@@ -9,6 +11,7 @@ export default defineSchema({
         created_at: v.number(),
         updated_at: v.number(),
         is_archived: v.boolean(),
+        color: v.optional(v.string()), // Added color field
         metadata: v.optional(v.any()), // Can store Drive ID for assets here
         userId: v.string(),
     }).index("by_local_id", ["id"]).index("by_user_id", ["userId"]).index("by_parent_project_id", ["parent_project_id"]),
@@ -56,6 +59,7 @@ export default defineSchema({
         .index("by_local_id", ["id"])
         .index("by_project_id", ["project_id"])
         .index("by_user_id", ["userId"]),
+
     calendar_sources: defineTable({
         userId: v.string(),
         url: v.string(),
@@ -65,3 +69,4 @@ export default defineSchema({
         etag: v.optional(v.string()), // For conditional fetching
     }).index("by_user_id", ["userId"]),
 });
+
