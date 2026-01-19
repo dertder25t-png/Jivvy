@@ -149,7 +149,7 @@ export function CalendarView({ tasks }: CalendarViewProps) {
                 {days.map((day, i) => {
                     const isCurrentMonth = isSameMonth(day, currentDate);
                     const dayTasks = tasks.filter(task =>
-                        task.due_date && isSameDay(new Date(task.due_date), day)
+                        task.metadata?.due_date && isSameDay(new Date(task.metadata.due_date), day)
                     );
 
                     // Day View Rendering
@@ -176,15 +176,15 @@ export function CalendarView({ tasks }: CalendarViewProps) {
                                                 >
                                                     <div className={cn(
                                                         "w-4 h-4 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors",
-                                                        task.is_complete
+                                                        task.metadata?.status === 'done'
                                                             ? "bg-blue-500 border-blue-500"
                                                             : "border-zinc-300 dark:border-zinc-600 hover:border-blue-400"
                                                     )}>
-                                                        {task.is_complete && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                        {task.metadata?.status === 'done' && <div className="w-2 h-2 bg-white rounded-full" />}
                                                     </div>
                                                     <span className={cn(
                                                         "text-sm",
-                                                        task.is_complete && "text-zinc-400 line-through"
+                                                        task.metadata?.status === 'done' && "text-zinc-400 line-through"
                                                     )}>
                                                         {task.content || "Untitled Task"}
                                                     </span>
@@ -225,7 +225,7 @@ export function CalendarView({ tasks }: CalendarViewProps) {
                                         key={task.id}
                                         className={cn(
                                             "text-[10px] px-1.5 py-0.5 rounded border truncate cursor-pointer transition-colors",
-                                            task.is_complete
+                                            task.metadata?.status === 'done'
                                                 ? "bg-zinc-100 text-zinc-400 border-zinc-200 line-through dark:bg-zinc-800 dark:border-zinc-700"
                                                 : "bg-blue-50 text-blue-700 border-blue-100 hover:border-blue-300 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800 dark:hover:border-blue-700"
                                         )}

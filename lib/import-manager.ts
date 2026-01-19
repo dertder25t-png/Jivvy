@@ -90,7 +90,6 @@ export async function syncSource(source: { id: string, url: string, name: string
             // Let's append description if short, or ignore.
 
             type: (type === 'assignment' ? 'task' : 'event') as BlockType,
-            due_date: originalEvent.startDate.getTime(), // Date object
             parent_id: targetProjectId,
             metadata: {
                 ical_uid: originalEvent.uid,
@@ -98,13 +97,14 @@ export async function syncSource(source: { id: string, url: string, name: string
                 description: originalEvent.description,
                 location: originalEvent.location,
                 is_imported: true,
-                priority: (item as CategorizedItem).priority // Propagate priority
+                priority: (item as CategorizedItem).priority, // Propagate priority
+                due_date: originalEvent.startDate.getTime() // Move here
             }
         };
 
         if (existing) {
             // Update if changed
-            if (existing.due_date !== blockData.due_date || existing.content !== blockData.content || existing.parent_id !== blockData.parent_id) {
+            if (existing.metadata?.due_date !== blockData.metadata.due_date || existing.content !== blockData.content || existing.parent_id !== blockData.parent_id) {
                 await db.blocks.update(existing.id, {
                     ...blockData,
                     updated_at: Date.now(),

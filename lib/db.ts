@@ -2,6 +2,7 @@
 import Dexie, { Table } from 'dexie';
 
 
+export type SyncStatus = 'dirty' | 'synced';
 export type BlockType = 'task' | 'note' | 'heading' | 'page' | 'project' | 'event' | string;
 
 export interface DbBlock {
@@ -45,6 +46,7 @@ export interface Flashcard {
     lecture_id?: string;
     front: string;
     back: string;
+    next_review: number;
     updated_at: number;
     sync_status?: 'dirty' | 'synced';
 }
@@ -62,12 +64,13 @@ export interface CalendarSource {
 export interface Citation {
     id: string;
     project_id: string;
-    type: string;
+    type: "book" | "article" | "website" | "pdf";
     title: string;
     author: string;
     year?: string;
     url?: string;
-    userId: string;
+    userId?: string;
+    created_at?: number;
     updated_at: number;
     sync_status?: 'dirty' | 'synced';
 }

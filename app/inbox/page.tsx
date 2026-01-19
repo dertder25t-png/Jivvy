@@ -14,7 +14,7 @@ export default function InboxPage() {
             title: "Inbox",
             created_at: 0,
             updated_at: Date.now(),
-            sync_status: 'clean',
+            sync_status: 'synced',
             is_archived: false
         });
     }, []);
