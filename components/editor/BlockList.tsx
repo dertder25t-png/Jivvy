@@ -366,12 +366,27 @@ export function BlockList({ projectId, variant = 'document', projectColor }: Blo
 
             let targetId = blockId;
             const targetBlock = currentBlocks.find(b => b.id === blockId);
-            if (targetBlock && targetBlock.parent_id) {
-                // If this is a child node (depth > 0 usually means definition or sub-point), scan the parent
-                // Check if parent is a lecture container; if so, scan THIS block (it's a main point)
-                const parent = currentBlocks.find(b => b.id === targetBlock.parent_id);
-                if (parent && parent.type !== 'lecture_container') {
-                    targetId = parent.id;
+
+            if (targetBlock) {
+                // 1. Find the Ultimate Parent (Lecture Container)
+                // We want to pass the WHOLE lecture context to the AI, not just the bullet point.
+                const findContainer = (b: Block): string | null => {
+                    if (b.type === 'lecture_container') return b.id;
+                    if (!b.parent_id) return null;
+                    const p = currentBlocks.find(x => x.id === b.parent_id);
+                    return p ? findContainer(p) : null;
+                };
+
+                const containerId = findContainer(targetBlock);
+
+                // 2. If inside a lecture, scan the WHOLE lecture. 
+                // This ensures "Lecture Title" is the root context for all cards.
+                if (containerId) {
+                    targetId = containerId;
+                } else if (targetBlock.parent_id) {
+                    // Fallback for non-lecture lists: scan immediate parent
+                    const parent = currentBlocks.find(b => b.id === targetBlock.parent_id);
+                    if (parent) targetId = parent.id;
                 }
             }
 
@@ -634,6 +649,7 @@ export function BlockList({ projectId, variant = 'document', projectColor }: Blo
                     // The loop above didn't set correct 'order' for siblings in new parents.
                     const orderMap = new Map<string, number>();
                     newBlocks.forEach(b => {
+                        if (!b.parent_id) return;
                         const current = orderMap.get(b.parent_id);
                         if (current === undefined) {
                             // If parent is the root paste target, start at insertionOrder
@@ -1204,10 +1220,18 @@ export function BlockList({ projectId, variant = 'document', projectColor }: Blo
 
         const blockIds = getBlockIds(parentId);
 
+        // Visual guide for Lecture Content ("Drag-and-Drop Jail" Fix)
+        const isLectureChild = parentId && blocks.find(b => b.id === parentId)?.type === 'lecture_container';
+
         // Todoist Variant: Less visual nesting, flat list feel (though still tree struct)
         const nestedClass = variant === 'todoist'
-            ? cn('flex flex-col', depth > 0 && 'ml-8') // Simple indentation without border line
-            : cn('flex flex-col', depth > 0 && 'ml-6 border-l border-zinc-100 dark:border-zinc-800');
+            ? cn('flex flex-col', depth > 0 && 'ml-8')
+            : cn(
+                'flex flex-col',
+                depth > 0 && 'ml-6 border-l border-zinc-100 dark:border-zinc-800',
+                // Add strong visual cue for direct children of a lecture
+                isLectureChild && "ml-6 pl-2 border-l-2 border-indigo-200 dark:border-indigo-800/50 bg-indigo-50/10 rounded-r-sm"
+            );
 
         return (
             <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>

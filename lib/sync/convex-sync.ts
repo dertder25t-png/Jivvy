@@ -33,6 +33,11 @@ export function useConvexSync(enabled: boolean = true) {
             const changes = [
                 ...dirtyProjects.map(r => ({ table: 'projects', record: r, deleted: false })),
                 ...dirtyBlocks.map(r => {
+                    // Soft Delete Handling
+                    if (r._deleted) {
+                        return { table: 'blocks', record: r, deleted: true };
+                    }
+
                     // Smart Storage Optimization:
                     // If this block is offloaded to Drive, don't send content to Convex.
                     // This keeps backend storage usage minimal.
