@@ -1,0 +1,26 @@
+# Build Context
+.next
+node_modules
+.git
+.vercel
+
+# Logs
+*.log
+build_output.txt
+lint_output.log
+lint_errors.txt
+build_error.log
+
+# Temporary / Security
+temp_*
+*.pem
+.env*
+! .env.example
+
+# Other
+JIVVY_TRANSPLANT_PROTOCOL.md
+files_to_delete.txt
+README.md
+AI_CONTEXT.md
+docs/
+tests/
