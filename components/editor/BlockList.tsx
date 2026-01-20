@@ -17,6 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useStore } from '@/lib/store';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { SquareStack, Zap } from 'lucide-react';
+import { parseHtmlToBlocks, ParsedBlockPreview } from '@/lib/html-parser';
 // import { detectPatterns } from '@/lib/pattern-engine'; // Removed specific import, handled in worker
 
 // @dnd-kit imports
@@ -520,10 +521,150 @@ export function BlockList({ projectId, variant = 'document', projectColor }: Blo
             const block = blocks.find(b => b.id === blockId);
             if (!block) return;
 
+            // RICH TEXT PASTE SUPPORT
+            const html = e.clipboardData?.getData('text/html');
             const text = e.clipboardData?.getData('text/plain');
-            if (!text) return;
 
             e.preventDefault();
+
+            if (html) {
+                const parsedBlocks = parseHtmlToBlocks(html);
+                if (parsedBlocks.length > 0) {
+                    // We have rich blocks!
+                    // We need to insert these relative to the current block
+                    const parentId = block.parent_id || projectId;
+
+                    // 1. Calculate start order
+                    const siblings = blocks.filter(b => b.parent_id === parentId);
+                    const startOrder = siblings.reduce((max, b) => Math.max(max, b.order), -1) + 1;
+
+                    // 2. Prepare new blocks with proper IDs and hierarchy relative to the paste location?
+                    // Actually, if we just append them to the end of the list like 'handlePasteRows' does, that might be confusing if we are in the middle of a list.
+                    // The existing 'handlePasteRows' logic appends to the end of the parent's children list.
+                    // Let's stick to that behavior for consistency for now, or improve it to insert *after* the current block.
+
+                    // Let's try to insert AFTER the current block.
+                    const currentBlock = blocks.find(b => b.id === blockId);
+                    const insertionOrder = currentBlock ? currentBlock.order + 1 : startOrder;
+
+                    // Shift existing siblings down if we are inserting in the middle
+                    if (currentBlock) {
+                        const laterSiblings = siblings.filter(b => b.order > currentBlock.order);
+                        if (laterSiblings.length > 0) {
+                            // This db call might be heavy if many siblings
+                            await Promise.all(laterSiblings.map(b => db.blocks.update(b.id, { order: b.order + parsedBlocks.length })));
+                        }
+                    }
+
+                    const newBlocks: Block[] = [];
+                    const stack: { level: number, id: string }[] = [{ level: -1, id: parentId }];
+
+                    // We need a way to track the hierarchy based on the parsed indent levels
+                    // The parser returns a flat list with 'indentLevel'.
+
+                    // Re-map IDs to ensure we control them? Parser already gives UUIDs.
+                    // We just need to link them up.
+
+                    // Normalize indent
+                    const minIndent = Math.min(...parsedBlocks.map(b => b.indentLevel));
+                    const normalized = parsedBlocks.map(b => ({ ...b, indentLevel: b.indentLevel - minIndent }));
+
+                    let currentOrderCounter = insertionOrder;
+
+                    for (const pb of normalized) {
+                        // Adjust stack
+                        while (stack.length > 1 && stack[stack.length - 1].level >= pb.indentLevel) {
+                            stack.pop();
+                        }
+                        const parent = stack[stack.length - 1];
+
+                        // Create block
+                        const newBlock: Block = {
+                            id: pb.id,
+                            parent_id: parent.id,
+                            content: pb.content,
+                            type: pb.type,
+                            order: currentOrderCounter++, // This order logic is simplistic for nested items. 
+                            // Realistically, order is per-parent. 
+                            // But if we just increment globally it works if we don't reset for new parents.
+                            // BUT: Jivvy uses 'order' scoped to parent.
+
+                            metadata: pb.metadata,
+                            updated_at: Date.now(),
+                            sync_status: 'dirty'
+                        };
+
+                        // Fix order: If we are adding to a new parent (nested), start order at 0?
+                        // Or just append. 
+                        // Let's assume the parser order is the visual order.
+                        // We need to query the parent's current max order? 
+                        // Since we are doing this in a batch, we can track it in memory.
+                        // Ideally we'd need a map of parentId -> nextOrder.
+
+                        // Let's simplify: Use a map for order tracking
+                        // (We need to initialize it with existing children counts if we insert into existing parents... 
+                        // but here we are mostly creating NEW parents or inserting into the main parent)
+
+                        // For the main parent (paste target), we managed the hole.
+                        // For new parents (items we just created), they are empty, so order starts at 0.
+
+                        if (!newBlocks.some(b => b.parent_id === parent.id)) {
+                            // This is the first child we are adding to this parent in this batch.
+                            // Logic handles existing children? No, these are new parents from the paste.
+                            // EXCEPT the root parent.
+                        }
+
+                        // Hacky but robust: just set order = currentOrderCounter and let the UI sort it out?
+                        // No, let's do it right.
+
+                        // We can use a map: parentId -> nextOrder
+                        // But we can't easily query DB for every item.
+
+                        // If parent.id is one of the NEW blocks, order starts at 0.
+                        // If parent.id is the existing root, order continues from insertionOrder.
+
+                        // Actually, 'order' in Jivvy seems to be used for sorting siblings.
+
+                        newBlocks.push(newBlock);
+
+                        stack.push({ level: pb.indentLevel, id: pb.id });
+                    }
+
+                    // Fix sibling orders for the root items
+                    // The loop above didn't set correct 'order' for siblings in new parents.
+                    const orderMap = new Map<string, number>();
+                    newBlocks.forEach(b => {
+                        const current = orderMap.get(b.parent_id);
+                        if (current === undefined) {
+                            // If parent is the root paste target, start at insertionOrder
+                            if (b.parent_id === parentId) {
+                                orderMap.set(b.parent_id, insertionOrder + 1);
+                                b.order = insertionOrder;
+                            } else {
+                                orderMap.set(b.parent_id, 1);
+                                b.order = 0;
+                            }
+                        } else {
+                            orderMap.set(b.parent_id, current + 1);
+                            b.order = current;
+                        }
+                    });
+
+                    await db.blocks.bulkAdd(newBlocks);
+                    setBlocks(prev => {
+                        // Merge and sort
+                        const combined = [...prev, ...newBlocks];
+                        return combined; //.sort((a,b) => a.order - b.order); // Sorting is usually done by parent
+                    });
+
+                    // Trigger detection on the parent
+                    if (triggerDetection) triggerDetection(parentId);
+                    return;
+                }
+            }
+
+            // Fallback to plain text
+            if (!text) return;
 
             const rows = text.split('\n').filter(row => row.trim() !== '');
 

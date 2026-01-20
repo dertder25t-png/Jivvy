@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-globals */
 
 // Enhanced hierarchical flashcard generation algorithm
-// No AI required - purely rule-based with advanced pattern recognition
+// Prioritizes explicit structure (Question -> Answer) and user intent over arbitrary chunking.
 
 export interface FlashcardPattern {
     type: 'definition' | 'question' | 'cloze' | 'list' | 'fact';
@@ -34,10 +34,13 @@ function parseHierarchy(text: string): ParsedNode[] {
         const level = Math.floor(indent / 2);
 
         let content = line.trim();
-        content = content.replace(/^[•\*\-]\s+/, '');
-        content = content.replace(/^\d+[\.)]\s+/, '');
-        content = content.replace(/^[a-zA-Z][\.)]\s+/, '');
-        content = content.replace(/^[ivxIVX]+[\.)]\s+/, '');
+        // Clean common bullet markers but keep semantic ones if needed
+        // For "2 events..." we want to keep the "2 events" text.
+        // Just remove strict bullet symbols.
+        content = content.replace(/^([•\*\-]|\d+\.)\s+/, '');
+
+        // Handle "Q:" or "A:" prefixes explicitly if user typed them
+        content = content.replace(/^(Q:|Question:|A:|Answer:)\s*/i, '');
 
         if (!content && level === 0) return;
 
@@ -66,20 +69,33 @@ function parseHierarchy(text: string): ParsedNode[] {
 
 function buildContext(parents: string[]): string {
     if (parents.length === 0) return '';
-    const relevantParents = parents.slice(-2);
-    if (relevantParents.length === 1) return `[${relevantParents[0]}]`;
-    return `[${relevantParents.join(' → ')}]`;
+    // Only capture immediate parent if it seems like a category
+    // e.g. "Politics" -> "Absolutism"
+    const immediateParent = parents[parents.length - 1];
+
+    // Don't include context if the parent is very long (likely a sentence/question itself)
+    if (immediateParent.length > 50) return '';
+
+    return `[${immediateParent}]`;
 }
 
 function extractDefinition(content: string): { term: string; definition: string } | null {
+    // Term: Definition
     const colonMatch = content.match(/^([^:]+):\s*(.+)$/);
     if (colonMatch && colonMatch[2].length > 2) {
         return { term: colonMatch[1].trim(), definition: colonMatch[2].trim() };
     }
 
+    // Term - Definition (only if dash is bounded by spaces to avoid hyphenated words)
     const dashMatch = content.match(/^([^-]+)\s+-\s+(.+)$/);
     if (dashMatch && dashMatch[2].length > 2) {
         return { term: dashMatch[1].trim(), definition: dashMatch[2].trim() };
+    }
+
+    // Question? Answer
+    const qMarkMatch = content.match(/^([^?]+\?)\s*(.+)$/);
+    if (qMarkMatch) {
+        return { term: qMarkMatch[1].trim(), definition: qMarkMatch[2].trim() };
     }
 
     return null;
@@ -87,6 +103,7 @@ function extractDefinition(content: string): { term: string; definition: string 
 
 function createClozeDeletion(content: string, keyPhrase: string): { front: string; back: string } | null {
     if (!content.includes(keyPhrase)) return null;
+    // Replace only the first occurrence to avoid ambiguity or simple "replace all"
     const clozeText = content.replace(keyPhrase, '___');
     return { front: clozeText, back: keyPhrase };
 }
@@ -98,134 +115,92 @@ function generateFromNode(
     depth: number = 0
 ): void {
     if (!node.content.trim() && node.children.length === 0) return;
-    if (depth > 15) return;
+    if (depth > 15) return; // Recursion guard
 
     const currentPath = node.content ? [...parents, node.content] : parents;
     const hasChildren = node.children.length > 0;
-    const context = buildContext(parents);
+    const context = buildContext(parents); // Optional context string
 
-    // STRATEGY 1: Definition Pattern
-    const definition = extractDefinition(node.content);
-    if (definition && node.content.length < 200) {
+    // Clean content for processing
+    const text = node.content;
+
+    // --- STRATEGY 1: EXPLICIT Q&A PARENT ---
+    // User typed "What are 2 events? \n - Event 1 \n - Event 2"
+    if (hasChildren && (text.endsWith('?') || text.endsWith(':'))) {
+        const answerText = node.children.map(c => `• ${c.content}`).join('\n');
+
         patterns.push({
-            type: 'definition',
-            front: `${context ? context + ' ' : ''}What is "${definition.term}"?`,
-            back: definition.definition,
-            confidence: 0.9,
-            originalText: node.content
+            type: 'question',
+            front: text, // Use exact text as question
+            back: answerText,
+            confidence: 0.95, // High confidence for explicit structure
+            originalText: `${text}\n${answerText}`
         });
 
-        if (hasChildren && node.children.length <= 5) {
-            const details = node.children.map(c => `• ${c.content}`).join('\n');
-            patterns.push({
-                type: 'list',
-                front: `${context ? context + ' ' : ''}What are the details about "${definition.term}"?`,
-                back: details,
-                confidence: 0.85,
-                originalText: `${node.content}\n${details}`
-            });
+        // Don't recurse into children for new cards if they are just parts of the answer
+        // UNLESS the children themselves have complexity (grandchild nodes).
+        // For simple lists, stop here.
+        if (node.children.every(c => c.children.length === 0)) {
+            return;
         }
     }
-    // STRATEGY 2: List of Items
+
+    // --- STRATEGY 2: TOPIC -> LIST ---
+    // "Rising Social Trends \n - trend 1 \n - trend 2"
+    // No question mark, but has children.
     else if (hasChildren && node.children.length >= 2) {
-        const childrenWithContent = node.children.filter(c => c.content.trim());
+        const answerText = node.children.map(c => `• ${c.content}`).join('\n');
 
-        if (childrenWithContent.length > 0) {
-            // Chunk large lists
-            if (childrenWithContent.length > 10) {
-                const chunkSize = 5;
-                for (let i = 0; i < childrenWithContent.length; i += chunkSize) {
-                    const chunk = childrenWithContent.slice(i, i + chunkSize);
-                    const items = chunk.map(c => `• ${c.content}`).join('\n');
-                    patterns.push({
-                        type: 'list',
-                        front: `${context ? context + ' ' : ''}${node.content} - What are items ${i + 1}-${Math.min(i + chunkSize, childrenWithContent.length)}?`,
-                        back: items,
-                        confidence: 0.8,
-                        originalText: items
-                    });
-                }
-            } else {
-                const items = childrenWithContent.map(c => `• ${c.content}`).join('\n');
-                if (node.content.trim()) {
-                    patterns.push({
-                        type: 'list',
-                        front: `${context ? context + ' ' : ''}What are the main points about "${node.content}"?`,
-                        back: items,
-                        confidence: 0.85,
-                        originalText: `${node.content}\n${items}`
-                    });
-                }
+        // Infer question
+        const question = `What are the details about "${text}"?`;
 
-                // Individual cloze cards for short items
-                if (childrenWithContent.every(c => c.content.length < 50) && childrenWithContent.length <= 7) {
-                    childrenWithContent.forEach(child => {
-                        if (child.content.length > 10) {
-                            const cloze = createClozeDeletion(`${node.content}: ${child.content}`, child.content);
-                            if (cloze) {
-                                patterns.push({
-                                    type: 'cloze',
-                                    front: cloze.front,
-                                    back: cloze.back,
-                                    confidence: 0.75,
-                                    originalText: child.content
-                                });
-                            }
-                        }
-                    });
-                }
-            }
-        }
+        patterns.push({
+            type: 'list',
+            front: context ? `${context} ${question}` : question,
+            back: answerText,
+            confidence: 0.85,
+            originalText: `${text}\n${answerText}`
+        });
+
+        // Check if children are complex enough to be their own cards
+        // If a child is a leaf node, we might want to check for definition patterns
     }
-    // STRATEGY 3: Single Child
+
+    // --- STRATEGY 3: INLINE DEFINITION / Q&A ---
+    // "Absolutism: Divine Right" or "Key issue = Sovereignty"
+    const def = extractDefinition(text);
+    if (def) {
+        // If it has children, the children are *additional* details
+        let back = def.definition;
+        if (hasChildren) {
+            back += '\n\n' + node.children.map(c => `• ${c.content}`).join('\n');
+        }
+
+        patterns.push({
+            type: 'definition',
+            front: def.term, // e.g. "Absolutism" or "Absolutism?"
+            back: back,
+            confidence: 0.9,
+            originalText: text
+        });
+
+        // If we handled the children as details, we might skip full recursion
+        // But let's allow recursion in case sub-points are rich
+    }
+
+    // --- STRATEGY 4: SINGLE CHILD ASSOCIATION ---
+    // "Key political issue \n Sovereignty"
     else if (hasChildren && node.children.length === 1) {
         const child = node.children[0];
-        if (node.content.trim() && child.content.trim()) {
+        // Only if parent is short enough to be a prompt
+        if (text.length < 100) {
             patterns.push({
                 type: 'question',
-                front: `${context ? context + ' ' : ''}${node.content}`,
+                front: context ? `${context} ${text}` : text,
                 back: child.content,
                 confidence: 0.8,
-                originalText: `${node.content}\n${child.content}`
+                originalText: `${text}\n${child.content}`
             });
-        }
-    }
-    // STRATEGY 4: Leaf Node Fact
-    else if (!hasChildren && node.content.trim() && parents.length > 0) {
-        const parentTopic = parents[parents.length - 1];
-        if (node.content.split(/\s+/).length >= 4) {
-            patterns.push({
-                type: 'fact',
-                front: `${buildContext(parents.slice(0, -1))} What is one key point about "${parentTopic}"?`,
-                back: node.content,
-                confidence: 0.75,
-                originalText: node.content
-            });
-
-            // Cloze deletion for memorable facts
-            const words = node.content.split(/\s+/);
-            if (words.length >= 5 && words.length <= 15) {
-                const importantWord = words
-                    .filter(w => w.length > 3)
-                    .sort((a, b) => {
-                        const aScore = (a[0] === a[0].toUpperCase() ? 10 : 0) + a.length;
-                        const bScore = (b[0] === b[0].toUpperCase() ? 10 : 0) + b.length;
-                        return bScore - aScore;
-                    })[0];
-
-                if (importantWord) {
-                    const cloze = createClozeDeletion(node.content, importantWord);
-                    if (cloze) {
-                        patterns.push({
-                            type: 'cloze',
-                            front: cloze.front,
-                            back: cloze.back,
-                            confidence: 0.7,
-                            originalText: node.content
-                        });
-                    }
-                }
-            }
         }
     }
 

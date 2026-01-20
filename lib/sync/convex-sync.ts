@@ -5,7 +5,7 @@ import { db, SyncStatus } from '@/lib/db';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { downloadTextAsset } from '@/lib/drive';
 
-const SYNC_INTERVAL_MS = 10000; // 10 seconds
+const SYNC_INTERVAL_MS = 5000; // 5 seconds
 
 export function useConvexSync(enabled: boolean = true) {
     // Hooks must be called unconditionally
