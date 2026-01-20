@@ -13,6 +13,11 @@ export const backupToDrive = action({
         accessToken: v.string(),
     },
     handler: async (ctx, args) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) {
+            throw new Error("Unauthenticated call to backupToDrive");
+        }
+
         // In a "Limit Cost" scenario, we actually prefer the CLIENT to upload to Drive directly.
         // However, if we must do it here:
 

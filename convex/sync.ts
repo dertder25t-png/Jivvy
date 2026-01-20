@@ -15,13 +15,7 @@ export const listChanges = query({
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) {
-            // For prototype, we might skip auth or use a temporary user ID if not using Clerk/etc yet.
-            // But let's assume valid auth or throw.
-            // throw new Error("Unauthenticated call to listChanges");
-            // TEMP: If no auth, return empty or allow for now? 
-            // Ideally we use a token. If the user is GUEST locally, they can't sync to global convex without an ID.
-            // Let's throw for now, requires auth.
-            throw new Error("Unauthenticated");
+            throw new Error("Unauthenticated call to listChanges");
         }
         const userId = identity.subject;
 
