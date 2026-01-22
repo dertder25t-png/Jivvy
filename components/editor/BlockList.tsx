@@ -524,190 +524,153 @@ export function BlockList({ projectId, variant = 'document', projectColor }: Blo
         }
     }, [blocks.length, projectId]);
 
-    useEffect(() => {
-        // Paste logic (previous implementation)
-        const handlePaste = async (e: ClipboardEvent) => {
+    // Paste logic (extracted for reuse in components)
+    const handleGlobalPaste = useCallback(async (e: ClipboardEvent | React.ClipboardEvent) => {
+        // If it's a React Synthetic Event, we might need native data, but the interface is similar.
+        // We use 'nativeEvent' if available, or just use the data.
+
+        // Find the block ID
+        let blockId: string | undefined;
+        let blockEl: Element | null = null;
+
+        if ('nativeEvent' in e) {
+            // React Event
+            blockEl = (e.currentTarget as HTMLElement).closest('[data-block-id]');
+            blockId = blockEl?.getAttribute('data-block-id') || undefined;
+        } else {
+            // Native Event
             if (!document.activeElement) return;
+            blockEl = (document.activeElement as HTMLElement).closest('[data-block-id]');
+            blockId = blockEl?.getAttribute('data-block-id') || undefined;
+        }
 
-            const blockEl = (document.activeElement as HTMLElement)?.closest('[data-block-id]');
-            const blockId = blockEl?.getAttribute('data-block-id');
-            if (!blockId) return;
+        if (!blockId) return;
 
-            const block = blocks.find(b => b.id === blockId);
-            if (!block) return;
+        const block = blocks.find(b => b.id === blockId);
+        if (!block) return;
 
-            // RICH TEXT PASTE SUPPORT
-            const html = e.clipboardData?.getData('text/html');
-            const text = e.clipboardData?.getData('text/plain');
+        // RICH TEXT PASTE SUPPORT
+        const clipboardData = (e as ClipboardEvent).clipboardData || (e as React.ClipboardEvent).clipboardData;
+        if (!clipboardData) return;
 
+        const html = clipboardData.getData('text/html');
+        const text = clipboardData.getData('text/plain');
+
+        // Check if we should handle this
+
+        const isLecture = block.type === 'lecture_container';
+
+        if (html) {
             e.preventDefault();
+            const parsedBlocks = parseHtmlToBlocks(html);
+            if (parsedBlocks.length > 0) {
+                // We have rich blocks!
+                // FIX: If pasting onto a Lecture, items go INSIDE it (as children), not below it (as siblings).
+                const parentId = isLecture ? block.id : (block.parent_id || projectId);
 
-            if (html) {
-                const parsedBlocks = parseHtmlToBlocks(html);
-                if (parsedBlocks.length > 0) {
-                    // We have rich blocks!
-                    // We need to insert these relative to the current block
-                    const parentId = block.parent_id || projectId;
+                // 1. Calculate start order
+                const siblings = blocks.filter(b => b.parent_id === parentId);
+                const startOrder = siblings.reduce((max, b) => Math.max(max, b.order), -1) + 1;
 
-                    // 1. Calculate start order
-                    const siblings = blocks.filter(b => b.parent_id === parentId);
-                    const startOrder = siblings.reduce((max, b) => Math.max(max, b.order), -1) + 1;
+                // 2. Determine insertion order
+                const currentBlock = blocks.find(b => b.id === blockId);
+                const insertionOrder = (isLecture || !currentBlock)
+                    ? startOrder
+                    : currentBlock.order + 1;
 
-                    // 2. Prepare new blocks with proper IDs and hierarchy relative to the paste location?
-                    // Actually, if we just append them to the end of the list like 'handlePasteRows' does, that might be confusing if we are in the middle of a list.
-                    // The existing 'handlePasteRows' logic appends to the end of the parent's children list.
-                    // Let's stick to that behavior for consistency for now, or improve it to insert *after* the current block.
-
-                    // Let's try to insert AFTER the current block.
-                    const currentBlock = blocks.find(b => b.id === blockId);
-                    const insertionOrder = currentBlock ? currentBlock.order + 1 : startOrder;
-
-                    // Shift existing siblings down if we are inserting in the middle
-                    if (currentBlock) {
-                        const laterSiblings = siblings.filter(b => b.order > currentBlock.order);
-                        if (laterSiblings.length > 0) {
-                            // This db call might be heavy if many siblings
-                            await Promise.all(laterSiblings.map(b => db.blocks.update(b.id, { order: b.order + parsedBlocks.length })));
-                        }
+                // Shift existing siblings down ONLY if we are inserting in the middle (and not into a lecture parent)
+                if (currentBlock && !isLecture) {
+                    const laterSiblings = siblings.filter(b => b.order > currentBlock.order);
+                    if (laterSiblings.length > 0) {
+                        await Promise.all(laterSiblings.map(b => db.blocks.update(b.id, { order: b.order + parsedBlocks.length })));
                     }
+                }
 
-                    const newBlocks: Block[] = [];
-                    const stack: { level: number, id: string }[] = [{ level: -1, id: parentId }];
+                const newBlocks: Block[] = [];
+                const stack: { level: number, id: string }[] = [{ level: -1, id: parentId }];
 
-                    // We need a way to track the hierarchy based on the parsed indent levels
-                    // The parser returns a flat list with 'indentLevel'.
+                // Normalize indent
+                const minIndent = Math.min(...parsedBlocks.map(b => b.indentLevel));
+                const normalized = parsedBlocks.map(b => ({ ...b, indentLevel: b.indentLevel - minIndent }));
 
-                    // Re-map IDs to ensure we control them? Parser already gives UUIDs.
-                    // We just need to link them up.
+                let currentOrderCounter = insertionOrder;
 
-                    // Normalize indent
-                    const minIndent = Math.min(...parsedBlocks.map(b => b.indentLevel));
-                    const normalized = parsedBlocks.map(b => ({ ...b, indentLevel: b.indentLevel - minIndent }));
-
-                    let currentOrderCounter = insertionOrder;
-
-                    for (const pb of normalized) {
-                        // Adjust stack
-                        while (stack.length > 1 && stack[stack.length - 1].level >= pb.indentLevel) {
-                            stack.pop();
-                        }
-                        const parent = stack[stack.length - 1];
-
-                        // Create block
-                        const newBlock: Block = {
-                            id: pb.id,
-                            parent_id: parent.id,
-                            content: pb.content,
-                            type: pb.type,
-                            order: currentOrderCounter++, // This order logic is simplistic for nested items. 
-                            // Realistically, order is per-parent. 
-                            // But if we just increment globally it works if we don't reset for new parents.
-                            // BUT: Jivvy uses 'order' scoped to parent.
-
-                            metadata: pb.metadata,
-                            updated_at: Date.now(),
-                            sync_status: 'dirty'
-                        };
-
-                        // Fix order: If we are adding to a new parent (nested), start order at 0?
-                        // Or just append. 
-                        // Let's assume the parser order is the visual order.
-                        // We need to query the parent's current max order? 
-                        // Since we are doing this in a batch, we can track it in memory.
-                        // Ideally we'd need a map of parentId -> nextOrder.
-
-                        // Let's simplify: Use a map for order tracking
-                        // (We need to initialize it with existing children counts if we insert into existing parents... 
-                        // but here we are mostly creating NEW parents or inserting into the main parent)
-
-                        // For the main parent (paste target), we managed the hole.
-                        // For new parents (items we just created), they are empty, so order starts at 0.
-
-                        if (!newBlocks.some(b => b.parent_id === parent.id)) {
-                            // This is the first child we are adding to this parent in this batch.
-                            // Logic handles existing children? No, these are new parents from the paste.
-                            // EXCEPT the root parent.
-                        }
-
-                        // Hacky but robust: just set order = currentOrderCounter and let the UI sort it out?
-                        // No, let's do it right.
-
-                        // We can use a map: parentId -> nextOrder
-                        // But we can't easily query DB for every item.
-
-                        // If parent.id is one of the NEW blocks, order starts at 0.
-                        // If parent.id is the existing root, order continues from insertionOrder.
-
-                        // Actually, 'order' in Jivvy seems to be used for sorting siblings.
-
-                        newBlocks.push(newBlock);
-
-                        stack.push({ level: pb.indentLevel, id: pb.id });
+                for (const pb of normalized) {
+                    // Adjust stack
+                    while (stack.length > 1 && stack[stack.length - 1].level >= pb.indentLevel) {
+                        stack.pop();
                     }
+                    const parent = stack[stack.length - 1];
 
-                    // Fix sibling orders for the root items
-                    // The loop above didn't set correct 'order' for siblings in new parents.
-                    const orderMap = new Map<string, number>();
-                    newBlocks.forEach(b => {
-                        if (!b.parent_id) return;
-                        const current = orderMap.get(b.parent_id);
-                        if (current === undefined) {
-                            // If parent is the root paste target, start at insertionOrder
-                            if (b.parent_id === parentId) {
-                                orderMap.set(b.parent_id, insertionOrder + 1);
-                                b.order = insertionOrder;
-                            } else {
-                                orderMap.set(b.parent_id, 1);
-                                b.order = 0;
-                            }
+                    // Create block
+                    const newBlock: Block = {
+                        id: pb.id,
+                        parent_id: parent.id,
+                        content: pb.content,
+                        type: pb.type,
+                        order: currentOrderCounter++,
+                        metadata: pb.metadata,
+                        updated_at: Date.now(),
+                        sync_status: 'dirty'
+                    };
+
+                    newBlocks.push(newBlock);
+
+                    stack.push({ level: pb.indentLevel, id: pb.id });
+                }
+
+                // Fix sibling orders for the root items
+                const orderMap = new Map<string, number>();
+                newBlocks.forEach(b => {
+                    if (!b.parent_id) return;
+                    const current = orderMap.get(b.parent_id);
+                    if (current === undefined) {
+                        if (b.parent_id === parentId) {
+                            orderMap.set(b.parent_id, insertionOrder + 1);
+                            b.order = insertionOrder;
                         } else {
-                            orderMap.set(b.parent_id, current + 1);
-                            b.order = current;
+                            orderMap.set(b.parent_id, 1);
+                            b.order = 0;
                         }
-                    });
+                    } else {
+                        orderMap.set(b.parent_id, current + 1);
+                        b.order = current;
+                    }
+                });
 
-                    await db.blocks.bulkAdd(newBlocks);
-                    setBlocks(prev => {
-                        // Merge and sort
-                        const combined = [...prev, ...newBlocks];
-                        return combined; //.sort((a,b) => a.order - b.order); // Sorting is usually done by parent
-                    });
+                await db.blocks.bulkAdd(newBlocks);
+                setBlocks(prev => {
+                    const combined = [...prev, ...newBlocks];
+                    return combined;
+                });
 
-                    // Trigger detection on the parent
-                    if (triggerDetection) triggerDetection(parentId);
-                    return;
-                }
+                if (triggerDetection) triggerDetection(parentId);
+                return;
             }
+        }
 
-            // Fallback to plain text
-            if (!text) return;
 
+        if (!html && text) {
             const rows = text.split('\n').filter(row => row.trim() !== '');
-
-            if (rows.length === 0) return;
-
-            // If only one row, just insert into current block
-            if (rows.length === 1) {
-                const selection = window.getSelection();
-                if (selection && selection.rangeCount > 0) {
-                    const range = selection.getRangeAt(0);
-                    range.deleteContents(); // Delete selected text
-                    range.insertNode(document.createTextNode(rows[0]));
-                    // Manually update content and trigger detection
-                    handleUpdateBlock(blockId, { content: blockEl?.textContent || '' });
-                    triggerDetection(blockId);
-                }
-            } else {
-                // If multiple rows, create new blocks
-                await handlePasteRows(block.parent_id || projectId, rows);
+            // If multi-line, we hijack to create blocks
+            if (rows.length > 1) {
+                e.preventDefault();
+                const targetParentId = isLecture ? block.id : (block.parent_id || projectId);
+                await handlePasteRows(targetParentId, rows);
+                return;
             }
-        };
+        }
 
-        document.addEventListener('paste', handlePaste);
-        return () => {
-            document.removeEventListener('paste', handlePaste);
-        };
     }, [blocks, projectId, handlePasteRows, handleUpdateBlock, triggerDetection]);
+
+    // Attach global listener
+    useEffect(() => {
+        const handler = (e: ClipboardEvent) => handleGlobalPaste(e);
+        document.addEventListener('paste', handler);
+        return () => {
+            document.removeEventListener('paste', handler);
+        };
+    }, [handleGlobalPaste]);
 
     // Slash menu trigger - detect "/" being typed
     const handleContentChange = useCallback((blockId: string, content: string) => {
@@ -1147,6 +1110,7 @@ export function BlockList({ projectId, variant = 'document', projectColor }: Blo
                     autoFocus={block.id === focusedBlockId}
                     onDelete={() => handleDeleteBlock(block)}
                     onPasteRows={(rows) => handlePasteRows(block.id, rows)}
+                    onRichPaste={handleGlobalPaste}
                 />
             );
         }

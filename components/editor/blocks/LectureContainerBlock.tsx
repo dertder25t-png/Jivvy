@@ -10,6 +10,7 @@ interface LectureContainerBlockProps {
     autoFocus?: boolean;
     onDelete?: () => void;
     onPasteRows?: (rows: string[]) => void;
+    onRichPaste?: (e: React.ClipboardEvent) => void;
 }
 
 function startOfToday(): number {
@@ -23,7 +24,8 @@ export const LectureContainerBlock: React.FC<LectureContainerBlockProps> = ({
     onUpdate,
     onKeyDown,
     autoFocus,
-    onPasteRows
+    onPasteRows,
+    onRichPaste
 }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -44,6 +46,15 @@ export const LectureContainerBlock: React.FC<LectureContainerBlockProps> = ({
 
     const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
         const clipboard = e.clipboardData;
+        const html = clipboard.getData('text/html');
+
+        // Rich Text (HTML) paste - delegate to global handler for proper parsing
+        if (html && onRichPaste) {
+            e.preventDefault(); // CRITICAL: Stop browser from inserting plain text
+            onRichPaste(e);
+            return;
+        }
+
         const text = clipboard.getData('text/plain');
 
         if (text.includes('\n') && onPasteRows) {

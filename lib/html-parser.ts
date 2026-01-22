@@ -9,48 +9,78 @@ export interface ParsedBlockPreview {
     metadata: Record<string, any>;
 }
 
+// Bullet character patterns for Google Docs and other sources
+// Filled bullets (●, •, *, ◆) = main_point (primary items)
+// Empty/outline bullets (○, ◦, -) = bullet (sub-items)
+// Square bullets (■, ▪, □) = bullet (deeper nesting)
+const MAIN_POINT_BULLETS = /^[●•◆]\s*/;
+const SUB_BULLET_CHARS = /^[○◦■▪□▶▷◇]\s*/;
+const ASTERISK_BULLET = /^\*\s+/; // "* " pattern user uses in Google Docs
+
+function stripBulletCharacter(text: string): { content: string; variant: 'main_point' | 'bullet' | null } {
+    const trimmed = text.trim();
+
+    // Check for main point bullets (filled circles, etc.)
+    if (MAIN_POINT_BULLETS.test(trimmed)) {
+        return { content: trimmed.replace(MAIN_POINT_BULLETS, '').trim(), variant: 'main_point' };
+    }
+
+    // Check for asterisk bullet (user's preferred main point marker)
+    if (ASTERISK_BULLET.test(trimmed)) {
+        return { content: trimmed.replace(ASTERISK_BULLET, '').trim(), variant: 'main_point' };
+    }
+
+    // Check for sub-bullets (empty circles, squares, etc.)
+    if (SUB_BULLET_CHARS.test(trimmed)) {
+        return { content: trimmed.replace(SUB_BULLET_CHARS, '').trim(), variant: 'bullet' };
+    }
+
+    // Check for dash bullet
+    if (trimmed.startsWith('- ')) {
+        return { content: trimmed.substring(2).trim(), variant: 'bullet' };
+    }
+
+    return { content: trimmed, variant: null };
+}
+
 function getIndentFromStyle(style: string): number {
     if (!style) return 0;
 
     // Normalize style string
     const normalized = style.toLowerCase();
 
-    // Helper to extract value
+    // Helper to extract value - handles various units
     const extract = (prop: string) => {
-        const match = normalized.match(new RegExp(`${prop}:\\s*([\\d.-]+)(pt|px|in|em)`));
+        // Match property with optional spaces and various units
+        const regex = new RegExp(`${prop}\\s*:\\s*([\\d.]+)\\s*(pt|px|in|em|cm|mm)?`, 'i');
+        const match = normalized.match(regex);
         if (!match) return 0;
         const val = parseFloat(match[1]);
-        const unit = match[2];
-        if (unit === 'pt') return val * 1.333;
-        if (unit === 'px') return val;
-        if (unit === 'in') return val * 96;
-        if (unit === 'em') return val * 16;
-        return 0;
+        const unit = (match[2] || 'px').toLowerCase();
+
+        // Convert all units to pixels
+        switch (unit) {
+            case 'pt': return val * 1.333; // 1pt = 1.333px
+            case 'px': return val;
+            case 'in': return val * 96; // 1in = 96px
+            case 'em': return val * 16; // Assume base 16px
+            case 'cm': return val * 37.795; // 1cm ≈ 37.795px
+            case 'mm': return val * 3.7795; // 1mm ≈ 3.7795px
+            default: return val;
+        }
     };
 
     const marginLeft = extract('margin-left');
     const paddingLeft = extract('padding-left');
-    const textIndent = extract('text-indent'); // Hanging indents (bullets) often use negative text-indent
-
-    // Effective visual indentation of the block body
-    // Often: margin-left is the total indent. text-indent shifts the first line (bullet).
-    // We care about the block's alignment, which is usually margin-left.
-    // However, some editors assume margin-left + padding-left.
 
     let totalPx = marginLeft + paddingLeft;
 
-    // If text-indent is negative, it sticks out. 
-    // We usually want the 'content' indentation, which is 'margin-left'.
-    // Jivvy indentation is roughly 24px-30px per level visually.
-    // Let's be more sensitive: 20px per level.
-
-    // Google Docs: Level 1 = 36pt (48px). Level 2 = 72pt.
-    // If we divide by 24px, 48px -> 2. That's fine.
-    // But if we divide by 40, 48px -> 1.
-
     if (totalPx <= 0) return 0;
 
-    return Math.round(totalPx / 24);
+    // Google Docs uses 0.5in (48px) per indent level
+    // Standard word processors use ~36-48px per level
+    // We'll use 40px as a good middle ground
+    return Math.round(totalPx / 40);
 }
 
 export function parseHtmlToBlocks(html: string): ParsedBlockPreview[] {
@@ -98,7 +128,22 @@ export function parseHtmlToBlocks(html: string): ParsedBlockPreview[] {
         const isAllBold = isBold || (directBoldChild && directBoldChild.textContent === el.textContent?.trim());
 
         // Handle specific block tags
-        if (tag === 'p' || tag === 'div' || tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') {
+        if (['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+            // Check if this 'block' actually contains other blocks (is a container)
+            // e.g. <div><p>...</p><p>...</p></div>
+            const hasBlockChildren = Array.from(el.children).some(child =>
+                ['p', 'div', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'].includes(child.tagName.toLowerCase())
+            );
+
+            if (hasBlockChildren) {
+                // Recurse instead of consuming
+                for (const child of Array.from(el.children)) {
+                    traverse(child, effectiveIndent);
+                }
+                return;
+            }
+
+            // It's a leaf block (or contains only inline)
             const content = el.innerText.trim();
             if (!content) return;
 
@@ -115,13 +160,31 @@ export function parseHtmlToBlocks(html: string): ParsedBlockPreview[] {
                 metadata.variant = 'main_point';
             }
 
-            results.push({
-                id: uuidv4(),
-                type,
-                content: content,
-                indentLevel: effectiveIndent,
-                metadata,
-            });
+            // Split content by newlines to ensure 1 line = 1 block
+            // GDocs/Word often put <br> inside <p>, which innerText converts to \n
+            const lines = content.split(/\r?\n/);
+            for (const line of lines) {
+                if (line.trim()) {
+                    // Check for bullet characters (Google Docs format)
+                    const { content: cleanContent, variant: bulletVariant } = stripBulletCharacter(line);
+
+                    // Use bullet variant if detected, otherwise fall back to header detection
+                    const finalMetadata = { ...metadata };
+                    if (bulletVariant) {
+                        finalMetadata.variant = bulletVariant;
+                    }
+
+                    if (cleanContent.trim()) {
+                        results.push({
+                            id: uuidv4(),
+                            type,
+                            content: cleanContent.trim(),
+                            indentLevel: effectiveIndent,
+                            metadata: finalMetadata,
+                        });
+                    }
+                }
+            }
         }
         else if (tag === 'ul' || tag === 'ol') {
             // Lists usually add an indent level visually
@@ -153,20 +216,26 @@ export function parseHtmlToBlocks(html: string): ParsedBlockPreview[] {
                 clone.querySelector('b, strong')?.textContent === textContent;
 
             if (textContent) {
-                results.push({
-                    id: uuidv4(),
-                    type: 'text',
-                    content: textContent,
-                    indentLevel: effectiveIndent, // LI matches parent UL indent usually? Or +1? 
-                    // In our recursive logic 'ul' didn't increment 'effectiveIndent' passed to children yet?
-                    // Let's assume valid HTML lists imply +1 indent from the UL containment.
-                    // But 'getIndentFromStyle' on UL might have added it.
-                    // Let's just trust effectiveIndent and maybe add 1 for being in a list?
-                    // The caller handles relative indent normalization.
-                    metadata: {
-                        variant: liIsBold ? 'main_point' : 'bullet'
-                    },
-                });
+                // Strip bullet characters and detect variant
+                const { content: cleanContent, variant: bulletVariant } = stripBulletCharacter(textContent);
+
+                // Determine variant priority: bold > bullet detection > default bullet
+                let variant: 'main_point' | 'bullet' = 'bullet';
+                if (liIsBold) {
+                    variant = 'main_point';
+                } else if (bulletVariant) {
+                    variant = bulletVariant;
+                }
+
+                if (cleanContent.trim()) {
+                    results.push({
+                        id: uuidv4(),
+                        type: 'text',
+                        content: cleanContent.trim(),
+                        indentLevel: effectiveIndent,
+                        metadata: { variant },
+                    });
+                }
             }
 
             // 2. Traversal for children (nested lists)
